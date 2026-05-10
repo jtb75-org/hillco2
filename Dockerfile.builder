@@ -1,17 +1,26 @@
 # syntax=docker/dockerfile:1
 #
-# Builder image for hillco2 CI.
+# Builder image for hillco2 CI (lint + validate workloads).
 #
-# Bakes the tools every CI workflow in this repo (and the hillco2-gitops
-# repo) actually uses: kaniko, kustomize, ruff, node20, gh, jq, yq.
-# Replaces the previous external `atlas/builder:latest` reference, which
-# was a moving tag managed outside this codebase. Diffs to the build
-# environment now land in PRs alongside the code that depends on them.
+# Bakes the tooling that the lint job and the hillco2-gitops validate
+# workflow actually use: ruff, kustomize, node20+npm, gh, jq, yq, git,
+# curl. Versions are pinned via ARGs.
 #
-# Built and pushed by .github/workflows/build-builder.yml on changes to
-# this file. Consumers pin by image digest, never by tag.
-
-FROM gcr.io/kaniko-project/executor:debug AS kaniko_src
+# Deliberately single-stage: kaniko has known multi-stage push-auth
+# issues (between stages it deletes the build container's filesystem,
+# wiping any kaniko docker-config we'd written before invoking the
+# executor). The same convention is documented in build-and-push.yml's
+# "build assets outside the Dockerfile" comment.
+#
+# kaniko itself is NOT baked in here. The kaniko-using jobs (the build
+# step in build-and-push.yml, and build-builder.yml below) continue to
+# run inside zot.lan.ng20.org/atlas/builder:latest, which already
+# ships /opt/kaniko/executor. A follow-up can pin atlas/builder to a
+# specific digest to close the supply-chain loop without trying to
+# self-host kaniko in this image.
+#
+# Built and pushed by .github/workflows/build-builder.yml on changes
+# to this file. Consumers pin by image digest.
 
 FROM python:3.12-slim-bookworm
 
@@ -21,23 +30,21 @@ ARG RUFF_VERSION=0.15.12
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# System tooling: shell utilities, certs, git, gnupg (for gh apt key),
-# jq, tar. gh + node come from third-party apt repos so they have to
-# be installed after gnupg is present.
+# Shell utilities, certs, git, gnupg (for gh apt key), jq, tar.
+# gh + node come from third-party apt repos so they have to be
+# installed after gnupg is present.
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
       bash ca-certificates curl git gnupg jq tar; \
     install -d /etc/apt/keyrings; \
     \
-    # gh CLI
     curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
       | gpg --dearmor -o /etc/apt/keyrings/githubcli.gpg; \
     chmod 644 /etc/apt/keyrings/githubcli.gpg; \
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli.gpg] https://cli.github.com/packages stable main" \
       > /etc/apt/sources.list.d/github-cli.list; \
     \
-    # node20 from NodeSource
     curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash -; \
     \
     apt-get update; \
@@ -46,8 +53,7 @@ RUN set -eux; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/*
 
-# yq (mikefarah). Pinned to latest at build time; kept simple because
-# yq doesn't break consumers across minor versions in our usage.
+# yq (mikefarah)
 RUN ARCH=$(dpkg --print-architecture); \
     curl -fsSL -o /usr/local/bin/yq \
       "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${ARCH}"; \
@@ -74,20 +80,13 @@ RUN ARCH=$(uname -m); \
     chmod +x /usr/local/bin/ruff; \
     rm -rf /tmp/ruff.tar.gz /tmp/ruff-*
 
-# kaniko: copy the whole /kaniko/ tree from the upstream image, but
-# stage it under /opt/kaniko/ instead of /kaniko/. Kaniko itself uses
-# /kaniko/ at build time for its own scratch state — when this very
-# image is built by kaniko, anything we COPY to /kaniko/ collides with
-# kaniko's runtime and gets dropped from the final layer (silent
-# failure: the executor binary just isn't in the resulting image).
-# Staging at /opt/kaniko/ also lines up with the path the existing
-# build-and-push.yml workflow already uses.
-COPY --from=kaniko_src /kaniko/ /opt/kaniko/
-
-# Smoke-test the assembly so a broken layer fails the build instead of
-# surfacing as a confusing CI error later.
+# Smoke-test. pipefail is required for `cmd | head` to fail when cmd
+# is missing — without it, head's success status hides the real error.
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN set -eux; \
-    /opt/kaniko/executor version 2>&1 | head -1; \
+    test -x /usr/local/bin/kustomize; \
+    test -x /usr/local/bin/ruff; \
+    test -x /usr/local/bin/yq; \
     kustomize version; \
     ruff --version; \
     node --version; \
