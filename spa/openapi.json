@@ -4822,13 +4822,42 @@
             },
             "type": "object",
             "title": "Counts"
+          },
+          "db_revision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Db Revision"
+          },
+          "image_head_revision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Head Revision"
+          },
+          "migration_in_sync": {
+            "type": "boolean",
+            "title": "Migration In Sync"
           }
         },
         "type": "object",
         "required": [
           "build_commit",
           "api_title",
-          "counts"
+          "counts",
+          "db_revision",
+          "image_head_revision",
+          "migration_in_sync"
         ],
         "title": "AboutInfo"
       },

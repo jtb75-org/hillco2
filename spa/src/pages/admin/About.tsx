@@ -1,7 +1,9 @@
 import {
   Alert,
+  Box,
   Card,
   CardContent,
+  Chip,
   Grid,
   Skeleton,
   Stack,
@@ -58,6 +60,45 @@ export function AdminAbout() {
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
             {isPending ? <Skeleton width={200} /> : data?.api_title}
           </Typography>
+        </CardContent>
+      </Card>
+
+      <Card variant="outlined">
+        <CardContent>
+          <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
+            <Typography variant="overline" color="text.secondary">
+              Schema migration
+            </Typography>
+            {!isPending && data && (
+              <Chip
+                size="small"
+                label={data.migration_in_sync ? "in sync" : "drift"}
+                color={data.migration_in_sync ? "success" : "warning"}
+                variant={data.migration_in_sync ? "outlined" : "filled"}
+              />
+            )}
+          </Stack>
+          {isPending || !data ? (
+            <Skeleton width={240} height={48} />
+          ) : (
+            <Box sx={{ display: "grid", gridTemplateColumns: "auto 1fr", columnGap: 2, rowGap: 0.5 }}>
+              <Typography variant="body2" color="text.secondary">DB revision</Typography>
+              <Typography variant="body2" sx={{ fontFamily: "monospace" }}>
+                {data.db_revision ?? <Box component="span" sx={{ color: "text.disabled" }}>unknown</Box>}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">Image head</Typography>
+              <Typography variant="body2" sx={{ fontFamily: "monospace" }}>
+                {data.image_head_revision ?? <Box component="span" sx={{ color: "text.disabled" }}>unknown</Box>}
+              </Typography>
+            </Box>
+          )}
+          {!isPending && data && !data.migration_in_sync && (
+            <Alert severity="warning" sx={{ mt: 2 }}>
+              The image bundles a different alembic head than the DB is stamped
+              at. New code may be running against an unmigrated schema —
+              check the schema-bootstrap Job logs.
+            </Alert>
+          )}
         </CardContent>
       </Card>
 
