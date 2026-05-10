@@ -106,17 +106,38 @@ async def _wire_app_pool(db_pool, monkeypatch):
 
 @pytest_asyncio.fixture
 async def test_user(db_pool):
-    """Insert a fresh user; return id/email/name as a dict."""
+    """Insert a fresh user via the post-0012 shape: a row in `people`
+    (kind='other'), a 1:1 `auth` detail row, and a `google` identity
+    keyed on the email. Returns the same dict shape callers expect:
+    id/email/name/role/is_active."""
     async with db_pool.acquire() as conn:
-        row = await conn.fetchrow(
+        email = f"test-{uuid4()}@example.com"
+        person_id = await conn.fetchval(
             """
-            INSERT INTO users (email, name, role, is_active)
-            VALUES ($1, 'Test User', 'consultant', TRUE)
-            RETURNING id, email, name, role, is_active
+            INSERT INTO people (kind, first_name, last_name, email)
+            VALUES ('other', 'Test', 'User', $1)
+            RETURNING id
             """,
-            f"test-{uuid4()}@example.com",
+            email,
         )
-    return dict(row)
+        await conn.execute(
+            "INSERT INTO auth (person_id, status, app_role) VALUES ($1, 'active', 'consultant')",
+            person_id,
+        )
+        await conn.execute(
+            """
+            INSERT INTO auth_identities (person_id, provider, provider_subject)
+            VALUES ($1, 'google', $2)
+            """,
+            person_id, email,
+        )
+    return {
+        "id": person_id,
+        "email": email,
+        "name": "Test User",
+        "role": "consultant",
+        "is_active": True,
+    }
 
 
 def _sign_session_cookie(session_data: dict) -> str:

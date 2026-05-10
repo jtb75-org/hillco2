@@ -81,16 +81,31 @@ class AboutInfo(BaseModel):
 
 # ---- Routes ----------------------------------------------------------------
 
+_ADMIN_USER_SELECT = """
+    SELECT
+      p.id, p.email,
+      TRIM(BOTH ' ' FROM
+        COALESCE(p.first_name, '') ||
+        CASE WHEN p.last_name IS NOT NULL AND p.last_name <> ''
+             THEN ' ' || p.last_name ELSE '' END
+      )                                       AS name,
+      a.app_role                              AS role,
+      (a.status = 'active')                   AS is_active,
+      a.last_login_at,
+      p.created_at
+    FROM auth a
+    JOIN people p ON p.id = a.person_id
+"""
+
+
 @router.get("/users", response_model=list[AdminUser])
 async def list_users(_user=Depends(require_user), conn=Depends(get_conn)):
-    """All users, sorted by name. Anyone authenticated can read this for
-    now; if the role surface grows we'll gate this on an admin role."""
+    """All users (auth-provisioned people), sorted by active first then
+    name. Anyone authenticated can read this for now; if the role
+    surface grows we'll gate this on an admin role."""
     rows = await conn.fetch(
-        """
-        SELECT id, email, name, role, is_active, last_login_at, created_at
-        FROM users
-        ORDER BY is_active DESC, name
-        """
+        _ADMIN_USER_SELECT
+        + " WHERE p.deleted_at IS NULL ORDER BY (a.status='active') DESC, p.last_name NULLS LAST, p.first_name"
     )
     return [dict(r) for r in rows]
 
@@ -101,22 +116,59 @@ async def create_user(
     _user=Depends(require_user),
     conn=Depends(get_conn),
 ):
-    """Pre-authorize a new user. Until they sign in via Google OAuth
-    the row exists with last_login_at NULL; their first successful
-    OAuth callback flips that. Email is CITEXT UNIQUE — duplicates
-    return 409. Role gating for THIS endpoint is intentionally not
-    enforced yet (matches list_users); the same caveat applies."""
+    """Pre-authorize a new user. Creates a person + auth row + a Google
+    auth_identity keyed on the email. The user's first successful
+    Google sign-in finds the identity and flips last_login_at."""
+    email = body.email.lower()
+
+    # Reject if any active auth_identity already maps the same Google
+    # email to a person — that's the duplicate condition that used to
+    # be enforced by users.email UNIQUE.
+    if await conn.fetchval(
+        """
+        SELECT 1 FROM auth_identities
+        WHERE provider = 'google' AND provider_subject = $1
+        """,
+        email,
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="A user with that email already exists.",
+        )
+
+    first, _, last = body.name.partition(" ")
+    last = last.strip() or None
+    person_id = await conn.fetchval(
+        """
+        INSERT INTO people (kind, first_name, last_name, email)
+        VALUES ('other', $1, $2, $3)
+        RETURNING id
+        """,
+        first or email, last, email,
+    )
     try:
-        row = await conn.fetchrow(
+        await conn.execute(
             """
-            INSERT INTO users (email, name, role, is_active)
-            VALUES ($1, $2, $3, TRUE)
-            RETURNING id, email, name, role, is_active, last_login_at, created_at
+            INSERT INTO auth (person_id, status, app_role)
+            VALUES ($1, 'active', $2)
             """,
-            body.email, body.name, body.role,
+            person_id, body.role,
+        )
+        await conn.execute(
+            """
+            INSERT INTO auth_identities (person_id, provider, provider_subject)
+            VALUES ($1, 'google', $2)
+            """,
+            person_id, email,
         )
     except asyncpg.UniqueViolationError as e:
-        raise HTTPException(status_code=409, detail="A user with that email already exists.") from e
+        # Race against another concurrent create with the same email.
+        raise HTTPException(
+            status_code=409,
+            detail="A user with that email already exists.",
+        ) from e
+
+    row = await conn.fetchrow(_ADMIN_USER_SELECT + " WHERE p.id = $1", person_id)
     return dict(row)
 
 
@@ -126,22 +178,26 @@ async def deactivate_user(
     user=Depends(require_user),
     conn=Depends(get_conn),
 ):
-    """Soft-delete: set is_active=false. Preserves audit_log.user_id
-    foreign keys and lets us reactivate later. Refuses to deactivate
-    the caller's own account so an admin can't lock themselves out."""
+    """Soft-delete: flip auth.status to 'suspended' so the user can no
+    longer sign in, and stamp people.deleted_at so they drop out of
+    the address book. audit_log entries stay valid (still FK to
+    people.id). Refuses to deactivate the caller's own account."""
     if user and user["id"] == user_id:
         raise HTTPException(status_code=400, detail="You cannot deactivate your own account.")
-    row = await conn.fetchrow(
+    updated = await conn.fetchval(
         """
-        UPDATE users
-           SET is_active = FALSE, updated_at = NOW()
-         WHERE id = $1
-        RETURNING id, email, name, role, is_active, last_login_at, created_at
+        UPDATE auth SET status = 'suspended' WHERE person_id = $1
+        RETURNING person_id
         """,
         user_id,
     )
-    if row is None:
+    if updated is None:
         raise HTTPException(status_code=404, detail="User not found.")
+    await conn.execute(
+        "UPDATE people SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL",
+        user_id,
+    )
+    row = await conn.fetchrow(_ADMIN_USER_SELECT + " WHERE p.id = $1", user_id)
     return dict(row)
 
 
@@ -152,18 +208,21 @@ async def reactivate_user(
     conn=Depends(get_conn),
 ):
     """Reverse of deactivate_user. Idempotent: reactivating an already-
-    active user is a no-op that still returns the current row."""
-    row = await conn.fetchrow(
+    active user just refreshes timestamps and returns the row."""
+    updated = await conn.fetchval(
         """
-        UPDATE users
-           SET is_active = TRUE, updated_at = NOW()
-         WHERE id = $1
-        RETURNING id, email, name, role, is_active, last_login_at, created_at
+        UPDATE auth SET status = 'active' WHERE person_id = $1
+        RETURNING person_id
         """,
         user_id,
     )
-    if row is None:
+    if updated is None:
         raise HTTPException(status_code=404, detail="User not found.")
+    await conn.execute(
+        "UPDATE people SET deleted_at = NULL WHERE id = $1",
+        user_id,
+    )
+    row = await conn.fetchrow(_ADMIN_USER_SELECT + " WHERE p.id = $1", user_id)
     return dict(row)
 
 
@@ -180,10 +239,16 @@ async def list_audit_log(
     total = await conn.fetchval("SELECT COUNT(*) FROM audit_log")
     rows = await conn.fetch(
         """
-        SELECT al.id, al.ts, al.user_id, u.email AS user_email, u.name AS user_name,
+        SELECT al.id, al.ts, al.user_id,
+               p.email AS user_email,
+               TRIM(BOTH ' ' FROM
+                 COALESCE(p.first_name, '') ||
+                 CASE WHEN p.last_name IS NOT NULL AND p.last_name <> ''
+                      THEN ' ' || p.last_name ELSE '' END
+               ) AS user_name,
                al.table_name, al.row_id, al.action
         FROM audit_log al
-        LEFT JOIN users u ON u.id = al.user_id
+        LEFT JOIN people p ON p.id = al.user_id
         ORDER BY al.id DESC
         LIMIT $1 OFFSET $2
         """,
@@ -204,7 +269,7 @@ async def about(_user=Depends(require_user), conn=Depends(get_conn)):
     counts_row = await conn.fetchrow(
         """
         SELECT
-          (SELECT COUNT(*) FROM users)               AS users,
+          (SELECT COUNT(*) FROM auth)                AS users,
           (SELECT COUNT(*) FROM families
              WHERE deleted_at IS NULL)               AS families,
           (SELECT COUNT(*) FROM people

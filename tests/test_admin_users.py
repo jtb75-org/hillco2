@@ -88,19 +88,25 @@ async def test_create_user_requires_session(client):
 
 async def test_deactivate_user_sets_is_active_false(authed_client, db_pool):
     async with db_pool.acquire() as conn:
-        row = await conn.fetchrow(
-            "INSERT INTO users (email, name, role) VALUES ($1, 'Tmp', 'consultant') RETURNING id",
-            f"deact-{uuid4()}@example.com",
+        email = f"deact-{uuid4()}@example.com"
+        person_id = await conn.fetchval(
+            "INSERT INTO people (kind, first_name, email) VALUES ('other', 'Tmp', $1) RETURNING id",
+            email,
         )
-    target_id = str(row["id"])
+        await conn.execute(
+            "INSERT INTO auth (person_id, status, app_role) VALUES ($1, 'active', 'consultant')",
+            person_id,
+        )
 
-    r = await authed_client.delete(f"/api/admin/users/{target_id}")
+    r = await authed_client.delete(f"/api/admin/users/{person_id}")
     assert r.status_code == 200, r.text
     assert r.json()["is_active"] is False
 
     async with db_pool.acquire() as conn:
-        actual = await conn.fetchval("SELECT is_active FROM users WHERE id = $1", row["id"])
-    assert actual is False
+        actual_status = await conn.fetchval(
+            "SELECT status::text FROM auth WHERE person_id = $1", person_id,
+        )
+    assert actual_status == "suspended"
 
 
 async def test_deactivate_self_returns_400(authed_client, test_user):
@@ -116,19 +122,29 @@ async def test_deactivate_unknown_user_returns_404(authed_client):
 
 async def test_reactivate_user_sets_is_active_true(authed_client, db_pool):
     async with db_pool.acquire() as conn:
-        row = await conn.fetchrow(
-            "INSERT INTO users (email, name, role, is_active) VALUES ($1, 'Tmp', 'consultant', FALSE) RETURNING id",
-            f"react-{uuid4()}@example.com",
+        email = f"react-{uuid4()}@example.com"
+        person_id = await conn.fetchval(
+            """
+            INSERT INTO people (kind, first_name, email, deleted_at)
+            VALUES ('other', 'Tmp', $1, NOW())
+            RETURNING id
+            """,
+            email,
         )
-    target_id = str(row["id"])
+        await conn.execute(
+            "INSERT INTO auth (person_id, status, app_role) VALUES ($1, 'suspended', 'consultant')",
+            person_id,
+        )
 
-    r = await authed_client.post(f"/api/admin/users/{target_id}/reactivate")
+    r = await authed_client.post(f"/api/admin/users/{person_id}/reactivate")
     assert r.status_code == 200, r.text
     assert r.json()["is_active"] is True
 
     async with db_pool.acquire() as conn:
-        actual = await conn.fetchval("SELECT is_active FROM users WHERE id = $1", row["id"])
-    assert actual is True
+        actual_status = await conn.fetchval(
+            "SELECT status::text FROM auth WHERE person_id = $1", person_id,
+        )
+    assert actual_status == "active"
 
 
 async def test_reactivate_unknown_user_returns_404(authed_client):
@@ -137,26 +153,34 @@ async def test_reactivate_unknown_user_returns_404(authed_client):
 
 
 async def test_deactivate_writes_audit_log(authed_client, db_pool, test_user):
-    """Soft-delete is an UPDATE on users; the existing audit_trigger
-    should record it with the acting user's id from app.user_id."""
+    """Soft-delete is now an UPDATE on `auth` (status flip) plus an
+    UPDATE on `people` (deleted_at stamp). audit_trigger should fire
+    on both with the acting user from app.user_id."""
     async with db_pool.acquire() as conn:
-        row = await conn.fetchrow(
-            "INSERT INTO users (email, name, role) VALUES ($1, 'Tmp', 'consultant') RETURNING id",
-            f"audit-{uuid4()}@example.com",
+        email = f"audit-{uuid4()}@example.com"
+        person_id = await conn.fetchval(
+            "INSERT INTO people (kind, first_name, email) VALUES ('other', 'Tmp', $1) RETURNING id",
+            email,
         )
-    target_id = row["id"]
+        await conn.execute(
+            "INSERT INTO auth (person_id, status, app_role) VALUES ($1, 'active', 'consultant')",
+            person_id,
+        )
 
-    r = await authed_client.delete(f"/api/admin/users/{target_id}")
+    r = await authed_client.delete(f"/api/admin/users/{person_id}")
     assert r.status_code == 200
 
     async with db_pool.acquire() as conn:
+        # The auth row's UPDATE is the one that flips status to
+        # 'suspended'; that's what should be attributed to test_user.
         entries = await conn.fetch(
-            "SELECT user_id, action FROM audit_log WHERE table_name = 'users' AND row_id = $1 ORDER BY id DESC",
-            target_id,
+            """
+            SELECT user_id, action FROM audit_log
+            WHERE table_name = 'auth' AND row_id = $1
+            ORDER BY id DESC
+            """,
+            person_id,
         )
-    # The INSERT above ran without a session, so app.user_id is empty
-    # for that row's audit entry; the DELETE-via-soft-delete UPDATE
-    # is the one that should be attributed to test_user.
     update_entries = [e for e in entries if e["action"] == "UPDATE"]
-    assert update_entries, "expected an UPDATE audit entry for the soft-delete"
+    assert update_entries, "expected an UPDATE audit entry for the auth status flip"
     assert update_entries[0]["user_id"] == test_user["id"]

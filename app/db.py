@@ -71,8 +71,27 @@ async def get_conn(request: Request) -> AsyncIterator[asyncpg.Connection | None]
     assert db.pool is not None, "DB pool not initialized"
     async with db.pool.acquire() as conn:
         async with conn.transaction():
+            # Post-0012: validate the session via the people + auth shape.
+            # Compose the legacy "name" + "is_active" fields so callers
+            # of request.state.current_user (admin, audit attribution,
+            # PDF rendering, etc.) keep working without changes.
             row = await conn.fetchrow(
-                "SELECT id, email, name, role, is_active FROM users WHERE id = $1 AND is_active",
+                """
+                SELECT
+                  p.id, p.email,
+                  TRIM(BOTH ' ' FROM
+                    COALESCE(p.first_name, '') ||
+                    CASE WHEN p.last_name IS NOT NULL AND p.last_name <> ''
+                         THEN ' ' || p.last_name ELSE '' END
+                  )                      AS name,
+                  a.app_role             AS role,
+                  (a.status = 'active')  AS is_active
+                FROM people p
+                JOIN auth a ON a.person_id = p.id
+                WHERE p.id = $1
+                  AND p.deleted_at IS NULL
+                  AND a.status = 'active'
+                """,
                 uid,
             )
             await conn.execute(
