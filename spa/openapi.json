@@ -6870,50 +6870,6 @@
               }
             ],
             "title": "Notes"
-          },
-          "billing_name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Billing Name"
-          },
-          "billing_email": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Billing Email"
-          },
-          "billing_attention_to": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Billing Attention To"
-          },
-          "billing_address": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Billing Address"
           }
         },
         "type": "object",
@@ -6946,50 +6902,6 @@
               }
             ],
             "title": "Notes"
-          },
-          "billing_name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Billing Name"
-          },
-          "billing_email": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Billing Email"
-          },
-          "billing_attention_to": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Billing Attention To"
-          },
-          "billing_address": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Billing Address"
           }
         },
         "type": "object",
@@ -7811,6 +7723,33 @@
             "type": "boolean",
             "title": "Is Primary Contact",
             "default": false
+          },
+          "is_billing_contact": {
+            "type": "boolean",
+            "title": "Is Billing Contact",
+            "default": false
+          },
+          "billing_address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Address"
+          },
+          "billing_attention_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Attention To"
           }
         },
         "type": "object",
@@ -7882,6 +7821,39 @@
               }
             ],
             "title": "Is Primary Contact"
+          },
+          "is_billing_contact": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Billing Contact"
+          },
+          "billing_address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Address"
+          },
+          "billing_attention_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Attention To"
           }
         },
         "type": "object",

@@ -17,6 +17,9 @@ import { api } from "../../api/client";
 import type { components } from "../../api/schema";
 
 type FamilyCreate = components["schemas"]["FamilyCreate"];
+// Parent billing fields ride on the parent row (post-0007), so the
+// family-create dialog only collects the household name + notes; you
+// add the billing contact when you add the first parent on detail.
 
 export function AddFamilyDialog({
   open,
@@ -29,7 +32,6 @@ export function AddFamilyDialog({
 }) {
   const navigate = useNavigate();
   const [householdName, setHouseholdName] = useState("");
-  const [billingEmail, setBillingEmail] = useState("");
   const [notes, setNotes] = useState("");
 
   const create = useMutation({
@@ -56,7 +58,6 @@ export function AddFamilyDialog({
 
   const reset = () => {
     setHouseholdName("");
-    setBillingEmail("");
     setNotes("");
     create.reset();
   };
@@ -74,7 +75,6 @@ export function AddFamilyDialog({
           e.preventDefault();
           create.mutate({
             household_name: householdName.trim(),
-            billing_email: billingEmail.trim() || null,
             notes: notes.trim() || null,
           });
         }}
@@ -93,15 +93,6 @@ export function AddFamilyDialog({
               inputProps={{ maxLength: 200 }}
             />
             <TextField
-              type="email"
-              label="Billing email (optional)"
-              placeholder="Used for invoices when set"
-              value={billingEmail}
-              onChange={(e) => setBillingEmail(e.target.value)}
-              fullWidth
-              inputProps={{ maxLength: 320 }}
-            />
-            <TextField
               label="Notes (optional)"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
@@ -110,8 +101,8 @@ export function AddFamilyDialog({
               rows={3}
             />
             <Typography variant="caption" color="text.secondary">
-              You can add parents and students from the family's detail page after
-              it's created.
+              You can add parents (with billing contact) and students from the
+              family's detail page after it's created.
             </Typography>
             {create.error && (
               <Alert severity="error">{create.error.message}</Alert>
