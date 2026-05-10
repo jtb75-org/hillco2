@@ -228,29 +228,35 @@ schema.sql directly. The `seed_catalog.sql` step is unchanged.
   against the test DB and asserts the schema has the expected tables /
   the audit functions still have their search_path pin.
 
-## Open questions
+## Decisions
 
-1. **Where does `alembic.ini` live, and how does it find `DATABASE_URL`?**
-   Standard pattern is to set `sqlalchemy.url = %(DATABASE_URL)s` and
-   read from env in `env.py`. Want to confirm this matches our existing
-   env-var conventions (the deployment already injects `DATABASE_URL`).
-2. **Do we keep `schema.sql` as a frozen reference?** Argument for: it's
-   useful to read; it's small. Argument against: divergence. I lean
-   "delete it; the baseline migration is the canonical schema." Open
-   to the other view.
-3. **Do we want a separate ScheduledBackup before each migration?** The
-   CNPG ScheduledBackup runs daily already; for risky migrations we
-   could trigger a one-off backup as a Sync hook prior to the migration
-   Job. Probably overkill until we have a destructive migration that
-   needs the safety net.
-4. **`asyncpg` vs `psycopg` for alembic's connection?** Alembic ships
-   with psycopg by default. We'd add `psycopg[binary]` to the bootstrap
-   Job's deps (or to `requirements.txt`); it doesn't need to be the
-   same driver the app uses for queries.
-5. **Catalog seed: keep as `seed_catalog.sql` or convert to alembic
-   data migrations?** I lean keep-as-is. Schema and data have different
-   update cadences and rollback semantics. A failed seed shouldn't
-   roll back the schema.
+The four open questions discussed above, resolved:
+
+1. **`alembic.ini` location + `DATABASE_URL`.** `alembic.ini` at repo
+   root, `sqlalchemy.url` left empty there, set programmatically in
+   `alembic/env.py` from `os.environ["DATABASE_URL"]`. Same pattern as
+   `app/config.py`; configparser's `%(VAR)s` interpolation is more
+   fragile and harder to debug.
+2. **`schema.sql` after cutover.** Deleted. The baseline migration is
+   the canonical schema; "show me the schema" is served by `alembic
+   upgrade head` against a scratch DB and `pg_dump --schema-only`. PR
+   #2 leaves schema.sql in place (additive); PR #3 removes it as part
+   of the cutover.
+3. **Driver.** `psycopg[binary]>=3.2` for alembic. Async alembic adds
+   complexity for no benefit at our scale (migrations run once per
+   deploy, not per request). asyncpg stays for the app's request
+   handlers.
+4. **Catalog seed.** Stays as `seed_catalog.sql` with the separate
+   `service_items count = 0` gate. Schema and seed have different
+   update cadences and rollback semantics — a schema rollback shouldn't
+   take seed data with it. Alembic data migrations are reserved for
+   one-off transforms (e.g., "rename `iep` note kinds to `iep_review`
+   to match a new enum value"), not ongoing seed reconciliation.
+
+(Originally listed a fifth question about pre-migration backups via a
+ScheduledBackup Sync hook; the daily CNPG backup already covers risk
+at this scale, defer until a destructive migration actually needs the
+safety net.)
 
 ## Proposed sequencing
 
