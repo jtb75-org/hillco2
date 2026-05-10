@@ -57,11 +57,21 @@ async def _attendees_for_visits(conn, visit_ids: list[UUID]) -> dict[UUID, list[
         return {}
     rows = await conn.fetch(
         """
-        SELECT a.school_visit_id, c.id, c.name, c.role, c.email
+        SELECT
+          a.school_visit_id,
+          p.id,
+          TRIM(BOTH ' ' FROM
+            COALESCE(p.first_name, '') ||
+            CASE WHEN p.last_name IS NOT NULL AND p.last_name <> ''
+                 THEN ' ' || p.last_name ELSE '' END
+          )                AS name,
+          swd.role,
+          p.email
         FROM school_visit_attendees a
-        JOIN contacts c ON c.id = a.contact_id
+        JOIN people p ON p.id = a.contact_id AND p.deleted_at IS NULL
+        LEFT JOIN school_worker_details swd ON swd.person_id = p.id
         WHERE a.school_visit_id = ANY($1::uuid[])
-        ORDER BY c.name
+        ORDER BY p.last_name NULLS LAST, p.first_name
         """,
         visit_ids,
     )

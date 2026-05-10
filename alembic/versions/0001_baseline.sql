@@ -290,6 +290,7 @@ $$;
 
 CREATE FUNCTION public.next_invoice_number() RETURNS text
     LANGUAGE plpgsql
+    SET search_path TO 'public', 'pg_catalog'
     AS $$
 DECLARE
     yr INTEGER := EXTRACT(YEAR FROM NOW())::INTEGER;
