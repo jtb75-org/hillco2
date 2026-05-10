@@ -1,4 +1,3 @@
-Defaulted container "postgres" out of: postgres, bootstrap-controller (init)
 --
 -- PostgreSQL database dump
 --

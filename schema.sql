@@ -19,7 +19,12 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION current_app_user_id() RETURNS UUID AS $$
+-- Pinned search_path so callers with restricted/empty search_path (notably
+-- pg_dump-generated replay scripts that set search_path = '') still resolve
+-- current_setting and the function lookup itself.
+CREATE OR REPLACE FUNCTION current_app_user_id() RETURNS UUID
+SET search_path = public, pg_catalog
+AS $$
 DECLARE
     v TEXT;
 BEGIN
@@ -45,7 +50,11 @@ CREATE INDEX audit_log_table_row_idx ON audit_log(table_name, row_id);
 CREATE INDEX audit_log_ts_idx ON audit_log(ts DESC);
 CREATE INDEX audit_log_user_id_idx ON audit_log(user_id);
 
-CREATE OR REPLACE FUNCTION audit_trigger() RETURNS TRIGGER AS $$
+-- Pinned search_path so the unqualified current_app_user_id() and audit_log
+-- references resolve under restricted/empty caller search_path.
+CREATE OR REPLACE FUNCTION audit_trigger() RETURNS TRIGGER
+SET search_path = public, pg_catalog
+AS $$
 DECLARE
     uid UUID := current_app_user_id();
 BEGIN

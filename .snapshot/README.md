@@ -5,6 +5,12 @@ Captured 2026-05-09 from CNPG cluster `hillco-portal-pg` in namespace `hillco-po
 ## Files
 
 - `hillco-data.sql` — `pg_dump --data-only --inserts --column-inserts` of all tables we plan to migrate to hillco2. 87 INSERTs across 15 tables. Excluded: `audit_log` (history), `service_items` + `service_item_engagement_types` (catalog rebuilds in hillco2), `engagement_tasks` (empty), `invoice_sequence` (regenerates).
+- `students-transformed.sql` — three rewritten student INSERTs that hillco-data.sql gets patched against (rename `current_school` → `current_school_id`, `has_autism` → `autism_level`; both NULL because no autism diagnoses and no school name matches).
+- `build_replay.py` — emits a transactionally-wrapped replay file that strips the dump's `set_config('search_path','')` line, swaps the three student INSERTs in place, and wraps everything in BEGIN/COMMIT. Run as: `python3 build_replay.py > /tmp/replay.sql`.
+
+## Replay status
+
+Replayed cleanly into the live `hillco2-pg` cluster on 2026-05-09. Counts match the snapshot exactly.
 
 ## Row counts
 
