@@ -12,6 +12,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from .config import settings
 from .db import db
 from .routes import auth as auth_routes
+from .routes import contacts as contacts_routes
 from .routes import families as families_routes
 from .routes import health as health_routes
 from .routes import me as me_routes
@@ -147,3 +148,4 @@ app.include_router(me_routes.router)
 app.include_router(families_routes.router)
 app.include_router(students_routes.router)
 app.include_router(schools_routes.router)
+app.include_router(contacts_routes.router)
