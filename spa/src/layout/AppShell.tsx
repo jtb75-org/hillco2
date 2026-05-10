@@ -123,10 +123,10 @@ export function AppShell() {
           </List>
         </Box>
       </Drawer>
-      {/* px slightly larger than py — the drawer eats up the visual
-          left margin already, so a wider horizontal padding on the
-          main column gives the right edge room to breathe to match. */}
-      <Box component="main" sx={{ flexGrow: 1, py: 3, px: 4 }}>
+      {/* px scales with viewport — drawer provides the visual buffer on
+          the left, so the right needs more padding on wide screens to
+          match. */}
+      <Box component="main" sx={{ flexGrow: 1, py: 3, px: { xs: 3, md: 5, lg: 6 } }}>
         <Toolbar />
         <Outlet />
       </Box>

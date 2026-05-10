@@ -3,17 +3,15 @@ import {
   Alert,
   Box,
   Breadcrumbs,
-  Button,
   Card,
+  CardActionArea,
   CardContent,
   Chip,
   Divider,
   Grid,
-  IconButton,
   Link as MuiLink,
   Skeleton,
   Stack,
-  Tooltip,
   Typography,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
@@ -155,114 +153,104 @@ function ParentsCard({
   onChanged: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const hasBilling = parents?.some((p) => p.is_billing_contact) ?? false;
   return (
-    <Card variant="outlined" sx={{ height: "100%" }}>
-      <CardContent>
-        <Stack direction="row" alignItems="center" sx={{ mb: 1 }}>
-          <Typography variant="overline" color="text.secondary" sx={{ flex: 1 }}>
-            Parents / guardians
-          </Typography>
-          <Tooltip title="Add parent / guardian">
-            <IconButton size="small" onClick={() => setOpen(true)} disabled={loading}>
-              <AddIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-        </Stack>
-        {loading ? (
-          <Stack spacing={1} sx={{ mt: 1 }}>
-            <Skeleton width="80%" />
-            <Skeleton width="80%" />
-          </Stack>
-        ) : !parents || parents.length === 0 ? (
-          <Stack spacing={1} sx={{ mt: 1 }}>
-            <Typography variant="body2" color="text.disabled">
-              No parents added yet.
-            </Typography>
-            <Button
-              variant="text"
-              size="small"
-              startIcon={<AddIcon />}
-              onClick={() => setOpen(true)}
-              sx={{ alignSelf: "flex-start" }}
-            >
-              Add parent
-            </Button>
-          </Stack>
-        ) : (
-          <>
-            <Stack divider={<Divider />} sx={{ mt: 1 }}>
-              {parents.map((p) => {
-                const isBilling = p.id === billingId;
-                return (
-                  <Box key={p.id} sx={{ py: 1 }}>
-                    <Stack direction="row" alignItems="center" spacing={1}>
-                      <Typography variant="body1" sx={{ fontWeight: 500 }}>
-                        {p.name}
-                      </Typography>
-                      {p.id === primaryId && (
-                        <Chip size="small" label="primary" color="primary" variant="outlined" />
-                      )}
-                      {isBilling && (
-                        <Chip size="small" label="billing" color="success" variant="outlined" />
-                      )}
-                      <Typography variant="caption" color="text.secondary" sx={{ ml: "auto" }}>
-                        {p.role}
-                      </Typography>
-                    </Stack>
-                    {(p.email || p.phone) && (
-                      <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-                        {[p.email, p.phone].filter(Boolean).join(" · ")}
-                      </Typography>
-                    )}
-                    {p.mailing_address && (
-                      <Typography
-                        variant="caption"
-                        color="text.secondary"
-                        sx={{ display: "block", whiteSpace: "pre-line", mt: 0.5 }}
-                      >
-                        {p.mailing_address}
-                      </Typography>
-                    )}
-                    {isBilling && (p.billing_address || p.billing_attention_to) && (
-                      <Box sx={{ mt: 0.5 }}>
-                        <Typography variant="caption" color="text.secondary" sx={{ fontStyle: "italic" }}>
-                          Billing override:
+    <Box>
+      <Typography variant="overline" color="text.secondary" sx={{ display: "block", mb: 1 }}>
+        Parents / guardians
+      </Typography>
+      <Grid container spacing={2}>
+        {loading
+          ? [0, 1].map((i) => (
+              <Grid key={i} item xs={12} sm={6} md={4}>
+                <Skeleton variant="rounded" height={140} />
+              </Grid>
+            ))
+          : (parents ?? []).map((p) => {
+              const isBilling = p.id === billingId;
+              return (
+                <Grid key={p.id} item xs={12} sm={6} md={4}>
+                  <Card variant="outlined" sx={{ height: "100%" }}>
+                    <CardContent sx={{ pb: "16px !important" }}>
+                      <Stack direction="row" alignItems="baseline" spacing={1} sx={{ mb: 0.5 }}>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 600, flex: 1 }}>
+                          {p.name}
                         </Typography>
-                        {p.billing_attention_to && (
-                          <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-                            Attn: {p.billing_attention_to}
-                          </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {p.role}
+                        </Typography>
+                      </Stack>
+                      <Stack direction="row" spacing={0.5} sx={{ mb: 1 }}>
+                        {p.id === primaryId && (
+                          <Chip size="small" label="primary" color="primary" variant="outlined" />
                         )}
-                        {p.billing_address && (
-                          <Typography
-                            variant="caption"
-                            color="text.secondary"
-                            sx={{ display: "block", whiteSpace: "pre-line" }}
-                          >
-                            {p.billing_address}
-                          </Typography>
+                        {isBilling && (
+                          <Chip size="small" label="billing" color="success" variant="outlined" />
                         )}
-                      </Box>
-                    )}
-                  </Box>
-                );
-              })}
-            </Stack>
-            {!parents.some((p) => p.is_billing_contact) && (
-              <Typography variant="caption" color="warning.main" sx={{ display: "block", mt: 1 }}>
-                No billing contact flagged — invoices won't have a recipient.
-              </Typography>
-            )}
-          </>
+                      </Stack>
+                      {p.email && (
+                        <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                          {p.email}
+                        </Typography>
+                      )}
+                      {p.phone && (
+                        <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                          {p.phone}
+                        </Typography>
+                      )}
+                      {p.mailing_address && (
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{ display: "block", whiteSpace: "pre-line", mt: 0.75 }}
+                        >
+                          {p.mailing_address}
+                        </Typography>
+                      )}
+                      {isBilling && (p.billing_address || p.billing_attention_to) && (
+                        <Box sx={{ mt: 0.75, pt: 0.75, borderTop: 1, borderColor: "divider" }}>
+                          <Typography variant="caption" color="text.secondary" sx={{ fontStyle: "italic" }}>
+                            Billing override:
+                          </Typography>
+                          {p.billing_attention_to && (
+                            <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                              Attn: {p.billing_attention_to}
+                            </Typography>
+                          )}
+                          {p.billing_address && (
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                              sx={{ display: "block", whiteSpace: "pre-line" }}
+                            >
+                              {p.billing_address}
+                            </Typography>
+                          )}
+                        </Box>
+                      )}
+                    </CardContent>
+                  </Card>
+                </Grid>
+              );
+            })}
+        {!loading && (
+          <Grid item xs={12} sm={6} md={4}>
+            <AddCard label="Add parent / guardian" onClick={() => setOpen(true)} />
+          </Grid>
         )}
-      </CardContent>
+      </Grid>
+      {!loading && (parents?.length ?? 0) > 0 && !hasBilling && (
+        <Typography variant="caption" color="warning.main" sx={{ display: "block", mt: 1 }}>
+          No billing contact flagged — invoices won't have a recipient.
+        </Typography>
+      )}
       <AddParentDialog
         open={open}
         familyId={familyId}
         onClose={() => setOpen(false)}
         onCreated={onChanged}
       />
-    </Card>
+    </Box>
   );
 }
 
@@ -281,55 +269,87 @@ function StudentsCard({
 }) {
   const [open, setOpen] = useState(false);
   return (
-    <Card variant="outlined">
-      <CardContent>
-        <Stack direction="row" alignItems="center" sx={{ mb: 1 }}>
-          <Typography variant="overline" color="text.secondary" sx={{ flex: 1 }}>
-            Students
-          </Typography>
-          <Tooltip title="Add student">
-            <IconButton size="small" onClick={() => setOpen(true)} disabled={loading}>
-              <AddIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-        </Stack>
+    <Box>
+      <Typography variant="overline" color="text.secondary" sx={{ display: "block", mb: 1 }}>
+        Students
+      </Typography>
+      <Grid container spacing={2}>
         {loading ? (
-          <Skeleton width="60%" sx={{ mt: 1 }} />
-        ) : !students || students.length === 0 ? (
-          <Stack spacing={1} sx={{ mt: 1 }}>
-            <Typography variant="body2" color="text.disabled">
-              No students added yet.
-            </Typography>
-            <Button
-              variant="text"
-              size="small"
-              startIcon={<AddIcon />}
-              onClick={() => setOpen(true)}
-              sx={{ alignSelf: "flex-start" }}
-            >
-              Add student
-            </Button>
-          </Stack>
+          <Grid item xs={12} sm={6} md={4}>
+            <Skeleton variant="rounded" height={120} />
+          </Grid>
         ) : (
-          <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 1 }}>
-            {students.map((s) => (
-              <Chip
-                key={s.id}
-                component={RouterLink}
-                to={`/students/${s.id}`}
-                clickable
-                label={`${s.name}${s.current_grade ? ` (${s.current_grade})` : ""}`}
-              />
-            ))}
-          </Stack>
+          (students ?? []).map((s) => (
+            <Grid key={s.id} item xs={12} sm={6} md={4}>
+              <Card variant="outlined" sx={{ height: "100%" }}>
+                <CardActionArea
+                  component={RouterLink}
+                  to={`/students/${s.id}`}
+                  sx={{ height: "100%" }}
+                >
+                  <CardContent>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                      {s.name}
+                    </Typography>
+                    {s.current_grade && (
+                      <Typography variant="caption" color="text.secondary">
+                        Grade {s.current_grade}
+                      </Typography>
+                    )}
+                  </CardContent>
+                </CardActionArea>
+              </Card>
+            </Grid>
+          ))
         )}
-      </CardContent>
+        {!loading && (
+          <Grid item xs={12} sm={6} md={4}>
+            <AddCard label="Add student" onClick={() => setOpen(true)} />
+          </Grid>
+        )}
+      </Grid>
       <AddStudentDialog
         open={open}
         familyId={familyId}
         onClose={() => setOpen(false)}
         onCreated={onChanged}
       />
+    </Box>
+  );
+}
+
+// Shared "+" card. Dashed border, neutral by default, primary tint on
+// hover. Used at the end of every card grid that supports adding.
+function AddCard({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <Card
+      variant="outlined"
+      onClick={onClick}
+      sx={{
+        height: "100%",
+        minHeight: 140,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        cursor: "pointer",
+        borderStyle: "dashed",
+        borderColor: "divider",
+        color: "text.secondary",
+        bgcolor: "transparent",
+        transition: (t) => t.transitions.create(["border-color", "color", "background-color"]),
+        "&:hover": {
+          borderColor: "primary.main",
+          color: "primary.main",
+          bgcolor: "action.hover",
+        },
+      }}
+    >
+      <Stack direction="row" alignItems="center" spacing={1}>
+        <AddIcon fontSize="small" />
+        <Typography variant="body2" sx={{ fontWeight: 500 }}>
+          {label}
+        </Typography>
+      </Stack>
     </Card>
   );
 }
