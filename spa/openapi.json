@@ -1011,7 +1011,7 @@
           "contacts"
         ],
         "summary": "Delete Contact",
-        "description": "Soft delete (sets deleted_at). school_visit_attendees references contacts\nvia ON DELETE RESTRICT so the row stays \u2014 the deleted_at filter hides it.",
+        "description": "Soft delete via people.deleted_at. school_visit_attendees\nreferences contacts (via people.id thanks to id preservation) so\nthe row stays \u2014 the deleted_at filter hides it from listings.",
         "operationId": "delete_contact_api_contacts__contact_id__delete",
         "parameters": [
           {
