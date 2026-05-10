@@ -48,6 +48,7 @@ export function AddParentDialog({
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [mailingAddress, setMailingAddress] = useState("");
   const [role, setRole] = useState<ParentCreate["role"]>("other");
   const [isPrimary, setIsPrimary] = useState(false);
   const [isBilling, setIsBilling] = useState(false);
@@ -78,6 +79,7 @@ export function AddParentDialog({
     setName("");
     setEmail("");
     setPhone("");
+    setMailingAddress("");
     setRole("other");
     setIsPrimary(false);
     setIsBilling(false);
@@ -104,6 +106,7 @@ export function AddParentDialog({
         name: name.trim(),
         email: email.trim() || null,
         phone: phone.trim() || null,
+        mailing_address: mailingAddress.trim() || null,
         role,
         is_primary_contact: isPrimary,
         is_billing_contact: isBilling,
@@ -198,6 +201,19 @@ export function AddParentDialog({
                     />
                   </LabeledField>
                 </Stack>
+                <LabeledField
+                  label="Mailing address"
+                  helperText="Used as the default for invoices unless a billing override is set later."
+                >
+                  <TextField
+                    multiline
+                    minRows={2}
+                    placeholder={"123 Main St\nApt 4\nSpringfield, IL 62701"}
+                    value={mailingAddress}
+                    onChange={(e) => setMailingAddress(e.target.value)}
+                    fullWidth
+                  />
+                </LabeledField>
                 <Box>
                   <Link
                     component="button"

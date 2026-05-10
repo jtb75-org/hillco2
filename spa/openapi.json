@@ -7844,6 +7844,17 @@
             ],
             "title": "Phone"
           },
+          "mailing_address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mailing Address"
+          },
           "role": {
             "type": "string",
             "enum": [
@@ -7926,6 +7937,17 @@
               }
             ],
             "title": "Phone"
+          },
+          "mailing_address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mailing Address"
           },
           "role": {
             "anyOf": [

@@ -69,6 +69,35 @@ async def test_create_parent_with_billing_contact_and_address(authed_client):
     assert body["billing_attention_to"] == "Jane Doe, CPA"
 
 
+async def test_create_parent_with_mailing_address(authed_client):
+    fid = (await authed_client.post("/api/families", json={
+        "household_name": f"Mail-{uuid4()}",
+    })).json()["id"]
+    p = (await authed_client.post(f"/api/families/{fid}/parents", json={
+        "name": "Pat Parent",
+        "mailing_address": "9 Oak St\nSpringfield, IL 62701",
+    })).json()
+    assert p["mailing_address"].startswith("9 Oak St")
+    # billing_address stays NULL when only mailing was provided.
+    assert p["billing_address"] is None
+
+    # Surfaces on family_detail too.
+    detail = (await authed_client.get(f"/api/families/{fid}")).json()
+    pp = detail["parents"][0]
+    assert pp["mailing_address"].startswith("9 Oak St")
+
+
+async def test_mailing_address_blank_normalizes_to_null(authed_client):
+    fid = (await authed_client.post("/api/families", json={
+        "household_name": f"Trim-mail-{uuid4()}",
+    })).json()["id"]
+    pid = (await authed_client.post(f"/api/families/{fid}/parents", json={
+        "name": "Test", "mailing_address": "  ",
+    })).json()["id"]
+    r = await authed_client.patch(f"/api/parents/{pid}", json={"mailing_address": ""})
+    assert r.json()["mailing_address"] is None
+
+
 async def test_billing_address_blank_normalizes_to_null(authed_client):
     fid = (await authed_client.post("/api/families", json={
         "household_name": f"Trim-{uuid4()}",
