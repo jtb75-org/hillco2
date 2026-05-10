@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from ..auth import require_user
 from ..db import get_conn
+from ..migrations import db_alembic_revision, image_alembic_head
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -45,6 +46,9 @@ class AboutInfo(BaseModel):
     build_commit: str
     api_title: str
     counts: dict[str, int]
+    db_revision: str | None
+    image_head_revision: str | None
+    migration_in_sync: bool
 
 
 # ---- Routes ----------------------------------------------------------------
@@ -114,8 +118,15 @@ async def about(_user=Depends(require_user), conn=Depends(get_conn)):
           (SELECT COUNT(*) FROM audit_log)           AS audit_log_entries
         """
     )
+    db_rev = await db_alembic_revision(conn)
+    img_head = image_alembic_head()
     return {
         "build_commit": os.environ.get("BUILD_COMMIT", "dev"),
         "api_title": "HillCo2 API",
         "counts": dict(counts_row) if counts_row else {},
+        "db_revision": db_rev,
+        "image_head_revision": img_head,
+        "migration_in_sync": (
+            db_rev is not None and img_head is not None and db_rev == img_head
+        ),
     }
