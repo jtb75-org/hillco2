@@ -1,0 +1,7 @@
+fastapi[standard]>=0.115,<0.116
+asyncpg>=0.30
+authlib>=1.3
+itsdangerous>=2.2
+pydantic-settings>=2.6
+weasyprint>=60
+boto3>=1.35

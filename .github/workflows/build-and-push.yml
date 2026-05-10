@@ -1,0 +1,123 @@
+name: Build and Push
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+env:
+  REGISTRY: zot.lan.ng20.org
+  IMAGE_NAME: hillco2
+
+jobs:
+  lint:
+    name: Lint (ruff)
+    runs-on: jtb75-arc
+    container:
+      image: zot.lan.ng20.org/atlas/builder:latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install ruff
+        env:
+          RUFF_VERSION: 0.15.12
+        run: |
+          case "$(uname -m)" in
+            x86_64) ARCH="x86_64-unknown-linux-musl" ;;
+            aarch64|arm64) ARCH="aarch64-unknown-linux-musl" ;;
+            *) echo "unsupported arch $(uname -m)"; exit 1 ;;
+          esac
+          curl -fsSL -o /tmp/ruff.tar.gz \
+            "https://github.com/astral-sh/ruff/releases/download/${RUFF_VERSION}/ruff-${ARCH}.tar.gz"
+          tar -xzf /tmp/ruff.tar.gz -C /tmp
+          mv /tmp/ruff-*/ruff /usr/local/bin/ruff
+          chmod +x /usr/local/bin/ruff
+          ruff --version
+
+      - name: Run ruff
+        run: ruff check .
+
+  build:
+    name: Build, push, and bump gitops
+    runs-on: jtb75-arc
+    needs: lint
+    container:
+      # Same builder image atlas/hillco-portal use: alpine + kaniko at
+      # /opt/kaniko/executor (node20 also present but unused here).
+      image: zot.lan.ng20.org/atlas/builder:latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get short SHA
+        id: sha
+        run: |
+          short=$(echo "${GITHUB_SHA}" | cut -c1-7)
+          echo "short=${short}" >> "$GITHUB_OUTPUT"
+          echo "Short SHA: ${short}"
+
+      - name: Configure registry auth (kaniko)
+        env:
+          ZOT_USERNAME: ${{ secrets.ZOT_USERNAME }}
+          ZOT_PASSWORD: ${{ secrets.ZOT_PASSWORD }}
+        run: |
+          AUTH=$(printf '%s:%s' "${ZOT_USERNAME}" "${ZOT_PASSWORD}" | base64 | tr -d '\n')
+          CONFIG=$(printf '{"auths":{"%s":{"auth":"%s"}}}' "${REGISTRY}" "${AUTH}")
+          mkdir -p /opt/kaniko/.docker /root/.docker "${HOME:-/root}/.docker"
+          printf '%s\n' "${CONFIG}" > /opt/kaniko/.docker/config.json
+          printf '%s\n' "${CONFIG}" > /root/.docker/config.json
+          printf '%s\n' "${CONFIG}" > "${HOME:-/root}/.docker/config.json"
+
+      - name: Build and push image with kaniko
+        run: |
+          /opt/kaniko/executor \
+            --context="${GITHUB_WORKSPACE}" \
+            --dockerfile="${GITHUB_WORKSPACE}/Dockerfile" \
+            --destination="${REGISTRY}/${IMAGE_NAME}:${{ steps.sha.outputs.short }}" \
+            --destination="${REGISTRY}/${IMAGE_NAME}:main-latest" \
+            --build-arg="BUILD_COMMIT=${{ steps.sha.outputs.short }}" \
+            --snapshot-mode=redo
+
+      - name: Checkout hillco2-gitops
+        uses: actions/checkout@v4
+        with:
+          repository: jtb75-org/hillco2-gitops
+          token: ${{ secrets.GITOPS_DEPLOY_TOKEN }}
+          path: hillco2-gitops
+          persist-credentials: true
+
+      - name: Update image tag in gitops
+        working-directory: hillco2-gitops/overlays/onprem
+        env:
+          NEW_TAG: ${{ steps.sha.outputs.short }}
+        run: |
+          # Quote the value so all-digit short SHAs don't parse as YAML
+          # integers — kustomize rejects Image.newTag if it isn't a string.
+          sed -i "/name: ${REGISTRY}\/${IMAGE_NAME}/,/newTag:/ s|newTag: .*|newTag: \"${NEW_TAG}\"|" kustomization.yaml
+          echo "Updated kustomization.yaml:"
+          grep -A2 "name: ${REGISTRY}/${IMAGE_NAME}" kustomization.yaml || true
+
+      - name: Commit and push to hillco2-gitops
+        working-directory: hillco2-gitops
+        env:
+          GITOPS_TOKEN: ${{ secrets.GITOPS_DEPLOY_TOKEN }}
+          NEW_TAG: ${{ steps.sha.outputs.short }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin "https://x-access-token:${GITOPS_TOKEN}@github.com/jtb75-org/hillco2-gitops.git"
+
+          git add overlays/onprem/kustomization.yaml
+
+          if git diff --staged --quiet; then
+            echo "No image tag changes to commit"
+          else
+            git commit -m "deploy: hillco2 ${NEW_TAG}"
+            git push origin main
+          fi
