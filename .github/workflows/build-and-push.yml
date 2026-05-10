@@ -74,7 +74,10 @@ jobs:
 
       - name: Run pytest
         env:
-          TEST_DATABASE_URL: postgresql://postgres:test@postgres:5432/hillco2_test
+          # ARC k8s-mode runners share localhost between the job container
+          # and service containers (same pod), so the service name
+          # `postgres` doesn't resolve — use localhost instead.
+          TEST_DATABASE_URL: postgresql://postgres:test@localhost:5432/hillco2_test
         run: pytest -v --tb=short
 
   build:
