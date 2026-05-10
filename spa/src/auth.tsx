@@ -1,8 +1,13 @@
 import { createContext, useContext, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-// `me` is the raw shape returned by GET /api/me; once the generated
-// types land you can swap this for the codegen'd Me type.
+import { api } from "./api/client";
+
+// /api/me returns a plain dict in the FastAPI route, not a Pydantic
+// model, so its OpenAPI response schema is empty and we can't derive
+// the type from `paths`. Hand-typed here; if it ever grows we can
+// give it a Pydantic response_model and pull the type from schema.ts
+// instead.
 export interface User {
   id: string;
   email: string;
@@ -18,13 +23,16 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue>({ user: null, isLoading: true });
 
 async function fetchMe(): Promise<User | null> {
-  // Hand-rolled rather than via the generated client because we need
-  // the 401 to resolve to `null` instead of throwing — the rest of the
-  // app branches on logged-in vs logged-out from there.
-  const res = await fetch("/api/me", { credentials: "include" });
-  if (res.status === 401) return null;
-  if (!res.ok) throw new Error(`/api/me returned ${res.status}`);
-  return (await res.json()) as User;
+  // Use the typed openapi client so a future schema change to /api/me
+  // breaks tsc here instead of silently returning the wrong shape.
+  // Anything other than 200 -> null so AuthGate routes to the login UI;
+  // we don't distinguish 401 from other errors at this layer.
+  const { data, response } = await api.GET("/api/me");
+  if (response.status === 401) return null;
+  if (!response.ok || !data) {
+    throw new Error(`/api/me returned ${response.status}`);
+  }
+  return data as User;
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
