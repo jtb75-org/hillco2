@@ -236,8 +236,7 @@ async def engagement_merged_documents(
         """
         WITH ctx AS (
           SELECT e.id AS engagement_id, e.family_id,
-                 ARRAY(SELECT student_id FROM engagement_students
-                       WHERE engagement_id = e.id) AS student_ids
+                 ARRAY[e.student_id] AS student_ids
           FROM engagements e
           WHERE e.id = $1 AND e.deleted_at IS NULL
         )

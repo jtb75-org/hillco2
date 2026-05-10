@@ -16,14 +16,18 @@ async def _make_engagement_of_type(db_pool, user_id, engagement_type: str):
                 "INSERT INTO families (household_name) VALUES ($1) RETURNING id",
                 f"Family-{uuid4()}",
             )
+            student_id = await conn.fetchval(
+                "INSERT INTO students (family_id, name) VALUES ($1, 'Test Kid') RETURNING id",
+                family_id,
+            )
             engagement_id = await conn.fetchval(
                 """
                 INSERT INTO engagements (
-                  family_id, engagement_type, status, lead_consultant_id
-                ) VALUES ($1, $2::engagement_type, 'in_progress', $3)
+                  family_id, student_id, engagement_type, status, lead_consultant_id
+                ) VALUES ($1, $2, $3::engagement_type, 'in_progress', $4)
                 RETURNING id
                 """,
-                family_id, engagement_type, user_id,
+                family_id, student_id, engagement_type, user_id,
             )
     return engagement_id
 

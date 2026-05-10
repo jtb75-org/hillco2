@@ -16,16 +16,20 @@ async def _make_engagement(db_pool, user_id):
                 "INSERT INTO families (household_name) VALUES ($1) RETURNING id",
                 f"Family-{uuid4()}",
             )
+            student_id = await conn.fetchval(
+                "INSERT INTO students (family_id, name) VALUES ($1, 'Test Kid') RETURNING id",
+                family_id,
+            )
             engagement_id = await conn.fetchval(
                 """
                 INSERT INTO engagements (
-                  family_id, engagement_type, status, lead_consultant_id,
+                  family_id, student_id, engagement_type, status, lead_consultant_id,
                   default_hourly_rate
                 )
-                VALUES ($1, 'assessment', 'in_progress', $2, 175.00)
+                VALUES ($1, $2, 'assessment', 'in_progress', $3, 175.00)
                 RETURNING id
                 """,
-                family_id, user_id,
+                family_id, student_id, user_id,
             )
             time_entry_id = await conn.fetchval(
                 """
