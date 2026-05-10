@@ -62,23 +62,77 @@ async def _family_or_404(conn, family_id: UUID):
 
 
 async def _parents_for_family(conn, family_id: UUID):
+    """Read parents from the new people + family_guardians spine but
+    return rows in the legacy `parents`-shape so existing API contract
+    (and the SPA) keep working: composes a single `name` from
+    first_name + last_name, and the billing_address blob from the
+    structured billing_* fields. Migration 0009 added
+    billing_attention_to to people; 0011 will drop the legacy parents
+    table once nothing reads it."""
     return await conn.fetch(
         """
-        SELECT id, family_id, name, email, phone, role,
-               is_primary_contact, is_billing_contact,
-               billing_address, billing_attention_to,
-               created_at, updated_at
-        FROM parents
-        WHERE family_id = $1
-        ORDER BY is_primary_contact DESC, name
+        SELECT
+          p.id,
+          fg.family_id,
+          TRIM(BOTH ' ' FROM
+            COALESCE(p.first_name, '') ||
+            CASE WHEN p.last_name IS NOT NULL AND p.last_name <> ''
+                 THEN ' ' || p.last_name ELSE '' END
+          )                                       AS name,
+          p.email, p.phone,
+          fg.relationship                         AS role,
+          fg.is_primary_contact, fg.is_billing_contact,
+          NULLIF(
+            TRIM(BOTH E'\n' FROM
+              CONCAT_WS(E'\n',
+                NULLIF(p.billing_street1, ''),
+                NULLIF(p.billing_street2, ''),
+                CASE WHEN COALESCE(p.billing_city, '') <> ''
+                       OR COALESCE(p.billing_state, '') <> ''
+                       OR COALESCE(p.billing_postal_code, '') <> ''
+                     THEN CONCAT_WS(' ',
+                            NULLIF(p.billing_city, ''),
+                            NULLIF(p.billing_state, ''),
+                            NULLIF(p.billing_postal_code, ''))
+                END,
+                NULLIF(p.billing_country, '')
+              )
+            ), '')                                AS billing_address,
+          p.billing_attention_to,
+          fg.created_at, fg.updated_at
+        FROM family_guardians fg
+        JOIN people p ON p.id = fg.person_id AND p.deleted_at IS NULL
+        WHERE fg.family_id = $1
+        ORDER BY fg.is_primary_contact DESC, p.last_name NULLS LAST, p.first_name
         """,
         family_id,
     )
 
 
+def _split_name(name: str) -> tuple[str, str | None]:
+    """Best-effort split of a single name string into (first, last).
+    Single-token names land entirely in first; whitespace-only is
+    treated as empty string in first."""
+    name = (name or "").strip()
+    if not name:
+        return "", None
+    parts = name.split(None, 1)
+    if len(parts) == 1:
+        return parts[0], None
+    return parts[0], parts[1].strip() or None
+
+
 async def _parent_or_404(conn, parent_id: UUID):
+    """`parent_id` here is the people.id (= family_guardians.person_id);
+    legacy parents.id used the same UUIDs by 0008's id-preservation, so
+    inbound URLs from the SPA still resolve."""
     row = await conn.fetchrow(
-        "SELECT * FROM parents WHERE id = $1",
+        """
+        SELECT fg.family_id, p.id AS person_id
+        FROM family_guardians fg
+        JOIN people p ON p.id = fg.person_id AND p.deleted_at IS NULL
+        WHERE fg.person_id = $1
+        """,
         parent_id,
     )
     if not row:
@@ -95,19 +149,27 @@ async def list_families(_user=Depends(require_user), conn=Depends(get_conn)):
         SELECT
           f.id, f.household_name, f.notes, f.created_at, f.updated_at,
           pp.id   AS primary_parent_id,
-          pp.name AS primary_parent_name,
+          TRIM(BOTH ' ' FROM
+            COALESCE(pp.first_name, '') ||
+            CASE WHEN pp.last_name IS NOT NULL AND pp.last_name <> ''
+                 THEN ' ' || pp.last_name ELSE '' END
+          )       AS primary_parent_name,
           (SELECT COUNT(*) FROM students s
              WHERE s.family_id = f.id AND s.deleted_at IS NULL) AS student_count,
-          (SELECT COUNT(*) FROM parents  p
-             WHERE p.family_id = f.id) AS parent_count,
+          (SELECT COUNT(*) FROM family_guardians fg
+             WHERE fg.family_id = f.id) AS parent_count,
           (SELECT COUNT(*) FROM engagements e
              WHERE e.family_id = f.id AND e.deleted_at IS NULL
                AND e.status IN ('in_progress','on_hold')) AS active_engagements
         FROM families f
-        -- Partial UNIQUE on parents (family_id) WHERE is_primary_contact
-        -- guarantees this LEFT JOIN matches at most one row per family.
-        LEFT JOIN parents pp
-               ON pp.family_id = f.id AND pp.is_primary_contact
+        -- Partial UNIQUE on family_guardians (family_id) WHERE
+        -- is_primary_contact guarantees this LEFT JOIN matches at most
+        -- one row per family. Compose the legacy `pp.name` shape from
+        -- people first/last on the way out.
+        LEFT JOIN family_guardians fg
+               ON fg.family_id = f.id AND fg.is_primary_contact
+        LEFT JOIN people pp
+               ON pp.id = fg.person_id AND pp.deleted_at IS NULL
         WHERE f.deleted_at IS NULL
         ORDER BY f.household_name
         """
@@ -233,43 +295,58 @@ async def add_parent(
     conn=Depends(get_conn),
 ):
     await _family_or_404(conn, family_id)
+    # Demote competing flag-holders before promoting this row, same as the
+    # legacy code did — partial UNIQUEs on family_guardians (family_id)
+    # WHERE is_primary_contact / is_billing_contact would otherwise reject
+    # the second insert.
     if body.is_primary_contact:
         await conn.execute(
-            "UPDATE parents SET is_primary_contact = FALSE WHERE family_id = $1",
+            "UPDATE family_guardians SET is_primary_contact = FALSE WHERE family_id = $1",
             family_id,
         )
     if body.is_billing_contact:
         await conn.execute(
-            "UPDATE parents SET is_billing_contact = FALSE WHERE family_id = $1",
+            "UPDATE family_guardians SET is_billing_contact = FALSE WHERE family_id = $1",
             family_id,
         )
-    row = await conn.fetchrow(
+
+    first, last = _split_name(body.name)
+    # Legacy billing_address was a single TEXT blob; the new billing_*
+    # columns are structured. Dump the input verbatim into billing_street1
+    # so nothing is lost; the operator can structure it later via a
+    # future address editor.
+    billing_blob = (body.billing_address or "").strip() or None
+    person_id = await conn.fetchval(
         """
-        INSERT INTO parents (
-          family_id, name, email, phone, role,
-          is_primary_contact, is_billing_contact,
-          billing_address, billing_attention_to
+        INSERT INTO people (
+          kind, first_name, last_name, email, phone,
+          billing_street1, billing_attention_to
+        ) VALUES (
+          'guardian', $1, $2, NULLIF($3,''), NULLIF($4,''), $5, NULLIF($6,'')
         )
-        VALUES (
-          $1, $2, NULLIF($3,''), NULLIF($4,''), $5, $6, $7,
-          NULLIF($8,''), NULLIF($9,'')
-        )
-        RETURNING id, family_id, name, email, phone, role,
-                  is_primary_contact, is_billing_contact,
-                  billing_address, billing_attention_to,
-                  created_at, updated_at
+        RETURNING id
         """,
-        family_id,
-        body.name.strip(),
+        first, last,
         (body.email or "").strip(),
         (body.phone or "").strip(),
-        body.role,
-        body.is_primary_contact,
-        body.is_billing_contact,
-        (body.billing_address or "").strip(),
+        billing_blob,
         (body.billing_attention_to or "").strip(),
     )
-    return dict(row)
+    await conn.execute(
+        """
+        INSERT INTO family_guardians (
+          family_id, person_id, relationship,
+          is_primary_contact, is_billing_contact
+        ) VALUES ($1, $2, $3, $4, $5)
+        """,
+        family_id, person_id, body.role,
+        body.is_primary_contact, body.is_billing_contact,
+    )
+
+    # Return the legacy parents-shape via the same helper the family
+    # detail endpoint uses, then pluck the inserted row.
+    rows = await _parents_for_family(conn, family_id)
+    return next(dict(r) for r in rows if r["id"] == person_id)
 
 
 @router.patch("/parents/{parent_id}")
@@ -284,38 +361,75 @@ async def update_parent(
     if not fields:
         raise HTTPException(status_code=400, detail="No fields to update")
 
+    # Normalize text fields the same way the legacy code did.
     if "name" in fields:
-        fields["name"] = fields["name"].strip()
+        fields["name"] = (fields["name"] or "").strip()
     for empty_to_null_col in ("email", "phone", "billing_address", "billing_attention_to"):
         if empty_to_null_col in fields:
             fields[empty_to_null_col] = (fields[empty_to_null_col] or "").strip() or None
 
-    # Demote any other holder of either flag before promoting this row,
-    # so the partial UNIQUE indexes on (family_id) WHERE is_primary_contact
-    # and (family_id) WHERE is_billing_contact don't reject the update.
+    # Demote any other holder of either flag before promoting this row.
+    # Legacy code did this on `parents`; same shape on family_guardians.
     for flag in ("is_primary_contact", "is_billing_contact"):
         if fields.get(flag) is True:
             await conn.execute(
-                f"UPDATE parents SET {flag} = FALSE WHERE family_id = $1 AND id <> $2",
+                f"UPDATE family_guardians SET {flag} = FALSE WHERE family_id = $1 AND person_id <> $2",
                 parent["family_id"],
                 parent_id,
             )
 
-    set_sql = ", ".join(f"{col} = ${i+2}" for i, col in enumerate(fields))
-    values = list(fields.values())
-    row = await conn.fetchrow(
-        f"""
-        UPDATE parents SET {set_sql}
-        WHERE id = $1
-        RETURNING id, family_id, name, email, phone, role,
-                  is_primary_contact, is_billing_contact,
-                  billing_address, billing_attention_to,
-                  created_at, updated_at
-        """,
-        parent_id,
-        *values,
-    )
-    return dict(row)
+    # Split the patch: people-side columns (name/email/phone/billing) vs
+    # family_guardians-side columns (role/flags). Each table updates only
+    # if it has at least one field to set.
+    people_updates: list[tuple[str, object]] = []
+    if "name" in fields:
+        first, last = _split_name(fields["name"])
+        people_updates.append(("first_name", first))
+        people_updates.append(("last_name", last))
+    if "email" in fields:
+        people_updates.append(("email", fields["email"]))
+    if "phone" in fields:
+        people_updates.append(("phone", fields["phone"]))
+    if "billing_address" in fields:
+        # Legacy single-blob → dump into billing_street1; clear other
+        # structured billing_* so the previous structured value (if any)
+        # doesn't compose back alongside the new blob.
+        people_updates.extend([
+            ("billing_street1", fields["billing_address"]),
+            ("billing_street2", None),
+            ("billing_city", None),
+            ("billing_state", None),
+            ("billing_postal_code", None),
+            ("billing_country", None),
+        ])
+    if "billing_attention_to" in fields:
+        people_updates.append(("billing_attention_to", fields["billing_attention_to"]))
+
+    if people_updates:
+        set_sql = ", ".join(f"{col} = ${i+2}" for i, (col, _) in enumerate(people_updates))
+        await conn.execute(
+            f"UPDATE people SET {set_sql} WHERE id = $1",
+            parent_id,
+            *(v for _, v in people_updates),
+        )
+
+    fg_updates: list[tuple[str, object]] = []
+    if "role" in fields:
+        fg_updates.append(("relationship", fields["role"]))
+    for flag in ("is_primary_contact", "is_billing_contact"):
+        if flag in fields:
+            fg_updates.append((flag, fields[flag]))
+
+    if fg_updates:
+        set_sql = ", ".join(f"{col} = ${i+3}" for i, (col, _) in enumerate(fg_updates))
+        await conn.execute(
+            f"UPDATE family_guardians SET {set_sql} WHERE family_id = $1 AND person_id = $2",
+            parent["family_id"], parent_id,
+            *(v for _, v in fg_updates),
+        )
+
+    rows = await _parents_for_family(conn, parent["family_id"])
+    return next(dict(r) for r in rows if r["id"] == parent_id)
 
 
 @router.delete("/parents/{parent_id}", status_code=204)
@@ -324,10 +438,14 @@ async def delete_parent(
     _user=Depends(require_user),
     conn=Depends(get_conn),
 ):
-    """Hard delete — parents have no deleted_at column. The schema cascades
-    appropriately (ON DELETE CASCADE from families covers the family-deletion
-    case; this endpoint is for explicit per-row removal)."""
+    """Detach the person from the family. The person row stays in
+    `people` (and any audit_log entries referencing this id remain
+    valid); only the family_guardians junction row is removed. If
+    you want to fully remove the person from the address book,
+    soft-delete via people.deleted_at — a future endpoint."""
     parent = await _parent_or_404(conn, parent_id)
-    await conn.execute("DELETE FROM parents WHERE id = $1", parent_id)
-    _ = parent
+    await conn.execute(
+        "DELETE FROM family_guardians WHERE family_id = $1 AND person_id = $2",
+        parent["family_id"], parent_id,
+    )
     return None
