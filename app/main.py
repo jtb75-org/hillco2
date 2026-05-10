@@ -15,6 +15,7 @@ from .routes import auth as auth_routes
 from .routes import families as families_routes
 from .routes import health as health_routes
 from .routes import me as me_routes
+from .routes import students as students_routes
 
 
 @asynccontextmanager
@@ -143,3 +144,4 @@ app.include_router(health_routes.router)
 app.include_router(auth_routes.router)
 app.include_router(me_routes.router)
 app.include_router(families_routes.router)
+app.include_router(students_routes.router)
