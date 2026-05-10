@@ -14,6 +14,7 @@ from .db import db
 from .routes import auth as auth_routes
 from .routes import contacts as contacts_routes
 from .routes import dashboard as dashboard_routes
+from .routes import engagement_tasks as engagement_tasks_routes
 from .routes import engagements as engagements_routes
 from .routes import expenses as expenses_routes
 from .routes import families as families_routes
@@ -164,4 +165,5 @@ app.include_router(time_entries_routes.router)
 app.include_router(expenses_routes.router)
 app.include_router(school_visits_routes.router)
 app.include_router(recommendations_routes.router)
+app.include_router(engagement_tasks_routes.router)
 app.include_router(dashboard_routes.router)
