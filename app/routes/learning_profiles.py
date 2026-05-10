@@ -73,11 +73,17 @@ async def list_profiles(
                lp.summary, lp.finalized_at,
                lp.created_by, lp.created_at, lp.updated_at,
                e.student_id,
-               s.name AS student_name, s.current_grade,
+               TRIM(BOTH ' ' FROM
+                 COALESCE(s.first_name, '') ||
+                 CASE WHEN s.last_name IS NOT NULL AND s.last_name <> ''
+                      THEN ' ' || s.last_name ELSE '' END
+               )                                AS student_name,
+               sd.current_grade,
                u.name AS created_by_name
         FROM learning_profiles lp
         JOIN engagements e ON e.id = lp.engagement_id
-        JOIN students s ON s.id = e.student_id
+        JOIN people s ON s.id = e.student_id AND s.kind = 'student'
+        LEFT JOIN student_details sd ON sd.person_id = s.id
         LEFT JOIN users u ON u.id = lp.created_by
         WHERE lp.engagement_id = $1
         ORDER BY lp.created_at DESC

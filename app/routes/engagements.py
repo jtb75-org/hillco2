@@ -80,12 +80,15 @@ async def _engagement_or_404(conn, engagement_id: UUID):
 
 async def _validate_student_in_family(conn, student_id: UUID, family_id: UUID) -> None:
     """Refuse student/family combinations the DB's composite FK would reject.
-    Same check as the FK, but lets us return a clean 400 with a helpful
-    message instead of letting the constraint raise."""
+    Reads from the new spine: a student is a kind='student' person whose
+    family_students row points at the given family."""
     belongs = await conn.fetchval(
         """
-        SELECT 1 FROM students
-        WHERE id = $1 AND family_id = $2 AND deleted_at IS NULL
+        SELECT 1 FROM family_students fs
+        JOIN people p ON p.id = fs.person_id
+                     AND p.kind = 'student'
+                     AND p.deleted_at IS NULL
+        WHERE fs.person_id = $1 AND fs.family_id = $2
         """,
         student_id, family_id,
     )
@@ -188,9 +191,19 @@ async def engagement_detail(
 
     student = await conn.fetchrow(
         """
-        SELECT s.id, s.name, s.dob, s.current_grade, s.current_school_id
-        FROM students s
-        WHERE s.id = $1 AND s.deleted_at IS NULL
+        SELECT
+          p.id,
+          TRIM(BOTH ' ' FROM
+            COALESCE(p.first_name, '') ||
+            CASE WHEN p.last_name IS NOT NULL AND p.last_name <> ''
+                 THEN ' ' || p.last_name ELSE '' END
+          )                  AS name,
+          p.birthday          AS dob,
+          sd.current_grade,
+          sd.current_school_id
+        FROM people p
+        LEFT JOIN student_details sd ON sd.person_id = p.id
+        WHERE p.id = $1 AND p.deleted_at IS NULL AND p.kind = 'student'
         """,
         engagement["student_id"],
     )
