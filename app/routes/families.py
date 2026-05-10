@@ -98,6 +98,8 @@ async def list_families(_user=Depends(require_user), conn=Depends(get_conn)):
         """
         SELECT
           f.id, f.household_name, f.notes, f.created_at, f.updated_at,
+          pp.id   AS primary_parent_id,
+          pp.name AS primary_parent_name,
           (SELECT COUNT(*) FROM students s
              WHERE s.family_id = f.id AND s.deleted_at IS NULL) AS student_count,
           (SELECT COUNT(*) FROM parents  p
@@ -106,6 +108,10 @@ async def list_families(_user=Depends(require_user), conn=Depends(get_conn)):
              WHERE e.family_id = f.id AND e.deleted_at IS NULL
                AND e.status IN ('in_progress','on_hold')) AS active_engagements
         FROM families f
+        -- Partial UNIQUE on parents (family_id) WHERE is_primary_contact
+        -- guarantees this LEFT JOIN matches at most one row per family.
+        LEFT JOIN parents pp
+               ON pp.family_id = f.id AND pp.is_primary_contact
         WHERE f.deleted_at IS NULL
         ORDER BY f.household_name
         """

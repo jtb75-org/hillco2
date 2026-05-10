@@ -8,6 +8,8 @@ import { AdminLayout } from "./pages/admin/AdminLayout";
 import { AdminUsers } from "./pages/admin/Users";
 import { AdminAuditLog } from "./pages/admin/AuditLog";
 import { AdminAbout } from "./pages/admin/About";
+import { FamiliesList } from "./pages/families/FamiliesList";
+import { FamilyDetail } from "./pages/families/FamilyDetail";
 
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -48,6 +50,8 @@ export function App() {
         <Routes>
           <Route element={<AppShell />}>
             <Route path="/" element={<Dashboard />} />
+            <Route path="/families" element={<FamiliesList />} />
+            <Route path="/families/:id" element={<FamilyDetail />} />
             <Route path="/admin" element={<AdminLayout />}>
               <Route index element={<Navigate to="users" replace />} />
               <Route path="users" element={<AdminUsers />} />
