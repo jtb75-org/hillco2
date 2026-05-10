@@ -36,7 +36,11 @@ concurrency:
 
 env:
   REGISTRY: zot.lan.ng20.org
-  IMAGE_NAME: hillco2/builder
+  # `hillco2-builder` (hyphen) rather than `hillco2/builder` (slash):
+  # the zot ACL matches by prefix, so `hillco2`/`hillco2-spa` both
+  # work for the CI bot user but `hillco2/builder` falls outside the
+  # rule and pushes get a 401.
+  IMAGE_NAME: hillco2-builder
 
 jobs:
   build:
@@ -90,7 +94,7 @@ jobs:
       - name: Print digest for consumers
         if: github.event_name != 'pull_request'
         run: |
-          echo "=== hillco2/builder digest (pin consumers to this) ==="
+          echo "=== hillco2-builder digest (pin consumers to this) ==="
           cat /tmp/digest.txt
           echo ""
           echo "=== Tag also pushed: ${{ steps.sha.outputs.short }} ==="
