@@ -1,6 +1,7 @@
 import {
   Alert,
   Box,
+  Button,
   Card,
   CardContent,
   Chip,
@@ -14,9 +15,11 @@ import {
   Stack,
   Typography,
 } from "@mui/material";
+import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutline";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import { useQuery } from "@tanstack/react-query";
+import { Link as RouterLink } from "react-router-dom";
 
 import { api } from "../api/client";
 import type { components } from "../api/schema";
@@ -138,14 +141,25 @@ export function Dashboard() {
 
   return (
     <Stack spacing={3}>
-      <Box>
-        <Typography variant="h4" gutterBottom>
-          Welcome{user ? `, ${user.name.split(" ")[0]}` : ""}.
-        </Typography>
-        <Typography color="text.secondary" variant="body2">
-          {dayjs().format("dddd, MMMM D, YYYY")}
-        </Typography>
-      </Box>
+      <Stack direction="row" alignItems="flex-start" sx={{ gap: 2 }}>
+        <Box sx={{ flex: 1 }}>
+          <Typography variant="h4" gutterBottom>
+            Welcome{user ? `, ${user.name.split(" ")[0]}` : ""}.
+          </Typography>
+          <Typography color="text.secondary" variant="body2">
+            {dayjs().format("dddd, MMMM D, YYYY")}
+          </Typography>
+        </Box>
+        <Button
+          component={RouterLink}
+          to="/intake"
+          variant="contained"
+          startIcon={<AddCircleOutlineIcon />}
+          sx={{ flexShrink: 0 }}
+        >
+          Start an intake
+        </Button>
+      </Stack>
 
       {/* Stats row */}
       <Grid container spacing={2}>
