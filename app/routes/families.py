@@ -26,19 +26,23 @@ class FamilyUpdate(BaseModel):
 
 class ParentCreate(BaseModel):
     # When `person_id` is set, link the existing person as a guardian
-    # of this family — name/email/phone/billing fields are ignored; the
+    # of this family — name/email/phone/address fields are ignored; the
     # person's own record stays the source of truth. When absent, a new
     # `people` row is created from `name`+contact fields.
     person_id: UUID | None = None
     name: str | None = Field(default=None, min_length=1)
     email: str | None = None
     phone: str | None = None
+    # Free-text mailing address — a single multi-line blob today. Lands
+    # in people.street1; the other structured mailing_* columns stay
+    # NULL until a future address editor breaks them out.
+    mailing_address: str | None = None
     role: ParentRole = "other"
     is_primary_contact: bool = False
     is_billing_contact: bool = False
     # Optional override — only relevant when is_billing_contact=true. Used
-    # when invoices physically go to a different address than wherever
-    # else we might surface for this person.
+    # when invoices physically go to a different address than the
+    # person's mailing_address.
     billing_address: str | None = None
     billing_attention_to: str | None = None
 
@@ -53,6 +57,7 @@ class ParentUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1)
     email: str | None = None
     phone: str | None = None
+    mailing_address: str | None = None
     role: ParentRole | None = None
     is_primary_contact: bool | None = None
     is_billing_contact: bool | None = None
@@ -93,6 +98,22 @@ async def _parents_for_family(conn, family_id: UUID):
           p.email, p.phone,
           fg.relationship                         AS role,
           fg.is_primary_contact, fg.is_billing_contact,
+          NULLIF(
+            TRIM(BOTH E'\n' FROM
+              CONCAT_WS(E'\n',
+                NULLIF(p.street1, ''),
+                NULLIF(p.street2, ''),
+                CASE WHEN COALESCE(p.city, '') <> ''
+                       OR COALESCE(p.state, '') <> ''
+                       OR COALESCE(p.postal_code, '') <> ''
+                     THEN CONCAT_WS(' ',
+                            NULLIF(p.city, ''),
+                            NULLIF(p.state, ''),
+                            NULLIF(p.postal_code, ''))
+                END,
+                NULLIF(p.country, '')
+              )
+            ), '')                                AS mailing_address,
           NULLIF(
             TRIM(BOTH E'\n' FROM
               CONCAT_WS(E'\n',
@@ -366,24 +387,25 @@ async def add_parent(
 
     if person_id is None:
         first, last = _split_name(body.name or "")
-        # Legacy billing_address was a single TEXT blob; the new billing_*
-        # columns are structured. Dump the input verbatim into billing_street1
-        # so nothing is lost; the operator can structure it later via a
-        # future address editor.
+        # Mailing + billing addresses are single TEXT blobs; structured
+        # columns stay NULL until a future address editor breaks them out.
+        mailing_blob = (body.mailing_address or "").strip() or None
         billing_blob = (body.billing_address or "").strip() or None
         person_id = await conn.fetchval(
             """
             INSERT INTO people (
               kind, first_name, last_name, email, phone,
+              street1,
               billing_street1, billing_attention_to
             ) VALUES (
-              'guardian', $1, $2, NULLIF($3,''), NULLIF($4,''), $5, NULLIF($6,'')
+              'guardian', $1, $2, NULLIF($3,''), NULLIF($4,''), $5, $6, NULLIF($7,'')
             )
             RETURNING id
             """,
             first, last,
             (body.email or "").strip(),
             (body.phone or "").strip(),
+            mailing_blob,
             billing_blob,
             (body.billing_attention_to or "").strip(),
         )
@@ -419,7 +441,7 @@ async def update_parent(
     # Normalize text fields the same way the legacy code did.
     if "name" in fields:
         fields["name"] = (fields["name"] or "").strip()
-    for empty_to_null_col in ("email", "phone", "billing_address", "billing_attention_to"):
+    for empty_to_null_col in ("email", "phone", "mailing_address", "billing_address", "billing_attention_to"):
         if empty_to_null_col in fields:
             fields[empty_to_null_col] = (fields[empty_to_null_col] or "").strip() or None
 
@@ -445,10 +467,20 @@ async def update_parent(
         people_updates.append(("email", fields["email"]))
     if "phone" in fields:
         people_updates.append(("phone", fields["phone"]))
+    if "mailing_address" in fields:
+        # Single-blob editor — clear the structured mailing_* so a
+        # previously-structured value doesn't compose alongside the
+        # new blob.
+        people_updates.extend([
+            ("street1", fields["mailing_address"]),
+            ("street2", None),
+            ("city", None),
+            ("state", None),
+            ("postal_code", None),
+            ("country", None),
+        ])
     if "billing_address" in fields:
-        # Legacy single-blob → dump into billing_street1; clear other
-        # structured billing_* so the previous structured value (if any)
-        # doesn't compose back alongside the new blob.
+        # Same shape on billing_*.
         people_updates.extend([
             ("billing_street1", fields["billing_address"]),
             ("billing_street2", None),

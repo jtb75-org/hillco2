@@ -37,6 +37,7 @@ interface Parent {
   role: string;
   is_primary_contact: boolean;
   is_billing_contact: boolean;
+  mailing_address: string | null;
   billing_address: string | null;
   billing_attention_to: string | null;
 }
@@ -109,15 +110,8 @@ export function FamilyDetail() {
         )}
       </Box>
 
-      {/* Single Grid container for all cards. The previous shape had the
-          top row inside its own `<Grid container>` and the bottom cards
-          as Stack siblings; Grid container's negative-margin spacing
-          made the top row sit slightly inset from the rest. */}
       <Grid container spacing={3}>
-        <Grid item xs={12} md={5}>
-          <BillingCard parents={data?.parents} loading={isPending} />
-        </Grid>
-        <Grid item xs={12} md={7}>
+        <Grid item xs={12}>
           <ParentsCard
             familyId={id!}
             parents={data?.parents}
@@ -140,63 +134,6 @@ export function FamilyDetail() {
         </Grid>
       </Grid>
     </Stack>
-  );
-}
-
-// ---- Billing -----------------------------------------------------------
-
-function BillingCard({ parents, loading }: { parents?: Parent[]; loading: boolean }) {
-  // Billing data lives on whichever parent is flagged is_billing_contact.
-  // No billing parent → fall back to the primary parent's name+email so
-  // the operator at least sees who'd get the bill in practice; UI flags
-  // the missing flag so they can promote one.
-  const billing = parents?.find((p) => p.is_billing_contact);
-  const primary = parents?.find((p) => p.is_primary_contact);
-  const display = billing ?? primary ?? null;
-  return (
-    <Card variant="outlined" sx={{ height: "100%" }}>
-      <CardContent>
-        <Typography variant="overline" color="text.secondary">
-          Billing
-        </Typography>
-        {loading ? (
-          <Stack spacing={1} sx={{ mt: 1 }}>
-            <Skeleton width="60%" />
-            <Skeleton width="80%" />
-            <Skeleton width="40%" />
-          </Stack>
-        ) : !display ? (
-          <Typography variant="body2" color="text.disabled" sx={{ mt: 1 }}>
-            No billing contact set. Add a parent and flag them as the
-            billing contact.
-          </Typography>
-        ) : (
-          <Stack spacing={0.5} sx={{ mt: 1 }}>
-            <Typography variant="body1" sx={{ fontWeight: 500 }}>
-              {display.name}
-            </Typography>
-            {display.email && (
-              <Typography variant="body2" color="text.secondary">{display.email}</Typography>
-            )}
-            {billing?.billing_attention_to && (
-              <Typography variant="body2" color="text.secondary">
-                Attn: {billing.billing_attention_to}
-              </Typography>
-            )}
-            {billing?.billing_address && (
-              <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: "pre-line" }}>
-                {billing.billing_address}
-              </Typography>
-            )}
-            {!billing && primary && (
-              <Typography variant="caption" color="text.disabled" sx={{ mt: 1 }}>
-                No billing contact flagged — falling back to the primary parent.
-              </Typography>
-            )}
-          </Stack>
-        )}
-      </CardContent>
-    </Card>
   );
 }
 
@@ -252,31 +189,71 @@ function ParentsCard({
             </Button>
           </Stack>
         ) : (
-          <Stack divider={<Divider />} sx={{ mt: 1 }}>
-            {parents.map((p) => (
-              <Box key={p.id} sx={{ py: 1 }}>
-                <Stack direction="row" alignItems="center" spacing={1}>
-                  <Typography variant="body1" sx={{ fontWeight: 500 }}>
-                    {p.name}
-                  </Typography>
-                  {p.id === primaryId && (
-                    <Chip size="small" label="primary" color="primary" variant="outlined" />
-                  )}
-                  {p.id === billingId && (
-                    <Chip size="small" label="billing" color="success" variant="outlined" />
-                  )}
-                  <Typography variant="caption" color="text.secondary" sx={{ ml: "auto" }}>
-                    {p.role}
-                  </Typography>
-                </Stack>
-                {(p.email || p.phone) && (
-                  <Typography variant="caption" color="text.secondary">
-                    {[p.email, p.phone].filter(Boolean).join(" · ")}
-                  </Typography>
-                )}
-              </Box>
-            ))}
-          </Stack>
+          <>
+            <Stack divider={<Divider />} sx={{ mt: 1 }}>
+              {parents.map((p) => {
+                const isBilling = p.id === billingId;
+                return (
+                  <Box key={p.id} sx={{ py: 1 }}>
+                    <Stack direction="row" alignItems="center" spacing={1}>
+                      <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                        {p.name}
+                      </Typography>
+                      {p.id === primaryId && (
+                        <Chip size="small" label="primary" color="primary" variant="outlined" />
+                      )}
+                      {isBilling && (
+                        <Chip size="small" label="billing" color="success" variant="outlined" />
+                      )}
+                      <Typography variant="caption" color="text.secondary" sx={{ ml: "auto" }}>
+                        {p.role}
+                      </Typography>
+                    </Stack>
+                    {(p.email || p.phone) && (
+                      <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                        {[p.email, p.phone].filter(Boolean).join(" · ")}
+                      </Typography>
+                    )}
+                    {p.mailing_address && (
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{ display: "block", whiteSpace: "pre-line", mt: 0.5 }}
+                      >
+                        {p.mailing_address}
+                      </Typography>
+                    )}
+                    {isBilling && (p.billing_address || p.billing_attention_to) && (
+                      <Box sx={{ mt: 0.5 }}>
+                        <Typography variant="caption" color="text.secondary" sx={{ fontStyle: "italic" }}>
+                          Billing override:
+                        </Typography>
+                        {p.billing_attention_to && (
+                          <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                            Attn: {p.billing_attention_to}
+                          </Typography>
+                        )}
+                        {p.billing_address && (
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{ display: "block", whiteSpace: "pre-line" }}
+                          >
+                            {p.billing_address}
+                          </Typography>
+                        )}
+                      </Box>
+                    )}
+                  </Box>
+                );
+              })}
+            </Stack>
+            {!parents.some((p) => p.is_billing_contact) && (
+              <Typography variant="caption" color="warning.main" sx={{ display: "block", mt: 1 }}>
+                No billing contact flagged — invoices won't have a recipient.
+              </Typography>
+            )}
+          </>
         )}
       </CardContent>
       <AddParentDialog
