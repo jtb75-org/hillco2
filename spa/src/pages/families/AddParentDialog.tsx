@@ -16,6 +16,7 @@ import { useMutation } from "@tanstack/react-query";
 
 import { api } from "../../api/client";
 import type { components } from "../../api/schema";
+import { LabeledField } from "../../components/LabeledField";
 
 type ParentCreate = components["schemas"]["ParentCreate"];
 
@@ -100,42 +101,46 @@ export function AddParentDialog({
         <DialogTitle>Add parent / guardian</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
-            <TextField
-              autoFocus
-              required
-              label="Name"
-              placeholder="First Last"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              fullWidth
-              inputProps={{ maxLength: 200 }}
-            />
+            <LabeledField label="Name" required>
+              <TextField
+                autoFocus
+                required
+                placeholder="First Last"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                fullWidth
+                inputProps={{ maxLength: 200 }}
+              />
+            </LabeledField>
             <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-              <TextField
-                type="email"
-                label="Email (optional)"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                fullWidth
-              />
-              <TextField
-                label="Phone (optional)"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                fullWidth
-              />
+              <LabeledField label="Email">
+                <TextField
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  fullWidth
+                />
+              </LabeledField>
+              <LabeledField label="Phone">
+                <TextField
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  fullWidth
+                />
+              </LabeledField>
             </Stack>
-            <TextField
-              select
-              label="Relationship"
-              value={role}
-              onChange={(e) => setRole(e.target.value as ParentCreate["role"])}
-              fullWidth
-            >
-              {ROLE_OPTIONS.map((r) => (
-                <MenuItem key={r} value={r}>{r}</MenuItem>
-              ))}
-            </TextField>
+            <LabeledField label="Relationship">
+              <TextField
+                select
+                value={role}
+                onChange={(e) => setRole(e.target.value as ParentCreate["role"])}
+                fullWidth
+              >
+                {ROLE_OPTIONS.map((r) => (
+                  <MenuItem key={r} value={r}>{r}</MenuItem>
+                ))}
+              </TextField>
+            </LabeledField>
             <Stack direction="row" spacing={3}>
               <FormControlLabel
                 control={

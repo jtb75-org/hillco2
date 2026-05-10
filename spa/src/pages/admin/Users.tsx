@@ -34,6 +34,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../api/client";
 import type { components } from "../../api/schema";
 import { useAuth } from "../../auth";
+import { LabeledField } from "../../components/LabeledField";
 
 dayjs.extend(relativeTime);
 
@@ -299,36 +300,39 @@ function AddUserDialog({
         <DialogTitle>Add user</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
-            <TextField
-              autoFocus
-              required
-              type="email"
-              label="Email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              fullWidth
-              inputProps={{ maxLength: 320 }}
-            />
-            <TextField
-              required
-              label="Name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              fullWidth
-              inputProps={{ maxLength: 200 }}
-            />
-            <TextField
-              required
-              select
-              label="Role"
-              value={role}
-              onChange={(e) => setRole(e.target.value as CreateUserRequest["role"])}
-              fullWidth
-            >
-              {ROLE_OPTIONS.map((r) => (
-                <MenuItem key={r} value={r}>{r}</MenuItem>
-              ))}
-            </TextField>
+            <LabeledField label="Email" required>
+              <TextField
+                autoFocus
+                required
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                fullWidth
+                inputProps={{ maxLength: 320 }}
+              />
+            </LabeledField>
+            <LabeledField label="Name" required>
+              <TextField
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                fullWidth
+                inputProps={{ maxLength: 200 }}
+              />
+            </LabeledField>
+            <LabeledField label="Role" required>
+              <TextField
+                required
+                select
+                value={role}
+                onChange={(e) => setRole(e.target.value as CreateUserRequest["role"])}
+                fullWidth
+              >
+                {ROLE_OPTIONS.map((r) => (
+                  <MenuItem key={r} value={r}>{r}</MenuItem>
+                ))}
+              </TextField>
+            </LabeledField>
             {create.error && (
               <Alert severity="error">{create.error.message}</Alert>
             )}

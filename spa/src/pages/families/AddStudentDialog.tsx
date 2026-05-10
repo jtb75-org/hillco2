@@ -13,6 +13,7 @@ import { useMutation } from "@tanstack/react-query";
 
 import { api } from "../../api/client";
 import type { components } from "../../api/schema";
+import { LabeledField } from "../../components/LabeledField";
 
 type StudentCreate = components["schemas"]["StudentCreate"];
 
@@ -84,32 +85,34 @@ export function AddStudentDialog({
         <DialogTitle>Add student</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
-            <TextField
-              autoFocus
-              required
-              label="Name"
-              placeholder="First Last"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              fullWidth
-              inputProps={{ maxLength: 200 }}
-            />
+            <LabeledField label="Name" required>
+              <TextField
+                autoFocus
+                required
+                placeholder="First Last"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                fullWidth
+                inputProps={{ maxLength: 200 }}
+              />
+            </LabeledField>
             <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-              <TextField
-                type="date"
-                label="Date of birth (optional)"
-                value={dob}
-                onChange={(e) => setDob(e.target.value)}
-                fullWidth
-                slotProps={{ inputLabel: { shrink: true } }}
-              />
-              <TextField
-                label="Current grade (optional)"
-                placeholder='e.g. "8th"'
-                value={grade}
-                onChange={(e) => setGrade(e.target.value)}
-                fullWidth
-              />
+              <LabeledField label="Date of birth">
+                <TextField
+                  type="date"
+                  value={dob}
+                  onChange={(e) => setDob(e.target.value)}
+                  fullWidth
+                />
+              </LabeledField>
+              <LabeledField label="Current grade">
+                <TextField
+                  placeholder='e.g. "8th"'
+                  value={grade}
+                  onChange={(e) => setGrade(e.target.value)}
+                  fullWidth
+                />
+              </LabeledField>
             </Stack>
             {create.error && (
               <Alert severity="error">{create.error.message}</Alert>

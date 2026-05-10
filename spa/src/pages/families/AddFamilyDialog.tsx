@@ -15,6 +15,7 @@ import { useNavigate } from "react-router-dom";
 
 import { api } from "../../api/client";
 import type { components } from "../../api/schema";
+import { LabeledField } from "../../components/LabeledField";
 
 type FamilyCreate = components["schemas"]["FamilyCreate"];
 // Parent billing fields ride on the parent row (post-0007), so the
@@ -82,32 +83,26 @@ export function AddFamilyDialog({
         <DialogTitle>Add family</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
-            <TextField
-              autoFocus
-              required
-              label="Household name"
-              placeholder='e.g. "Smith Family"'
-              value={householdName}
-              onChange={(e) => setHouseholdName(e.target.value)}
-              fullWidth
-              inputProps={{ maxLength: 200 }}
-            />
-            <TextField
-              label="Notes (optional)"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              fullWidth
-              multiline
-              rows={3}
-              // MUI v6 outlined-multiline doesn't notch the border when the
-              // label shrinks, so a focused/filled label sits on the line
-              // and reads as a strikethrough. Forcing shrink=true keeps the
-              // label permanently in the top-cutout position with a clean
-              // notch — the trade-off is the label no longer animates from
-              // inside the field on first focus, which is fine for a
-              // permanently-labelled "Notes" textarea.
-              slotProps={{ inputLabel: { shrink: true } }}
-            />
+            <LabeledField label="Household name" required>
+              <TextField
+                autoFocus
+                required
+                placeholder='e.g. "Smith Family"'
+                value={householdName}
+                onChange={(e) => setHouseholdName(e.target.value)}
+                fullWidth
+                inputProps={{ maxLength: 200 }}
+              />
+            </LabeledField>
+            <LabeledField label="Notes">
+              <TextField
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                fullWidth
+                multiline
+                rows={3}
+              />
+            </LabeledField>
             <Typography variant="caption" color="text.secondary">
               You can add parents (with billing contact) and students from the
               family's detail page after it's created.
