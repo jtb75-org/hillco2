@@ -74,15 +74,20 @@ RUN ARCH=$(uname -m); \
     chmod +x /usr/local/bin/ruff; \
     rm -rf /tmp/ruff.tar.gz /tmp/ruff-*
 
-# kaniko: copy the whole /kaniko/ tree, since the executor relies on a
-# few sibling files (CA bundle, scratch dirs). Consumers run
-# /kaniko/executor — the canonical path inside the kaniko image.
-COPY --from=kaniko_src /kaniko/ /kaniko/
+# kaniko: copy the whole /kaniko/ tree from the upstream image, but
+# stage it under /opt/kaniko/ instead of /kaniko/. Kaniko itself uses
+# /kaniko/ at build time for its own scratch state — when this very
+# image is built by kaniko, anything we COPY to /kaniko/ collides with
+# kaniko's runtime and gets dropped from the final layer (silent
+# failure: the executor binary just isn't in the resulting image).
+# Staging at /opt/kaniko/ also lines up with the path the existing
+# build-and-push.yml workflow already uses.
+COPY --from=kaniko_src /kaniko/ /opt/kaniko/
 
 # Smoke-test the assembly so a broken layer fails the build instead of
 # surfacing as a confusing CI error later.
 RUN set -eux; \
-    /kaniko/executor version 2>&1 | head -1; \
+    /opt/kaniko/executor version 2>&1 | head -1; \
     kustomize version; \
     ruff --version; \
     node --version; \
