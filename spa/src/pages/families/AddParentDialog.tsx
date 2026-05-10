@@ -129,14 +129,25 @@ export function AddParentDialog({
     }
   };
 
+  // Email + ZIP format checks — mirror the backend regex so the user
+  // sees the problem before submit instead of a 422 round-trip.
+  const emailTrimmed = email.trim();
+  const zipTrimmed = postalCode.trim();
+  const emailLooksValid = !emailTrimmed || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrimmed);
+  const zipLooksValid = !zipTrimmed || /^\d{5}(-\d{4})?$/.test(zipTrimmed);
+
   const submitLabel = mode.kind === "picked" ? "Link" : "Add";
   const billingMissing =
-    isBilling && (!email.trim() || !street1.trim() || !postalCode.trim());
+    isBilling && (!emailTrimmed || !street1.trim() || !zipTrimmed);
   const submitDisabled =
     create.isPending ||
     mode.kind === "searching" ||
     (mode.kind === "creating" &&
-      (!firstName.trim() || !lastName.trim() || billingMissing));
+      (!firstName.trim() ||
+        !lastName.trim() ||
+        billingMissing ||
+        !emailLooksValid ||
+        !zipLooksValid));
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
@@ -230,6 +241,8 @@ export function AddParentDialog({
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       fullWidth
+                      error={!emailLooksValid}
+                      helperText={!emailLooksValid ? "Invalid email." : undefined}
                     />
                   </LabeledField>
                   <LabeledField label="Phone">
@@ -289,7 +302,11 @@ export function AddParentDialog({
                         value={postalCode}
                         onChange={(e) => setPostalCode(e.target.value)}
                         fullWidth
-                        inputProps={{ maxLength: 20 }}
+                        inputProps={{ maxLength: 10 }}
+                        error={!zipLooksValid}
+                        helperText={
+                          !zipLooksValid ? "Use 5 digits or ZIP+4." : undefined
+                        }
                       />
                     </LabeledField>
                   </Box>

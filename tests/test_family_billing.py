@@ -192,6 +192,47 @@ async def test_patch_promote_to_billing_validates_existing_state(authed_client):
     assert r.status_code == 422
 
 
+async def test_invalid_email_format_rejected(authed_client):
+    fid = (await authed_client.post("/api/families", json={
+        "household_name": f"BadEmail-{uuid4()}",
+    })).json()["id"]
+    r = await authed_client.post(f"/api/families/{fid}/parents", json={
+        "first_name": "Bad", "last_name": "Email", "email": "asd",
+    })
+    assert r.status_code == 422
+
+
+async def test_invalid_zip_format_rejected(authed_client):
+    fid = (await authed_client.post("/api/families", json={
+        "household_name": f"BadZip-{uuid4()}",
+    })).json()["id"]
+    # Non-numeric
+    r = await authed_client.post(f"/api/families/{fid}/parents", json={
+        "first_name": "Bad", "last_name": "Zip", "postal_code": "fsda",
+    })
+    assert r.status_code == 422
+    # Wrong digit count
+    r = await authed_client.post(f"/api/families/{fid}/parents", json={
+        "first_name": "Bad", "last_name": "Zip", "postal_code": "1234",
+    })
+    assert r.status_code == 422
+    # Malformed ZIP+4
+    r = await authed_client.post(f"/api/families/{fid}/parents", json={
+        "first_name": "Bad", "last_name": "Zip", "postal_code": "62701-12",
+    })
+    assert r.status_code == 422
+    # Valid 5-digit
+    r = await authed_client.post(f"/api/families/{fid}/parents", json={
+        "first_name": "OK", "last_name": "Zip", "postal_code": "62701",
+    })
+    assert r.status_code == 201
+    # Valid ZIP+4
+    r = await authed_client.post(f"/api/families/{fid}/parents", json={
+        "first_name": "OK2", "last_name": "Zip", "postal_code": "62701-1234",
+    })
+    assert r.status_code == 201
+
+
 async def test_patch_cannot_blank_billing_required_field(authed_client):
     """Once a parent is the billing contact, you can't NULL their email
     out from under them."""
