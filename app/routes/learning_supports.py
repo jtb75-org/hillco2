@@ -52,8 +52,10 @@ class LearningSupportUpdate(BaseModel):
 # ---- Helpers --------------------------------------------------------------
 
 async def _student_or_404(conn, student_id: UUID) -> None:
+    """A student is a kind='student' person; the legacy `students`
+    table is no longer authoritative."""
     if not await conn.fetchval(
-        "SELECT 1 FROM students WHERE id = $1 AND deleted_at IS NULL",
+        "SELECT 1 FROM people WHERE id = $1 AND deleted_at IS NULL AND kind = 'student'",
         student_id,
     ):
         raise HTTPException(status_code=404, detail="Student not found")

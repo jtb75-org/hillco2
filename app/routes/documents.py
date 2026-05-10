@@ -29,7 +29,11 @@ DocumentKind = Literal[
 # documents reference an owner that actually exists.
 _OWNER_TABLES: dict[str, tuple[str, bool]] = {
     "family": ("families", True),
-    "student": ("students", True),
+    # Students live in `people` (kind='student') after the spine flip;
+    # the legacy students table is no longer authoritative. people.id
+    # was preserved across the migration so legacy student_ids still
+    # resolve.
+    "student": ("people", True),
     "engagement": ("engagements", True),
     "school": ("schools", True),
     "note": ("notes", False),
@@ -105,7 +109,11 @@ async def list_documents(
           u.name AS uploaded_by_name,
           CASE d.owner_type
             WHEN 'family'     THEN (SELECT household_name FROM families  WHERE id = d.owner_id)
-            WHEN 'student'    THEN (SELECT name           FROM students  WHERE id = d.owner_id)
+            WHEN 'student'    THEN (SELECT TRIM(BOTH ' ' FROM
+                                          COALESCE(first_name,'')
+                                          || CASE WHEN last_name IS NOT NULL AND last_name <> ''
+                                                  THEN ' ' || last_name ELSE '' END)
+                                     FROM people WHERE id = d.owner_id AND kind = 'student')
             WHEN 'school'     THEN (SELECT name           FROM schools   WHERE id = d.owner_id)
             WHEN 'contact'    THEN (SELECT name           FROM contacts  WHERE id = d.owner_id)
             WHEN 'engagement' THEN (SELECT f.household_name FROM engagements e
@@ -144,12 +152,23 @@ async def owner_search(
     )
     stus = await conn.fetch(
         """
-        SELECT s.id, s.name, s.current_grade,
-               f.id AS family_id, f.household_name
-        FROM students s
-        JOIN families f ON f.id = s.family_id AND f.deleted_at IS NULL
-        WHERE s.deleted_at IS NULL AND s.name ILIKE $1
-        ORDER BY s.name LIMIT 8
+        SELECT
+          p.id,
+          TRIM(BOTH ' ' FROM
+            COALESCE(p.first_name, '') ||
+            CASE WHEN p.last_name IS NOT NULL AND p.last_name <> ''
+                 THEN ' ' || p.last_name ELSE '' END
+          ) AS name,
+          sd.current_grade,
+          f.id AS family_id, f.household_name
+        FROM people p
+        JOIN family_students fs ON fs.person_id = p.id
+        JOIN families f ON f.id = fs.family_id AND f.deleted_at IS NULL
+        LEFT JOIN student_details sd ON sd.person_id = p.id
+        WHERE p.kind = 'student' AND p.deleted_at IS NULL
+          AND (LOWER(p.first_name) LIKE LOWER($1)
+               OR LOWER(COALESCE(p.last_name,'')) LIKE LOWER($1))
+        ORDER BY p.last_name NULLS LAST, p.first_name LIMIT 8
         """,
         pat,
     )
@@ -203,17 +222,21 @@ async def family_merged_documents(
                u.name AS uploaded_by_name,
                CASE
                  WHEN d.owner_type = 'family'  THEN 'This family'
-                 WHEN d.owner_type = 'student' THEN s.name
+                 WHEN d.owner_type = 'student' THEN
+                      TRIM(BOTH ' ' FROM
+                        COALESCE(s.first_name, '') ||
+                        CASE WHEN s.last_name IS NOT NULL AND s.last_name <> ''
+                             THEN ' ' || s.last_name ELSE '' END)
                  ELSE d.owner_type::text
                END AS source_label
         FROM documents d
-        LEFT JOIN students s ON d.owner_type = 'student' AND s.id = d.owner_id
+        LEFT JOIN people s ON d.owner_type = 'student' AND s.id = d.owner_id AND s.kind = 'student'
         LEFT JOIN users u ON u.id = d.uploaded_by
         WHERE d.deleted_at IS NULL AND (
               (d.owner_type = 'family'  AND d.owner_id = $1)
            OR (d.owner_type = 'student' AND d.owner_id IN (
-                  SELECT id FROM students
-                  WHERE family_id = $1 AND deleted_at IS NULL))
+                  SELECT person_id FROM family_students
+                  WHERE family_id = $1))
         )
         ORDER BY
           CASE d.owner_type WHEN 'family' THEN 1 WHEN 'student' THEN 2 ELSE 3 END,
@@ -263,7 +286,7 @@ async def engagement_merged_documents(
             OR (d.owner_type = 'student'    AND d.owner_id = ANY(ctx.student_ids))
           )
         LEFT JOIN families f ON d.owner_type = 'family'  AND f.id = d.owner_id
-        LEFT JOIN students s ON d.owner_type = 'student' AND s.id = d.owner_id
+        LEFT JOIN people s ON d.owner_type = 'student' AND s.id = d.owner_id AND s.kind = 'student'
         LEFT JOIN users u    ON u.id = d.uploaded_by
         ORDER BY
           CASE d.owner_type

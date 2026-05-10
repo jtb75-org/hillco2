@@ -207,8 +207,8 @@ async def about(_user=Depends(require_user), conn=Depends(get_conn)):
           (SELECT COUNT(*) FROM users)               AS users,
           (SELECT COUNT(*) FROM families
              WHERE deleted_at IS NULL)               AS families,
-          (SELECT COUNT(*) FROM students
-             WHERE deleted_at IS NULL)               AS students,
+          (SELECT COUNT(*) FROM people
+             WHERE kind = 'student' AND deleted_at IS NULL) AS students,
           (SELECT COUNT(*) FROM engagements
              WHERE deleted_at IS NULL)               AS engagements,
           (SELECT COUNT(*) FROM schools

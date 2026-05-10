@@ -1,3 +1,19 @@
+"""Student routes — read/write through the new people spine.
+
+Migration 0008 split the legacy `students` table into three:
+  * `people` (kind='student'): name, birthday, address, soft-delete state
+  * `family_students` (junction): which family a student belongs to
+  * `student_details` (1:1 with people): clinical fields (grade, school,
+    has_504, has_iep, autism_level, etc.)
+
+This module's routes preserve the legacy single-row shape on the wire
+so the SPA and existing tests keep working: composes `name` from
+first_name + last_name, surfaces `dob` from people.birthday, and
+flattens student_details columns into the response.
+
+The legacy `students` table still exists in the schema but no route
+reads or writes it after this PR; migration 0011 drops it.
+"""
 from datetime import date
 from uuid import UUID
 
@@ -9,8 +25,6 @@ from ..db import get_conn
 
 router = APIRouter(prefix="/api", tags=["students"])
 
-# Boolean diagnostic columns. `autism` is intentionally NOT here —
-# hillco2 replaced has_autism BOOLEAN with autism_level SMALLINT (1..3, NULL).
 DIAGNOSTIC_BOOL_COLS = (
     "has_504",
     "has_iep",
@@ -20,6 +34,7 @@ DIAGNOSTIC_BOOL_COLS = (
     "has_health_impairment",
     "has_emotional_disturbance",
 )
+DETAIL_TEXT_COLS = ("current_grade", "diagnosis_other", "needs_goals")
 
 
 # ---- I/O models ------------------------------------------------------------
@@ -51,14 +66,48 @@ class StudentUpdate(StudentBase):
 
 # ---- Helpers ---------------------------------------------------------------
 
+def _split_name(name: str) -> tuple[str, str | None]:
+    """Single-token names land entirely in first_name; whitespace-only
+    treated as empty first_name."""
+    name = (name or "").strip()
+    if not name:
+        return "", None
+    parts = name.split(None, 1)
+    if len(parts) == 1:
+        return parts[0], None
+    return parts[0], parts[1].strip() or None
+
+
+_LEGACY_SHAPE_SELECT = """
+    SELECT
+      p.id,
+      fs.family_id,
+      TRIM(BOTH ' ' FROM
+        COALESCE(p.first_name, '') ||
+        CASE WHEN p.last_name IS NOT NULL AND p.last_name <> ''
+             THEN ' ' || p.last_name ELSE '' END
+      )                                       AS name,
+      p.birthday                              AS dob,
+      sd.current_school_id, sd.current_grade,
+      sd.autism_level,
+      sd.has_504, sd.has_iep, sd.has_learning_disability,
+      sd.has_adhd, sd.has_intellectual_disability,
+      sd.has_health_impairment, sd.has_emotional_disturbance,
+      sd.diagnosis_other, sd.needs_goals,
+      p.deleted_at,
+      p.created_at, p.updated_at,
+      f.household_name AS family_household_name
+    FROM people p
+    JOIN family_students fs ON fs.person_id = p.id
+    JOIN families f ON f.id = fs.family_id AND f.deleted_at IS NULL
+    LEFT JOIN student_details sd ON sd.person_id = p.id
+"""
+
+
 async def _student_or_404(conn, student_id: UUID):
     row = await conn.fetchrow(
-        """
-        SELECT s.*, f.household_name AS family_household_name
-        FROM students s
-        JOIN families f ON f.id = s.family_id AND f.deleted_at IS NULL
-        WHERE s.id = $1 AND s.deleted_at IS NULL
-        """,
+        _LEGACY_SHAPE_SELECT
+        + " WHERE p.id = $1 AND p.deleted_at IS NULL AND p.kind = 'student'",
         student_id,
     )
     if not row:
@@ -77,7 +126,7 @@ async def _family_exists(conn, family_id: UUID) -> bool:
 
 def _normalize_strings(fields: dict) -> dict:
     """Trim strings; turn empty strings into NULL for nullable text columns."""
-    for col in ("current_grade", "diagnosis_other", "needs_goals"):
+    for col in DETAIL_TEXT_COLS:
         if col in fields and fields[col] is not None:
             stripped = fields[col].strip()
             fields[col] = stripped or None
@@ -99,38 +148,47 @@ async def add_student(
         raise HTTPException(status_code=404, detail="Family not found")
 
     fields = _normalize_strings(body.model_dump(exclude_unset=False))
-    # Defaults for missing booleans -> False; autism_level missing -> NULL.
+    # Default missing booleans -> False; autism_level missing -> NULL.
     for col in DIAGNOSTIC_BOOL_COLS:
         if fields.get(col) is None:
             fields[col] = False
 
-    row = await conn.fetchrow(
+    first, last = _split_name(fields["name"])
+    person_id = await conn.fetchval(
         """
-        INSERT INTO students (
-          family_id, name, dob, current_school_id, current_grade,
-          autism_level,
-          has_504, has_iep, has_learning_disability, has_adhd,
-          has_intellectual_disability, has_health_impairment,
-          has_emotional_disturbance,
-          diagnosis_other, needs_goals
-        ) VALUES (
-          $1, $2, $3, $4, $5,
-          $6,
-          $7, $8, $9, $10, $11, $12, $13,
-          $14, $15
-        )
-        RETURNING *
+        INSERT INTO people (kind, first_name, last_name, birthday)
+        VALUES ('student', $1, $2, $3)
+        RETURNING id
         """,
-        family_id,
-        fields["name"],
-        fields["dob"],
-        fields["current_school_id"],
-        fields["current_grade"],
+        first, last, fields["dob"],
+    )
+    await conn.execute(
+        "INSERT INTO family_students (family_id, person_id) VALUES ($1, $2)",
+        family_id, person_id,
+    )
+    await conn.execute(
+        """
+        INSERT INTO student_details (
+          person_id, current_school_id, current_grade,
+          autism_level,
+          has_504, has_iep, has_learning_disability,
+          has_adhd, has_intellectual_disability,
+          has_health_impairment, has_emotional_disturbance,
+          diagnosis_other, needs_goals
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        """,
+        person_id,
+        fields["current_school_id"], fields["current_grade"],
         fields["autism_level"],
         fields["has_504"], fields["has_iep"], fields["has_learning_disability"],
         fields["has_adhd"], fields["has_intellectual_disability"],
         fields["has_health_impairment"], fields["has_emotional_disturbance"],
         fields["diagnosis_other"], fields["needs_goals"],
+    )
+
+    row = await conn.fetchrow(
+        _LEGACY_SHAPE_SELECT + " WHERE p.id = $1",
+        person_id,
     )
     return dict(row)
 
@@ -162,7 +220,6 @@ async def student_detail(
         student_id,
     )
 
-    # Recent notes from any engagement for this student.
     notes = await conn.fetch(
         """
         SELECT n.id, n.kind, n.occurred_on, n.title, n.body, n.created_at,
@@ -207,14 +264,45 @@ async def update_student(
             "SELECT 1 FROM schools WHERE id = $1 AND deleted_at IS NULL",
             fields["current_school_id"],
         ):
-            raise HTTPException(status_code=400, detail="current_school_id does not match an active school")
+            raise HTTPException(
+                status_code=400,
+                detail="current_school_id does not match an active school",
+            )
 
-    set_sql = ", ".join(f"{col} = ${i+2}" for i, col in enumerate(fields))
-    values = list(fields.values())
+    # Split the patch by destination table.
+    people_updates: list[tuple[str, object]] = []
+    if "name" in fields:
+        first, last = _split_name(fields["name"])
+        people_updates.append(("first_name", first))
+        people_updates.append(("last_name", last))
+    if "dob" in fields:
+        people_updates.append(("birthday", fields["dob"]))
+
+    detail_cols = ("current_school_id", "autism_level") + DIAGNOSTIC_BOOL_COLS + DETAIL_TEXT_COLS
+    detail_updates: list[tuple[str, object]] = []
+    for col in detail_cols:
+        if col in fields:
+            detail_updates.append((col, fields[col]))
+
+    if people_updates:
+        set_sql = ", ".join(f"{col} = ${i+2}" for i, (col, _) in enumerate(people_updates))
+        await conn.execute(
+            f"UPDATE people SET {set_sql} WHERE id = $1",
+            student_id,
+            *(v for _, v in people_updates),
+        )
+
+    if detail_updates:
+        set_sql = ", ".join(f"{col} = ${i+2}" for i, (col, _) in enumerate(detail_updates))
+        await conn.execute(
+            f"UPDATE student_details SET {set_sql} WHERE person_id = $1",
+            student_id,
+            *(v for _, v in detail_updates),
+        )
+
     row = await conn.fetchrow(
-        f"UPDATE students SET {set_sql} WHERE id = $1 RETURNING *",
+        _LEGACY_SHAPE_SELECT + " WHERE p.id = $1",
         student_id,
-        *values,
     )
     return dict(row)
 
@@ -225,10 +313,14 @@ async def delete_student(
     _user=Depends(require_user),
     conn=Depends(get_conn),
 ):
-    """Soft delete (sets deleted_at)."""
+    """Soft delete: sets people.deleted_at. The student disappears
+    from listings and detail. family_students and student_details rows
+    remain so audit_log entries and engagements still reference a real
+    person; the engagements.student_id FK is ON DELETE RESTRICT, so
+    a hard-delete with active engagements would fail anyway."""
     await _student_or_404(conn, student_id)
     await conn.execute(
-        "UPDATE students SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL",
+        "UPDATE people SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL",
         student_id,
     )
     return None

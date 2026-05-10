@@ -21,8 +21,15 @@ async def student(db_pool):
             f"Supports-{uuid4()}",
         )
         student_id = await conn.fetchval(
-            "INSERT INTO students (family_id, name) VALUES ($1, 'Test Kid') RETURNING id",
-            family_id,
+            "INSERT INTO people (kind, first_name) VALUES ('student', 'Test Kid') RETURNING id"
+        )
+        await conn.execute(
+            "INSERT INTO family_students (family_id, person_id) VALUES ($1, $2)",
+            family_id, student_id,
+        )
+        await conn.execute(
+            "INSERT INTO student_details (person_id) VALUES ($1)",
+            student_id,
         )
     return student_id
 

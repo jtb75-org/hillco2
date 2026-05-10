@@ -548,7 +548,7 @@
           "students"
         ],
         "summary": "Delete Student",
-        "description": "Soft delete (sets deleted_at).",
+        "description": "Soft delete: sets people.deleted_at. The student disappears\nfrom listings and detail. family_students and student_details rows\nremain so audit_log entries and engagements still reference a real\nperson; the engagements.student_id FK is ON DELETE RESTRICT, so\na hard-delete with active engagements would fail anyway.",
         "operationId": "delete_student_api_students__student_id__delete",
         "parameters": [
           {
