@@ -7810,7 +7810,7 @@
             ],
             "title": "Person Id"
           },
-          "name": {
+          "first_name": {
             "anyOf": [
               {
                 "type": "string",
@@ -7820,7 +7820,18 @@
                 "type": "null"
               }
             ],
-            "title": "Name"
+            "title": "First Name"
+          },
+          "last_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Name"
           },
           "email": {
             "anyOf": [
@@ -8014,7 +8025,7 @@
       },
       "ParentUpdate": {
         "properties": {
-          "name": {
+          "first_name": {
             "anyOf": [
               {
                 "type": "string",
@@ -8024,7 +8035,18 @@
                 "type": "null"
               }
             ],
-            "title": "Name"
+            "title": "First Name"
+          },
+          "last_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Name"
           },
           "email": {
             "anyOf": [
@@ -8998,7 +9020,7 @@
       },
       "StudentCreate": {
         "properties": {
-          "name": {
+          "first_name": {
             "anyOf": [
               {
                 "type": "string",
@@ -9008,7 +9030,18 @@
                 "type": "null"
               }
             ],
-            "title": "Name"
+            "title": "First Name"
+          },
+          "last_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Name"
           },
           "dob": {
             "anyOf": [
@@ -9175,7 +9208,7 @@
       },
       "StudentUpdate": {
         "properties": {
-          "name": {
+          "first_name": {
             "anyOf": [
               {
                 "type": "string",
@@ -9185,7 +9218,18 @@
                 "type": "null"
               }
             ],
-            "title": "Name"
+            "title": "First Name"
+          },
+          "last_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Name"
           },
           "dob": {
             "anyOf": [

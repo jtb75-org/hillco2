@@ -26,11 +26,12 @@ class FamilyUpdate(BaseModel):
 
 class ParentCreate(BaseModel):
     # When `person_id` is set, link the existing person as a guardian
-    # of this family — name/email/phone/address fields are ignored; the
-    # person's own record stays the source of truth. When absent, a new
-    # `people` row is created from `name`+contact fields.
+    # of this family — first_name/last_name/email/phone/address fields
+    # are ignored; the person's own record stays the source of truth.
+    # When absent, a new `people` row is created from these fields.
     person_id: UUID | None = None
-    name: str | None = Field(default=None, min_length=1)
+    first_name: str | None = Field(default=None, min_length=1)
+    last_name: str | None = None
     email: str | None = None
     phone: str | None = None
     # Mailing address — structured. Each field maps 1:1 to people.
@@ -57,13 +58,14 @@ class ParentCreate(BaseModel):
 
     @model_validator(mode="after")
     def _name_or_person_id(self):
-        if self.person_id is None and not (self.name or "").strip():
-            raise ValueError("Either person_id or name is required.")
+        if self.person_id is None and not (self.first_name or "").strip():
+            raise ValueError("Either person_id or first_name is required.")
         return self
 
 
 class ParentUpdate(BaseModel):
-    name: str | None = Field(default=None, min_length=1)
+    first_name: str | None = Field(default=None, min_length=1)
+    last_name: str | None = None
     email: str | None = None
     phone: str | None = None
     street1: str | None = None
@@ -171,19 +173,6 @@ async def _parents_for_family(conn, family_id: UUID):
         """,
         family_id,
     )
-
-
-def _split_name(name: str) -> tuple[str, str | None]:
-    """Best-effort split of a single name string into (first, last).
-    Single-token names land entirely in first; whitespace-only is
-    treated as empty string in first."""
-    name = (name or "").strip()
-    if not name:
-        return "", None
-    parts = name.split(None, 1)
-    if len(parts) == 1:
-        return parts[0], None
-    return parts[0], parts[1].strip() or None
 
 
 async def _parent_or_404(conn, parent_id: UUID):
@@ -418,7 +407,6 @@ async def add_parent(
         )
 
     if person_id is None:
-        first, last = _split_name(body.name or "")
         person_id = await conn.fetchval(
             """
             INSERT INTO people (
@@ -433,7 +421,8 @@ async def add_parent(
             )
             RETURNING id
             """,
-            first, last,
+            (body.first_name or "").strip(),
+            _strip_or_null(body.last_name),
             (body.email or "").strip(),
             (body.phone or "").strip(),
             _strip_or_null(body.street1), _strip_or_null(body.street2),
@@ -473,11 +462,14 @@ async def update_parent(
     if not fields:
         raise HTTPException(status_code=400, detail="No fields to update")
 
-    # Normalize text fields: trim, empty-to-NULL.
-    if "name" in fields:
-        fields["name"] = (fields["name"] or "").strip()
+    # Normalize text fields: trim, empty-to-NULL where applicable.
+    # first_name is required-non-empty in the schema; trim but don't NULL it.
+    if "first_name" in fields:
+        fields["first_name"] = (fields["first_name"] or "").strip()
+        if not fields["first_name"]:
+            raise HTTPException(status_code=422, detail="first_name cannot be blank")
     nullable_text_cols = (
-        "email", "phone", "billing_attention_to",
+        "last_name", "email", "phone", "billing_attention_to",
         *_MAILING_ADDR_COLS, *_BILLING_ADDR_COLS,
     )
     for col in nullable_text_cols:
@@ -498,14 +490,9 @@ async def update_parent(
     # family_guardians-side columns (role/flags). Each table updates only
     # if it has at least one field to set.
     people_updates: list[tuple[str, object]] = []
-    if "name" in fields:
-        first, last = _split_name(fields["name"])
-        people_updates.append(("first_name", first))
-        people_updates.append(("last_name", last))
-    if "email" in fields:
-        people_updates.append(("email", fields["email"]))
-    if "phone" in fields:
-        people_updates.append(("phone", fields["phone"]))
+    for col in ("first_name", "last_name", "email", "phone"):
+        if col in fields:
+            people_updates.append((col, fields[col]))
     for col in (*_MAILING_ADDR_COLS, *_BILLING_ADDR_COLS, "billing_attention_to"):
         if col in fields:
             people_updates.append((col, fields[col]))

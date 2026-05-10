@@ -45,7 +45,8 @@ export function AddParentDialog({
   onCreated: () => void;
 }) {
   const [mode, setMode] = useState<Mode>({ kind: "searching" });
-  const [name, setName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [street1, setStreet1] = useState("");
@@ -80,7 +81,8 @@ export function AddParentDialog({
 
   const reset = () => {
     setMode({ kind: "searching" });
-    setName("");
+    setFirstName("");
+    setLastName("");
     setEmail("");
     setPhone("");
     setStreet1("");
@@ -111,7 +113,8 @@ export function AddParentDialog({
       });
     } else if (mode.kind === "creating") {
       create.mutate({
-        name: name.trim(),
+        first_name: firstName.trim(),
+        last_name: lastName.trim() || null,
         email: email.trim() || null,
         phone: phone.trim() || null,
         street1: street1.trim() || null,
@@ -130,7 +133,7 @@ export function AddParentDialog({
   const submitDisabled =
     create.isPending ||
     mode.kind === "searching" ||
-    (mode.kind === "creating" && !name.trim());
+    (mode.kind === "creating" && !firstName.trim());
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
@@ -154,8 +157,18 @@ export function AddParentDialog({
                     setMode({ kind: "picked", person });
                   }}
                   onCreateNew={(typed) => {
-                    setName(typed);
-                    setMode({ kind: "creating", presetName: typed });
+                    // Best-effort split on first whitespace; user can
+                    // correct in the form below.
+                    const trimmed = typed.trim();
+                    const idx = trimmed.indexOf(" ");
+                    if (idx === -1) {
+                      setFirstName(trimmed);
+                      setLastName("");
+                    } else {
+                      setFirstName(trimmed.slice(0, idx));
+                      setLastName(trimmed.slice(idx + 1).trim());
+                    }
+                    setMode({ kind: "creating", presetName: trimmed });
                   }}
                 />
               </LabeledField>
@@ -185,17 +198,26 @@ export function AddParentDialog({
 
             {mode.kind === "creating" && (
               <>
-                <LabeledField label="Name" required>
-                  <TextField
-                    autoFocus
-                    required
-                    placeholder="First Last"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    fullWidth
-                    inputProps={{ maxLength: 200 }}
-                  />
-                </LabeledField>
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                  <LabeledField label="First name" required>
+                    <TextField
+                      autoFocus
+                      required
+                      value={firstName}
+                      onChange={(e) => setFirstName(e.target.value)}
+                      fullWidth
+                      inputProps={{ maxLength: 100 }}
+                    />
+                  </LabeledField>
+                  <LabeledField label="Last name">
+                    <TextField
+                      value={lastName}
+                      onChange={(e) => setLastName(e.target.value)}
+                      fullWidth
+                      inputProps={{ maxLength: 100 }}
+                    />
+                  </LabeledField>
+                </Stack>
                 <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
                   <LabeledField label="Email">
                     <TextField

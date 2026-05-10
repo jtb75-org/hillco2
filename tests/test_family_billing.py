@@ -55,7 +55,7 @@ async def test_create_parent_with_billing_contact_and_address(authed_client):
         "household_name": f"Bill-{uuid4()}",
     })).json()["id"]
     r = await authed_client.post(f"/api/families/{fid}/parents", json={
-        "name": "Trust Account",
+        "first_name": "Trust", "last_name": "Account",
         "email": "trust@example.com",
         "role": "other",
         "is_billing_contact": True,
@@ -79,7 +79,7 @@ async def test_create_parent_with_mailing_address(authed_client):
         "household_name": f"Mail-{uuid4()}",
     })).json()["id"]
     p = (await authed_client.post(f"/api/families/{fid}/parents", json={
-        "name": "Pat Parent",
+        "first_name": "Pat", "last_name": "Parent",
         "street1": "9 Oak St",
         "city": "Springfield",
         "state": "IL",
@@ -101,7 +101,7 @@ async def test_mailing_address_blank_normalizes_to_null(authed_client):
         "household_name": f"Trim-mail-{uuid4()}",
     })).json()["id"]
     pid = (await authed_client.post(f"/api/families/{fid}/parents", json={
-        "name": "Test", "street1": "  ", "city": "",
+        "first_name": "Test", "street1": "  ", "city": "",
     })).json()["id"]
     r = await authed_client.patch(f"/api/parents/{pid}", json={
         "street1": "", "city": "  ",
@@ -114,7 +114,7 @@ async def test_billing_address_blank_normalizes_to_null(authed_client):
         "household_name": f"Trim-{uuid4()}",
     })).json()["id"]
     pid = (await authed_client.post(f"/api/families/{fid}/parents", json={
-        "name": "Test",
+        "first_name": "Test",
         "billing_street1": "  ",
     })).json()["id"]
 
@@ -131,10 +131,10 @@ async def test_family_detail_returns_primary_and_billing_parent_ids(authed_clien
         "household_name": f"Roles-{uuid4()}",
     })).json()["id"]
     mom = await authed_client.post(f"/api/families/{fid}/parents", json={
-        "name": "Mom", "is_primary_contact": True,
+        "first_name": "Mom", "is_primary_contact": True,
     })
     dad = await authed_client.post(f"/api/families/{fid}/parents", json={
-        "name": "Dad", "is_billing_contact": True,
+        "first_name": "Dad", "is_billing_contact": True,
     })
     detail = await authed_client.get(f"/api/families/{fid}")
     body = detail.json()
@@ -148,7 +148,7 @@ async def test_same_parent_can_be_both_primary_and_billing(authed_client):
         "household_name": f"Both-{uuid4()}",
     })).json()["id"]
     p = await authed_client.post(f"/api/families/{fid}/parents", json={
-        "name": "Solo Parent",
+        "first_name": "Solo", "last_name": "Parent",
         "is_primary_contact": True,
         "is_billing_contact": True,
     })
@@ -162,7 +162,7 @@ async def test_billing_parent_id_null_when_unset(authed_client):
         "household_name": f"NoBill-{uuid4()}",
     })).json()["id"]
     await authed_client.post(f"/api/families/{fid}/parents", json={
-        "name": "Generic",
+        "first_name": "Generic",
     })
     detail = (await authed_client.get(f"/api/families/{fid}")).json()
     assert detail["billing_parent_id"] is None
@@ -223,10 +223,10 @@ async def test_route_demotion_handles_successive_billing_promotions(authed_clien
         "household_name": f"Promote-{uuid4()}",
     })).json()["id"]
     a = await authed_client.post(f"/api/families/{fid}/parents", json={
-        "name": "First", "is_billing_contact": True,
+        "first_name": "First", "is_billing_contact": True,
     })
     b = await authed_client.post(f"/api/families/{fid}/parents", json={
-        "name": "Second", "is_billing_contact": True,
+        "first_name": "Second", "is_billing_contact": True,
     })
     assert a.status_code == 201
     assert b.status_code == 201
@@ -241,10 +241,10 @@ async def test_patch_billing_contact_demotes_previous(authed_client):
         "household_name": f"PatchPromote-{uuid4()}",
     })).json()["id"]
     a = (await authed_client.post(f"/api/families/{fid}/parents", json={
-        "name": "Old Bill", "is_billing_contact": True,
+        "first_name": "Old", "last_name": "Bill", "is_billing_contact": True,
     })).json()
     b = (await authed_client.post(f"/api/families/{fid}/parents", json={
-        "name": "New Bill",
+        "first_name": "New", "last_name": "Bill",
     })).json()
 
     r = await authed_client.patch(f"/api/parents/{b['id']}", json={

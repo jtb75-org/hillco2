@@ -40,7 +40,8 @@ export function AddStudentDialog({
   onCreated: () => void;
 }) {
   const [mode, setMode] = useState<Mode>({ kind: "searching" });
-  const [name, setName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [dob, setDob] = useState("");
   const [grade, setGrade] = useState("");
 
@@ -67,7 +68,8 @@ export function AddStudentDialog({
 
   const reset = () => {
     setMode({ kind: "searching" });
-    setName("");
+    setFirstName("");
+    setLastName("");
     setDob("");
     setGrade("");
     create.reset();
@@ -85,7 +87,8 @@ export function AddStudentDialog({
       create.mutate({ person_id: mode.person.id });
     } else if (mode.kind === "creating") {
       create.mutate({
-        name: name.trim(),
+        first_name: firstName.trim(),
+        last_name: lastName.trim() || null,
         dob: dob || null,
         current_grade: grade.trim() || null,
       });
@@ -96,7 +99,7 @@ export function AddStudentDialog({
   const submitDisabled =
     create.isPending ||
     mode.kind === "searching" ||
-    (mode.kind === "creating" && !name.trim());
+    (mode.kind === "creating" && !firstName.trim());
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
@@ -115,7 +118,15 @@ export function AddStudentDialog({
                   kind="student"
                   onPickExisting={(person) => setMode({ kind: "picked", person })}
                   onCreateNew={(typed) => {
-                    setName(typed);
+                    const trimmed = typed.trim();
+                    const idx = trimmed.indexOf(" ");
+                    if (idx === -1) {
+                      setFirstName(trimmed);
+                      setLastName("");
+                    } else {
+                      setFirstName(trimmed.slice(0, idx));
+                      setLastName(trimmed.slice(idx + 1).trim());
+                    }
                     setMode({ kind: "creating" });
                   }}
                   placeholder="Search students by name…"
@@ -150,17 +161,26 @@ export function AddStudentDialog({
 
             {mode.kind === "creating" && (
               <>
-                <LabeledField label="Name" required>
-                  <TextField
-                    autoFocus
-                    required
-                    placeholder="First Last"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    fullWidth
-                    inputProps={{ maxLength: 200 }}
-                  />
-                </LabeledField>
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                  <LabeledField label="First name" required>
+                    <TextField
+                      autoFocus
+                      required
+                      value={firstName}
+                      onChange={(e) => setFirstName(e.target.value)}
+                      fullWidth
+                      inputProps={{ maxLength: 100 }}
+                    />
+                  </LabeledField>
+                  <LabeledField label="Last name">
+                    <TextField
+                      value={lastName}
+                      onChange={(e) => setLastName(e.target.value)}
+                      fullWidth
+                      inputProps={{ maxLength: 100 }}
+                    />
+                  </LabeledField>
+                </Stack>
                 <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
                   <LabeledField label="Date of birth">
                     <TextField

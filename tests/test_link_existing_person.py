@@ -19,7 +19,7 @@ async def test_link_existing_guardian_to_second_family(authed_client):
     f1 = (await authed_client.post("/api/families", json={"household_name": f"A-{uuid4()}"})).json()["id"]
     f2 = (await authed_client.post("/api/families", json={"household_name": f"B-{uuid4()}"})).json()["id"]
     p = (await authed_client.post(f"/api/families/{f1}/parents", json={
-        "name": "Pat Parent", "role": "mom",
+        "first_name": "Pat", "last_name": "Parent", "role": "mom",
     })).json()
     pid = p["id"]
 
@@ -66,7 +66,7 @@ async def test_link_student_as_guardian_rejected(authed_client, db_pool):
 async def test_double_link_guardian_rejected(authed_client):
     fid = (await authed_client.post("/api/families", json={"household_name": f"D-{uuid4()}"})).json()["id"]
     p = (await authed_client.post(f"/api/families/{fid}/parents", json={
-        "name": "Dup Parent",
+        "first_name": "Dup", "last_name": "Parent",
     })).json()
     r = await authed_client.post(f"/api/families/{fid}/parents", json={
         "person_id": p["id"], "role": "other",
@@ -86,7 +86,7 @@ async def test_link_existing_student_to_second_family(authed_client):
     f1 = (await authed_client.post("/api/families", json={"household_name": f"SA-{uuid4()}"})).json()["id"]
     f2 = (await authed_client.post("/api/families", json={"household_name": f"SB-{uuid4()}"})).json()["id"]
     s = (await authed_client.post(f"/api/families/{f1}/students", json={
-        "name": "Sam Kid", "current_grade": "5th",
+        "first_name": "Sam", "last_name": "Kid", "current_grade": "5th",
     })).json()
     sid = s["id"]
 
@@ -110,7 +110,7 @@ async def test_link_guardian_as_student_rejected(authed_client, db_pool):
 
 async def test_double_link_student_rejected(authed_client):
     fid = (await authed_client.post("/api/families", json={"household_name": f"DS-{uuid4()}"})).json()["id"]
-    s = (await authed_client.post(f"/api/families/{fid}/students", json={"name": "Sam"})).json()
+    s = (await authed_client.post(f"/api/families/{fid}/students", json={"first_name": "Sam"})).json()
     r = await authed_client.post(f"/api/families/{fid}/students", json={"person_id": s["id"]})
     assert r.status_code == 409
 
