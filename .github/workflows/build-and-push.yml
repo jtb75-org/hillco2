@@ -61,7 +61,10 @@ jobs:
   test:
     name: Tests (pytest)
     runs-on: jtb75-arc
-    needs: lint
+    # Independent of lint — they share no artifacts and the test job
+    # has its own postgres service. Running side-by-side trades the
+    # ~15s fail-fast on lint errors for ~15s shorter happy-path CI;
+    # for a 32s test job that's worth it.
     container:
       image: python:3.12-slim
     services:
