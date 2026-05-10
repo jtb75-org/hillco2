@@ -1,22 +1,30 @@
+import { useState } from "react";
 import {
   Alert,
   Box,
   Breadcrumbs,
+  Button,
   Card,
   CardContent,
   Chip,
   Divider,
   Grid,
+  IconButton,
   Link as MuiLink,
   Skeleton,
   Stack,
+  Tooltip,
   Typography,
 } from "@mui/material";
-import { useQuery } from "@tanstack/react-query";
+import AddIcon from "@mui/icons-material/Add";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import dayjs from "dayjs";
 import { Link as RouterLink, useParams } from "react-router-dom";
 
 import { api } from "../../api/client";
+
+import { AddParentDialog } from "./AddParentDialog";
+import { AddStudentDialog } from "./AddStudentDialog";
 
 // /api/families/{id} returns a plain dict in the route — its OpenAPI
 // response schema is empty. Hand-typed for the parts we render; the
@@ -59,6 +67,7 @@ interface FamilyDetail {
 
 export function FamilyDetail() {
   const { id } = useParams<{ id: string }>();
+  const qc = useQueryClient();
 
   const { data, isPending, error } = useQuery<FamilyDetail, Error>({
     queryKey: ["families", id],
@@ -100,23 +109,36 @@ export function FamilyDetail() {
         )}
       </Box>
 
+      {/* Single Grid container for all cards. The previous shape had the
+          top row inside its own `<Grid container>` and the bottom cards
+          as Stack siblings; Grid container's negative-margin spacing
+          made the top row sit slightly inset from the rest. */}
       <Grid container spacing={3}>
         <Grid item xs={12} md={5}>
           <BillingCard parents={data?.parents} loading={isPending} />
         </Grid>
         <Grid item xs={12} md={7}>
           <ParentsCard
+            familyId={id!}
             parents={data?.parents}
             loading={isPending}
             primaryId={data?.primary_parent_id ?? null}
             billingId={data?.billing_parent_id ?? null}
+            onChanged={() => qc.invalidateQueries({ queryKey: ["families", id] })}
           />
         </Grid>
+        <Grid item xs={12}>
+          <StudentsCard
+            familyId={id!}
+            students={data?.students}
+            loading={isPending}
+            onChanged={() => qc.invalidateQueries({ queryKey: ["families", id] })}
+          />
+        </Grid>
+        <Grid item xs={12}>
+          <EngagementsCard engagements={data?.engagements} loading={isPending} />
+        </Grid>
       </Grid>
-
-      <StudentsCard students={data?.students} loading={isPending} />
-
-      <EngagementsCard engagements={data?.engagements} loading={isPending} />
     </Stack>
   );
 }
@@ -181,31 +203,54 @@ function BillingCard({ parents, loading }: { parents?: Parent[]; loading: boolea
 // ---- Parents -----------------------------------------------------------
 
 function ParentsCard({
+  familyId,
   parents,
   loading,
   primaryId,
   billingId,
+  onChanged,
 }: {
+  familyId: string;
   parents?: Parent[];
   loading: boolean;
   primaryId: string | null;
   billingId: string | null;
+  onChanged: () => void;
 }) {
+  const [open, setOpen] = useState(false);
   return (
     <Card variant="outlined" sx={{ height: "100%" }}>
       <CardContent>
-        <Typography variant="overline" color="text.secondary">
-          Parents / guardians
-        </Typography>
+        <Stack direction="row" alignItems="center" sx={{ mb: 1 }}>
+          <Typography variant="overline" color="text.secondary" sx={{ flex: 1 }}>
+            Parents / guardians
+          </Typography>
+          <Tooltip title="Add parent / guardian">
+            <IconButton size="small" onClick={() => setOpen(true)} disabled={loading}>
+              <AddIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Stack>
         {loading ? (
           <Stack spacing={1} sx={{ mt: 1 }}>
             <Skeleton width="80%" />
             <Skeleton width="80%" />
           </Stack>
         ) : !parents || parents.length === 0 ? (
-          <Typography variant="body2" color="text.disabled" sx={{ mt: 1 }}>
-            No parents added yet.
-          </Typography>
+          <Stack spacing={1} sx={{ mt: 1 }}>
+            <Typography variant="body2" color="text.disabled">
+              No parents added yet.
+            </Typography>
+            <Button
+              variant="text"
+              size="small"
+              startIcon={<AddIcon />}
+              onClick={() => setOpen(true)}
+              sx={{ alignSelf: "flex-start" }}
+            >
+              Add parent
+            </Button>
+          </Stack>
         ) : (
           <Stack divider={<Divider />} sx={{ mt: 1 }}>
             {parents.map((p) => (
@@ -234,25 +279,60 @@ function ParentsCard({
           </Stack>
         )}
       </CardContent>
+      <AddParentDialog
+        open={open}
+        familyId={familyId}
+        onClose={() => setOpen(false)}
+        onCreated={onChanged}
+      />
     </Card>
   );
 }
 
 // ---- Students ----------------------------------------------------------
 
-function StudentsCard({ students, loading }: { students?: Student[]; loading: boolean }) {
+function StudentsCard({
+  familyId,
+  students,
+  loading,
+  onChanged,
+}: {
+  familyId: string;
+  students?: Student[];
+  loading: boolean;
+  onChanged: () => void;
+}) {
+  const [open, setOpen] = useState(false);
   return (
     <Card variant="outlined">
       <CardContent>
-        <Typography variant="overline" color="text.secondary">
-          Students
-        </Typography>
+        <Stack direction="row" alignItems="center" sx={{ mb: 1 }}>
+          <Typography variant="overline" color="text.secondary" sx={{ flex: 1 }}>
+            Students
+          </Typography>
+          <Tooltip title="Add student">
+            <IconButton size="small" onClick={() => setOpen(true)} disabled={loading}>
+              <AddIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Stack>
         {loading ? (
           <Skeleton width="60%" sx={{ mt: 1 }} />
         ) : !students || students.length === 0 ? (
-          <Typography variant="body2" color="text.disabled" sx={{ mt: 1 }}>
-            No students added yet.
-          </Typography>
+          <Stack spacing={1} sx={{ mt: 1 }}>
+            <Typography variant="body2" color="text.disabled">
+              No students added yet.
+            </Typography>
+            <Button
+              variant="text"
+              size="small"
+              startIcon={<AddIcon />}
+              onClick={() => setOpen(true)}
+              sx={{ alignSelf: "flex-start" }}
+            >
+              Add student
+            </Button>
+          </Stack>
         ) : (
           <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 1 }}>
             {students.map((s) => (
@@ -267,6 +347,12 @@ function StudentsCard({ students, loading }: { students?: Student[]; loading: bo
           </Stack>
         )}
       </CardContent>
+      <AddStudentDialog
+        open={open}
+        familyId={familyId}
+        onClose={() => setOpen(false)}
+        onCreated={onChanged}
+      />
     </Card>
   );
 }
