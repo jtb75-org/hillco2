@@ -110,7 +110,10 @@ async def test_link_guardian_as_student_rejected(authed_client, db_pool):
 
 async def test_double_link_student_rejected(authed_client):
     fid = (await authed_client.post("/api/families", json={"household_name": f"DS-{uuid4()}"})).json()["id"]
-    s = (await authed_client.post(f"/api/families/{fid}/students", json={"first_name": "Sam"})).json()
+    s = (await authed_client.post(
+        f"/api/families/{fid}/students",
+        json={"first_name": "Sam", "last_name": "Kid"},
+    )).json()
     r = await authed_client.post(f"/api/families/{fid}/students", json={"person_id": s["id"]})
     assert r.status_code == 409
 

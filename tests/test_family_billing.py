@@ -101,7 +101,8 @@ async def test_mailing_address_blank_normalizes_to_null(authed_client):
         "household_name": f"Trim-mail-{uuid4()}",
     })).json()["id"]
     pid = (await authed_client.post(f"/api/families/{fid}/parents", json={
-        "first_name": "Test", "street1": "  ", "city": "",
+        "first_name": "Test", "last_name": "Trim",
+        "street1": "  ", "city": "",
     })).json()["id"]
     r = await authed_client.patch(f"/api/parents/{pid}", json={
         "street1": "", "city": "  ",
@@ -114,7 +115,7 @@ async def test_billing_address_blank_normalizes_to_null(authed_client):
         "household_name": f"Trim-{uuid4()}",
     })).json()["id"]
     pid = (await authed_client.post(f"/api/families/{fid}/parents", json={
-        "first_name": "Test",
+        "first_name": "Test", "last_name": "Trim",
         "billing_street1": "  ",
     })).json()["id"]
 
@@ -124,6 +125,87 @@ async def test_billing_address_blank_normalizes_to_null(authed_client):
     assert r.json()["billing_address"] is None
 
 
+# ---- Required-fields validation ----------------------------------------
+
+async def test_last_name_required_on_create(authed_client):
+    fid = (await authed_client.post("/api/families", json={
+        "household_name": f"NoLast-{uuid4()}",
+    })).json()["id"]
+    r = await authed_client.post(f"/api/families/{fid}/parents", json={
+        "first_name": "Solo",
+    })
+    assert r.status_code == 422
+
+
+async def test_billing_contact_requires_email_and_address(authed_client):
+    fid = (await authed_client.post("/api/families", json={
+        "household_name": f"BillReq-{uuid4()}",
+    })).json()["id"]
+    # Missing all three.
+    r = await authed_client.post(f"/api/families/{fid}/parents", json={
+        "first_name": "Bill", "last_name": "Less", "is_billing_contact": True,
+    })
+    assert r.status_code == 422
+    assert "email" in r.text and "street + ZIP" in r.text
+
+    # Email only — still missing street/zip.
+    r = await authed_client.post(f"/api/families/{fid}/parents", json={
+        "first_name": "Bill", "last_name": "Less", "is_billing_contact": True,
+        "email": "bill@x.test",
+    })
+    assert r.status_code == 422
+
+    # Email + street + zip — succeeds.
+    r = await authed_client.post(f"/api/families/{fid}/parents", json={
+        "first_name": "Bill", "last_name": "Less", "is_billing_contact": True,
+        "email": "bill@x.test", "street1": "1 Main St", "postal_code": "62701",
+    })
+    assert r.status_code == 201
+
+
+async def test_billing_contact_accepts_billing_override_alone(authed_client):
+    """Billing override (separate-from-mailing address) satisfies the
+    address requirement on its own — invoices route to the override."""
+    fid = (await authed_client.post("/api/families", json={
+        "household_name": f"Override-{uuid4()}",
+    })).json()["id"]
+    r = await authed_client.post(f"/api/families/{fid}/parents", json={
+        "first_name": "Trust", "last_name": "Account", "is_billing_contact": True,
+        "email": "trust@x.test",
+        "billing_street1": "1 CPA Way", "billing_postal_code": "62701",
+    })
+    assert r.status_code == 201, r.text
+
+
+async def test_patch_promote_to_billing_validates_existing_state(authed_client):
+    """Flipping is_billing_contact=true on a parent without email/
+    address should 422 — the post-patch state would be invalid."""
+    fid = (await authed_client.post("/api/families", json={
+        "household_name": f"PatchBill-{uuid4()}",
+    })).json()["id"]
+    pid = (await authed_client.post(f"/api/families/{fid}/parents", json={
+        "first_name": "Bare", "last_name": "Parent",
+    })).json()["id"]
+    r = await authed_client.patch(f"/api/parents/{pid}", json={
+        "is_billing_contact": True,
+    })
+    assert r.status_code == 422
+
+
+async def test_patch_cannot_blank_billing_required_field(authed_client):
+    """Once a parent is the billing contact, you can't NULL their email
+    out from under them."""
+    fid = (await authed_client.post("/api/families", json={
+        "household_name": f"Strip-{uuid4()}",
+    })).json()["id"]
+    pid = (await authed_client.post(f"/api/families/{fid}/parents", json={
+        "first_name": "Bill", "last_name": "Contact", "is_billing_contact": True,
+        "email": "bill@x.test", "street1": "1 Main St", "postal_code": "62701",
+    })).json()["id"]
+    r = await authed_client.patch(f"/api/parents/{pid}", json={"email": ""})
+    assert r.status_code == 422
+
+
 # ---- Detail rollup -----------------------------------------------------
 
 async def test_family_detail_returns_primary_and_billing_parent_ids(authed_client):
@@ -131,10 +213,11 @@ async def test_family_detail_returns_primary_and_billing_parent_ids(authed_clien
         "household_name": f"Roles-{uuid4()}",
     })).json()["id"]
     mom = await authed_client.post(f"/api/families/{fid}/parents", json={
-        "first_name": "Mom", "is_primary_contact": True,
+        "first_name": "Mom", "last_name": "Smith", "is_primary_contact": True,
     })
     dad = await authed_client.post(f"/api/families/{fid}/parents", json={
-        "first_name": "Dad", "is_billing_contact": True,
+        "first_name": "Dad", "last_name": "Smith", "is_billing_contact": True,
+        "email": "dad@smith.test", "street1": "1 Main St", "postal_code": "62701",
     })
     detail = await authed_client.get(f"/api/families/{fid}")
     body = detail.json()
@@ -151,6 +234,7 @@ async def test_same_parent_can_be_both_primary_and_billing(authed_client):
         "first_name": "Solo", "last_name": "Parent",
         "is_primary_contact": True,
         "is_billing_contact": True,
+        "email": "solo@p.test", "street1": "1 Main St", "postal_code": "62701",
     })
     detail = (await authed_client.get(f"/api/families/{fid}")).json()
     assert detail["primary_parent_id"] == p.json()["id"]
@@ -162,7 +246,7 @@ async def test_billing_parent_id_null_when_unset(authed_client):
         "household_name": f"NoBill-{uuid4()}",
     })).json()["id"]
     await authed_client.post(f"/api/families/{fid}/parents", json={
-        "first_name": "Generic",
+        "first_name": "Generic", "last_name": "Parent",
     })
     detail = (await authed_client.get(f"/api/families/{fid}")).json()
     assert detail["billing_parent_id"] is None
@@ -223,10 +307,12 @@ async def test_route_demotion_handles_successive_billing_promotions(authed_clien
         "household_name": f"Promote-{uuid4()}",
     })).json()["id"]
     a = await authed_client.post(f"/api/families/{fid}/parents", json={
-        "first_name": "First", "is_billing_contact": True,
+        "first_name": "First", "last_name": "Parent", "is_billing_contact": True,
+        "email": "first@p.test", "street1": "1 Main St", "postal_code": "62701",
     })
     b = await authed_client.post(f"/api/families/{fid}/parents", json={
-        "first_name": "Second", "is_billing_contact": True,
+        "first_name": "Second", "last_name": "Parent", "is_billing_contact": True,
+        "email": "second@p.test", "street1": "2 Oak Ave", "postal_code": "62702",
     })
     assert a.status_code == 201
     assert b.status_code == 201
@@ -242,9 +328,14 @@ async def test_patch_billing_contact_demotes_previous(authed_client):
     })).json()["id"]
     a = (await authed_client.post(f"/api/families/{fid}/parents", json={
         "first_name": "Old", "last_name": "Bill", "is_billing_contact": True,
+        "email": "old@bill.test", "street1": "1 Main St", "postal_code": "62701",
     })).json()
     b = (await authed_client.post(f"/api/families/{fid}/parents", json={
         "first_name": "New", "last_name": "Bill",
+        # B needs the billing-required fields too — the PATCH below will
+        # flip is_billing_contact=True and the post-patch validation
+        # checks the merged state.
+        "email": "new@bill.test", "street1": "2 Oak Ave", "postal_code": "62702",
     })).json()
 
     r = await authed_client.patch(f"/api/parents/{b['id']}", json={

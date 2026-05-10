@@ -99,7 +99,8 @@ export function AddStudentDialog({
   const submitDisabled =
     create.isPending ||
     mode.kind === "searching" ||
-    (mode.kind === "creating" && !firstName.trim());
+    (mode.kind === "creating" &&
+      (!firstName.trim() || !lastName.trim()));
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
@@ -172,8 +173,9 @@ export function AddStudentDialog({
                       inputProps={{ maxLength: 100 }}
                     />
                   </LabeledField>
-                  <LabeledField label="Last name">
+                  <LabeledField label="Last name" required>
                     <TextField
+                      required
                       value={lastName}
                       onChange={(e) => setLastName(e.target.value)}
                       fullWidth

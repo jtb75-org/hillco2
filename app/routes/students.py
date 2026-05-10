@@ -64,9 +64,14 @@ class StudentCreate(StudentBase):
     person_id: UUID | None = None
 
     @model_validator(mode="after")
-    def _name_or_person_id(self):
-        if self.person_id is None and not (self.first_name or "").strip():
-            raise ValueError("Either person_id or first_name is required.")
+    def _validate_create_mode(self):
+        # Link mode (person_id set) reuses the existing person.
+        if self.person_id is not None:
+            return self
+        if not (self.first_name or "").strip():
+            raise ValueError("first_name is required.")
+        if not (self.last_name or "").strip():
+            raise ValueError("last_name is required.")
         return self
 
 
@@ -309,6 +314,8 @@ async def update_student(
             raise HTTPException(status_code=422, detail="first_name cannot be blank")
         people_updates.append(("first_name", fields["first_name"]))
     if "last_name" in fields:
+        if not fields["last_name"]:
+            raise HTTPException(status_code=422, detail="last_name cannot be blank")
         people_updates.append(("last_name", fields["last_name"]))
     if "dob" in fields:
         people_updates.append(("birthday", fields["dob"]))

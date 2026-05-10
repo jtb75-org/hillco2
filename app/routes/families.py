@@ -31,7 +31,7 @@ class ParentCreate(BaseModel):
     # When absent, a new `people` row is created from these fields.
     person_id: UUID | None = None
     first_name: str | None = Field(default=None, min_length=1)
-    last_name: str | None = None
+    last_name: str | None = Field(default=None, min_length=1)
     email: str | None = None
     phone: str | None = None
     # Mailing address — structured. Each field maps 1:1 to people.
@@ -57,9 +57,37 @@ class ParentCreate(BaseModel):
     billing_attention_to: str | None = None
 
     @model_validator(mode="after")
-    def _name_or_person_id(self):
-        if self.person_id is None and not (self.first_name or "").strip():
-            raise ValueError("Either person_id or first_name is required.")
+    def _validate_create_mode(self):
+        # Link mode (person_id set) reuses the existing person's data —
+        # the dialog won't write any of these fields. Skip validation.
+        if self.person_id is not None:
+            return self
+        if not (self.first_name or "").strip():
+            raise ValueError("first_name is required.")
+        if not (self.last_name or "").strip():
+            raise ValueError("last_name is required.")
+        if self.is_billing_contact:
+            missing: list[str] = []
+            if not (self.email or "").strip():
+                missing.append("email")
+            # Billing contact must have an address invoices can be mailed
+            # to — either the person's mailing address or an explicit
+            # billing override. The dialog only exposes mailing today,
+            # but the API accepts either path.
+            has_mailing = bool(
+                (self.street1 or "").strip()
+                and (self.postal_code or "").strip()
+            )
+            has_billing_override = bool(
+                (self.billing_street1 or "").strip()
+                and (self.billing_postal_code or "").strip()
+            )
+            if not (has_mailing or has_billing_override):
+                missing.append("street + ZIP")
+            if missing:
+                raise ValueError(
+                    "Billing contact requires " + ", ".join(missing) + "."
+                )
         return self
 
 
@@ -463,18 +491,65 @@ async def update_parent(
         raise HTTPException(status_code=400, detail="No fields to update")
 
     # Normalize text fields: trim, empty-to-NULL where applicable.
-    # first_name is required-non-empty in the schema; trim but don't NULL it.
-    if "first_name" in fields:
-        fields["first_name"] = (fields["first_name"] or "").strip()
-        if not fields["first_name"]:
-            raise HTTPException(status_code=422, detail="first_name cannot be blank")
+    # first_name and last_name are required-non-empty in the model;
+    # trim but don't NULL them.
+    for required_col in ("first_name", "last_name"):
+        if required_col in fields:
+            fields[required_col] = (fields[required_col] or "").strip()
+            if not fields[required_col]:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"{required_col} cannot be blank",
+                )
     nullable_text_cols = (
-        "last_name", "email", "phone", "billing_attention_to",
+        "email", "phone", "billing_attention_to",
         *_MAILING_ADDR_COLS, *_BILLING_ADDR_COLS,
     )
     for col in nullable_text_cols:
         if col in fields:
             fields[col] = _strip_or_null(fields[col])
+
+    # Billing-contact requires email AND a mailing or billing-override
+    # address in the post-patch state. Read the current row, merge the
+    # patch, reject if anything's missing.
+    _billing_relevant = {
+        "is_billing_contact", "email",
+        "street1", "postal_code",
+        "billing_street1", "billing_postal_code",
+    }
+    if fields.get("is_billing_contact") is True or any(
+        c in fields for c in _billing_relevant
+    ):
+        current = await conn.fetchrow(
+            """
+            SELECT p.email,
+                   p.street1, p.postal_code,
+                   p.billing_street1, p.billing_postal_code,
+                   fg.is_billing_contact
+            FROM family_guardians fg
+            JOIN people p ON p.id = fg.person_id
+            WHERE fg.person_id = $1 AND fg.family_id = $2
+            """,
+            parent_id, parent["family_id"],
+        )
+        merged_billing = fields.get("is_billing_contact", current["is_billing_contact"])
+        if merged_billing:
+            def _merged(col):
+                return fields.get(col, current[col]) or ""
+            missing: list[str] = []
+            if not _merged("email"):
+                missing.append("email")
+            has_mailing = bool(_merged("street1") and _merged("postal_code"))
+            has_billing_override = bool(
+                _merged("billing_street1") and _merged("billing_postal_code")
+            )
+            if not (has_mailing or has_billing_override):
+                missing.append("street + ZIP")
+            if missing:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Billing contact requires " + ", ".join(missing) + ".",
+                )
 
     # Demote any other holder of either flag before promoting this row.
     # Legacy code did this on `parents`; same shape on family_guardians.
