@@ -18,7 +18,7 @@ from datetime import date
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from ..auth import require_user
 from ..db import get_conn
@@ -57,7 +57,16 @@ class StudentBase(BaseModel):
 
 
 class StudentCreate(StudentBase):
-    name: str = Field(..., min_length=1)
+    # When `person_id` is set, link the existing student to this family —
+    # name/dob/clinical fields are ignored; the person's own record stays
+    # the source of truth. When absent, a new `people` row is created.
+    person_id: UUID | None = None
+
+    @model_validator(mode="after")
+    def _name_or_person_id(self):
+        if self.person_id is None and not (self.name or "").strip():
+            raise ValueError("Either person_id or name is required.")
+        return self
 
 
 class StudentUpdate(StudentBase):
@@ -146,6 +155,38 @@ async def add_student(
 ):
     if not await _family_exists(conn, family_id):
         raise HTTPException(status_code=404, detail="Family not found")
+
+    if body.person_id is not None:
+        # Link mode: only existing kind='student' records can be linked.
+        target = await conn.fetchrow(
+            "SELECT kind::text AS kind FROM people WHERE id = $1 AND deleted_at IS NULL",
+            body.person_id,
+        )
+        if not target:
+            raise HTTPException(status_code=404, detail="Person not found")
+        if target["kind"] != "student":
+            raise HTTPException(
+                status_code=400,
+                detail="Only existing student records can be linked here.",
+            )
+        already_linked = await conn.fetchval(
+            "SELECT 1 FROM family_students WHERE family_id = $1 AND person_id = $2",
+            family_id, body.person_id,
+        )
+        if already_linked:
+            raise HTTPException(
+                status_code=409,
+                detail="This student is already linked to this family.",
+            )
+        await conn.execute(
+            "INSERT INTO family_students (family_id, person_id) VALUES ($1, $2)",
+            family_id, body.person_id,
+        )
+        row = await conn.fetchrow(
+            _LEGACY_SHAPE_SELECT + " WHERE p.id = $1 AND fs.family_id = $2",
+            body.person_id, family_id,
+        )
+        return dict(row)
 
     fields = _normalize_strings(body.model_dump(exclude_unset=False))
     # Default missing booleans -> False; autism_level missing -> NULL.

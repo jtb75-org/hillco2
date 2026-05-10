@@ -2,7 +2,7 @@ from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from ..auth import require_user
 from ..db import get_conn
@@ -25,7 +25,12 @@ class FamilyUpdate(BaseModel):
 
 
 class ParentCreate(BaseModel):
-    name: str = Field(..., min_length=1)
+    # When `person_id` is set, link the existing person as a guardian
+    # of this family — name/email/phone/billing fields are ignored; the
+    # person's own record stays the source of truth. When absent, a new
+    # `people` row is created from `name`+contact fields.
+    person_id: UUID | None = None
+    name: str | None = Field(default=None, min_length=1)
     email: str | None = None
     phone: str | None = None
     role: ParentRole = "other"
@@ -36,6 +41,12 @@ class ParentCreate(BaseModel):
     # else we might surface for this person.
     billing_address: str | None = None
     billing_attention_to: str | None = None
+
+    @model_validator(mode="after")
+    def _name_or_person_id(self):
+        if self.person_id is None and not (self.name or "").strip():
+            raise ValueError("Either person_id or name is required.")
+        return self
 
 
 class ParentUpdate(BaseModel):
@@ -311,6 +322,33 @@ async def add_parent(
     conn=Depends(get_conn),
 ):
     await _family_or_404(conn, family_id)
+
+    if body.person_id is not None:
+        # Link mode: person already exists, just attach to this family.
+        target = await conn.fetchrow(
+            "SELECT kind::text AS kind FROM people WHERE id = $1 AND deleted_at IS NULL",
+            body.person_id,
+        )
+        if not target:
+            raise HTTPException(status_code=404, detail="Person not found")
+        if target["kind"] == "student":
+            raise HTTPException(
+                status_code=400,
+                detail="A student record can't also be a guardian.",
+            )
+        already_linked = await conn.fetchval(
+            "SELECT 1 FROM family_guardians WHERE family_id = $1 AND person_id = $2",
+            family_id, body.person_id,
+        )
+        if already_linked:
+            raise HTTPException(
+                status_code=409,
+                detail="This person is already a guardian on this family.",
+            )
+        person_id = body.person_id
+    else:
+        person_id = None  # set below after INSERT
+
     # Demote competing flag-holders before promoting this row, same as the
     # legacy code did — partial UNIQUEs on family_guardians (family_id)
     # WHERE is_primary_contact / is_billing_contact would otherwise reject
@@ -326,28 +364,29 @@ async def add_parent(
             family_id,
         )
 
-    first, last = _split_name(body.name)
-    # Legacy billing_address was a single TEXT blob; the new billing_*
-    # columns are structured. Dump the input verbatim into billing_street1
-    # so nothing is lost; the operator can structure it later via a
-    # future address editor.
-    billing_blob = (body.billing_address or "").strip() or None
-    person_id = await conn.fetchval(
-        """
-        INSERT INTO people (
-          kind, first_name, last_name, email, phone,
-          billing_street1, billing_attention_to
-        ) VALUES (
-          'guardian', $1, $2, NULLIF($3,''), NULLIF($4,''), $5, NULLIF($6,'')
+    if person_id is None:
+        first, last = _split_name(body.name or "")
+        # Legacy billing_address was a single TEXT blob; the new billing_*
+        # columns are structured. Dump the input verbatim into billing_street1
+        # so nothing is lost; the operator can structure it later via a
+        # future address editor.
+        billing_blob = (body.billing_address or "").strip() or None
+        person_id = await conn.fetchval(
+            """
+            INSERT INTO people (
+              kind, first_name, last_name, email, phone,
+              billing_street1, billing_attention_to
+            ) VALUES (
+              'guardian', $1, $2, NULLIF($3,''), NULLIF($4,''), $5, NULLIF($6,'')
+            )
+            RETURNING id
+            """,
+            first, last,
+            (body.email or "").strip(),
+            (body.phone or "").strip(),
+            billing_blob,
+            (body.billing_attention_to or "").strip(),
         )
-        RETURNING id
-        """,
-        first, last,
-        (body.email or "").strip(),
-        (body.phone or "").strip(),
-        billing_blob,
-        (body.billing_attention_to or "").strip(),
-    )
     await conn.execute(
         """
         INSERT INTO family_guardians (
