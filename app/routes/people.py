@@ -45,7 +45,7 @@ class PersonListRow(BaseModel):
 
 # ---- Routes ---------------------------------------------------------------
 
-@router.get("/people")
+@router.get("/people", response_model=list[PersonListRow])
 async def list_people(
     kind: PersonKind | None = Query(
         None,

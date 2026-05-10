@@ -5470,7 +5470,13 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PersonListRow"
+                  },
+                  "title": "Response List People Api People Get"
+                }
               }
             }
           },
@@ -7792,9 +7798,28 @@
       },
       "ParentCreate": {
         "properties": {
+          "person_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Person Id"
+          },
           "name": {
-            "type": "string",
-            "minLength": 1,
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Name"
           },
           "email": {
@@ -7864,9 +7889,6 @@
           }
         },
         "type": "object",
-        "required": [
-          "name"
-        ],
         "title": "ParentCreate"
       },
       "ParentUpdate": {
@@ -8735,8 +8757,15 @@
       "StudentCreate": {
         "properties": {
           "name": {
-            "type": "string",
-            "minLength": 1,
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Name"
           },
           "dob": {
@@ -8885,12 +8914,21 @@
               }
             ],
             "title": "Needs Goals"
+          },
+          "person_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Person Id"
           }
         },
         "type": "object",
-        "required": [
-          "name"
-        ],
         "title": "StudentCreate"
       },
       "StudentUpdate": {
