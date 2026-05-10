@@ -24,7 +24,9 @@ class EngagementCreate(BaseModel):
     engagement_type: EngagementType = "assessment"
     start_date: date | None = None
     target_end_date: date | None = None
-    package_fee: Decimal | None = None
+    # The contract fee moved to agreements.amount in migration 0005;
+    # creating an engagement no longer accepts a fee. Add a services
+    # contract via POST /api/engagements/{id}/agreements instead.
     default_hourly_rate: Decimal | None = None
     lead_consultant_id: UUID | None = None  # defaults to the requester
     notes: str | None = None
@@ -35,7 +37,6 @@ class EngagementUpdate(BaseModel):
     status: EngagementStatus | None = None
     start_date: date | None = None
     target_end_date: date | None = None
-    package_fee: Decimal | None = None
     default_hourly_rate: Decimal | None = None
     lead_consultant_id: UUID | None = None
     notes: str | None = None
@@ -129,7 +130,7 @@ async def list_engagements(
         f"""
         SELECT
           e.id, e.engagement_type, e.status, e.start_date, e.target_end_date,
-          e.package_fee, e.default_hourly_rate,
+          e.default_hourly_rate,
           f.id AS family_id, f.household_name,
           u.id AS lead_consultant_id, u.name AS lead_consultant_name
         FROM engagements e
@@ -165,13 +166,13 @@ async def create_engagement(
         INSERT INTO engagements (
           family_id, student_id, engagement_type, status,
           start_date, target_end_date,
-          package_fee, default_hourly_rate, lead_consultant_id, notes
-        ) VALUES ($1, $2, $3, 'in_progress', $4, $5, $6, $7, $8, $9)
+          default_hourly_rate, lead_consultant_id, notes
+        ) VALUES ($1, $2, $3, 'in_progress', $4, $5, $6, $7, $8)
         RETURNING id
         """,
         family_id, body.student_id, body.engagement_type,
         body.start_date, body.target_end_date,
-        body.package_fee, body.default_hourly_rate, lead_id, notes,
+        body.default_hourly_rate, lead_id, notes,
     )
 
     return await engagement_detail(eng_id, _user=user, conn=conn)

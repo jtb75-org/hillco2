@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api", tags=["documents"])
 logger = logging.getLogger(__name__)
 
 
-OwnerType = Literal["family", "student", "engagement", "school", "note", "contact"]
+OwnerType = Literal["family", "student", "engagement", "school", "note", "contact", "agreement"]
 DocumentKind = Literal[
     "intake", "iep", "evaluation", "report_card", "medical",
     "recommendation", "invoice", "receipt", "scorecard", "other",
@@ -31,6 +31,7 @@ _OWNER_TABLES: dict[str, tuple[str, bool]] = {
     "school": ("schools", True),
     "note": ("notes", False),
     "contact": ("contacts", True),
+    "agreement": ("agreements", False),
 }
 
 ALLOWED_UPLOAD_EXTENSIONS = {
