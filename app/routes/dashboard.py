@@ -1,6 +1,9 @@
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+from decimal import Decimal
+from uuid import UUID
 
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel
 
 from ..auth import require_user
 from ..db import get_conn
@@ -8,7 +11,72 @@ from ..db import get_conn
 router = APIRouter(prefix="/api", tags=["dashboard"])
 
 
-@router.get("/dashboard")
+# ---- Response models -------------------------------------------------------
+# Declared so the openapi spec includes the dashboard's response shape and
+# the SPA can codegen typed access to it. Field names match the SQL
+# aliases below 1:1 so asyncpg Records serialize directly.
+
+class DashboardStats(BaseModel):
+    my_open_followups: int
+    my_overdue_followups: int
+    outstanding_total: Decimal
+    overdue_invoice_count: int
+    active_engagements: int
+    uninvoiced_total: Decimal
+
+
+class DashboardFollowup(BaseModel):
+    id: UUID
+    title: str
+    due_date: date
+    engagement_id: UUID
+    family_id: UUID
+    household_name: str
+
+
+class DashboardInvoice(BaseModel):
+    id: UUID
+    invoice_number: str
+    total: Decimal
+    due_date: date | None
+    status: str
+    engagement_id: UUID
+    family_id: UUID
+    household_name: str
+
+
+class DashboardNote(BaseModel):
+    id: UUID
+    kind: str
+    occurred_on: date
+    title: str | None
+    created_at: datetime
+    engagement_id: UUID
+    family_id: UUID
+    household_name: str
+    created_by_name: str | None
+
+
+class DashboardAuditEntry(BaseModel):
+    ts: datetime
+    table_name: str
+    action: str
+    user_email: str | None
+
+
+class DashboardResponse(BaseModel):
+    today: date
+    week_out: date
+    stats: DashboardStats
+    my_followups: list[DashboardFollowup]
+    outstanding_invoices: list[DashboardInvoice]
+    recent_notes: list[DashboardNote]
+    audit: list[DashboardAuditEntry]
+
+
+# ---- Route -----------------------------------------------------------------
+
+@router.get("/dashboard", response_model=DashboardResponse)
 async def dashboard(user=Depends(require_user), conn=Depends(get_conn)):
     """Single roll-up endpoint for the SPA's home page. Mirrors what
     hillco-portal's /home rendered: my-stats, my open followups,
@@ -93,8 +161,8 @@ async def dashboard(user=Depends(require_user), conn=Depends(get_conn)):
     )
 
     return {
-        "today": today.isoformat(),
-        "week_out": (today + timedelta(days=7)).isoformat(),
+        "today": today,
+        "week_out": today + timedelta(days=7),
         "stats": dict(stats) if stats else None,
         "my_followups": [dict(r) for r in my_followups],
         "outstanding_invoices": [dict(r) for r in outstanding_invoices],

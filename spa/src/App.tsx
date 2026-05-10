@@ -3,7 +3,7 @@ import { Route, Routes } from "react-router-dom";
 
 import { AppShell } from "./layout/AppShell";
 import { AuthProvider, redirectToLogin, useAuth } from "./auth";
-import { Home } from "./pages/Home";
+import { Dashboard } from "./pages/Dashboard";
 
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -43,7 +43,7 @@ export function App() {
       <AuthGate>
         <Routes>
           <Route element={<AppShell />}>
-            <Route path="/" element={<Home />} />
+            <Route path="/" element={<Dashboard />} />
             <Route path="*" element={<NotFound />} />
           </Route>
         </Routes>
