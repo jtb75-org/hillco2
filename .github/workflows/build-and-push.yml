@@ -33,27 +33,15 @@ jobs:
     name: Lint (ruff)
     runs-on: jtb75-arc
     container:
-      image: zot.lan.ng20.org/atlas/builder:latest
+      # In-repo builder image, pinned by digest. ruff is baked in;
+      # the previous atlas/builder + curl-install dance is gone.
+      # Bump the digest in lockstep with Dockerfile.builder changes
+      # — a Dockerfile.builder PR rebuilds and prints a new sha256.
+      image: zot.lan.ng20.org/hillco2-builder@sha256:11c35fca4153f628ab6451623a32f89ed6dddddb4a2a9da57c1690f201cf50aa
     timeout-minutes: 5
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Install ruff
-        env:
-          RUFF_VERSION: 0.15.12
-        run: |
-          case "$(uname -m)" in
-            x86_64) ARCH="x86_64-unknown-linux-musl" ;;
-            aarch64|arm64) ARCH="aarch64-unknown-linux-musl" ;;
-            *) echo "unsupported arch $(uname -m)"; exit 1 ;;
-          esac
-          curl -fsSL -o /tmp/ruff.tar.gz \
-            "https://github.com/astral-sh/ruff/releases/download/${RUFF_VERSION}/ruff-${ARCH}.tar.gz"
-          tar -xzf /tmp/ruff.tar.gz -C /tmp
-          mv /tmp/ruff-*/ruff /usr/local/bin/ruff
-          chmod +x /usr/local/bin/ruff
-          ruff --version
 
       - name: Run ruff
         run: ruff check .
