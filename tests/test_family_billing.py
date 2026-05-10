@@ -129,40 +129,48 @@ async def test_billing_parent_id_null_when_unset(authed_client):
 # ---- Partial unique invariants -----------------------------------------
 
 async def test_db_rejects_two_billing_contacts_per_family(db_pool):
-    """Belt-and-braces: even bypassing the routes, the partial UNIQUE
-    must reject a second billing contact for the same family."""
+    """Belt-and-braces against the new family_guardians junction:
+    partial UNIQUE on (family_id) WHERE is_billing_contact must reject
+    a second billing contact even if the route layer is bypassed."""
     async with db_pool.acquire() as conn:
         family_id = await conn.fetchval(
             "INSERT INTO families (household_name) VALUES ($1) RETURNING id",
             f"DupBill-{uuid4()}",
         )
+        p1 = await conn.fetchval(
+            "INSERT INTO people (kind, first_name) VALUES ('guardian', 'A') RETURNING id"
+        )
+        p2 = await conn.fetchval(
+            "INSERT INTO people (kind, first_name) VALUES ('guardian', 'B') RETURNING id"
+        )
         await conn.execute(
-            "INSERT INTO parents (family_id, name, is_billing_contact) VALUES ($1, 'A', TRUE)",
-            family_id,
+            "INSERT INTO family_guardians (family_id, person_id, is_billing_contact) VALUES ($1, $2, TRUE)",
+            family_id, p1,
         )
         with pytest.raises(asyncpg.UniqueViolationError):
             await conn.execute(
-                "INSERT INTO parents (family_id, name, is_billing_contact) VALUES ($1, 'B', TRUE)",
-                family_id,
+                "INSERT INTO family_guardians (family_id, person_id, is_billing_contact) VALUES ($1, $2, TRUE)",
+                family_id, p2,
             )
 
 
 async def test_db_allows_zero_billing_contacts_per_family(db_pool):
-    """Partial unique only constrains when is_billing_contact is TRUE.
-    Multiple non-billing parents are fine."""
+    """Partial unique only constrains TRUE rows. Multiple non-billing
+    guardians are fine on the family_guardians junction."""
     async with db_pool.acquire() as conn:
         family_id = await conn.fetchval(
             "INSERT INTO families (household_name) VALUES ($1) RETURNING id",
             f"NoBill-{uuid4()}",
         )
-        await conn.execute(
-            "INSERT INTO parents (family_id, name, is_billing_contact) VALUES ($1, 'A', FALSE)",
-            family_id,
-        )
-        await conn.execute(
-            "INSERT INTO parents (family_id, name, is_billing_contact) VALUES ($1, 'B', FALSE)",
-            family_id,
-        )
+        for label in ("A", "B"):
+            person_id = await conn.fetchval(
+                "INSERT INTO people (kind, first_name) VALUES ('guardian', $1) RETURNING id",
+                label,
+            )
+            await conn.execute(
+                "INSERT INTO family_guardians (family_id, person_id, is_billing_contact) VALUES ($1, $2, FALSE)",
+                family_id, person_id,
+            )
 
 
 async def test_route_demotion_handles_successive_billing_promotions(authed_client):

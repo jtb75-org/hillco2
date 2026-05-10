@@ -372,7 +372,7 @@
           "families"
         ],
         "summary": "Delete Parent",
-        "description": "Hard delete \u2014 parents have no deleted_at column. The schema cascades\nappropriately (ON DELETE CASCADE from families covers the family-deletion\ncase; this endpoint is for explicit per-row removal).",
+        "description": "Detach the person from the family. The person row stays in\n`people` (and any audit_log entries referencing this id remain\nvalid); only the family_guardians junction row is removed. If\nyou want to fully remove the person from the address book,\nsoft-delete via people.deleted_at \u2014 a future endpoint.",
         "operationId": "delete_parent_api_parents__parent_id__delete",
         "parameters": [
           {
