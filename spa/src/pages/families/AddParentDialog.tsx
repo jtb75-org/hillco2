@@ -130,10 +130,13 @@ export function AddParentDialog({
   };
 
   const submitLabel = mode.kind === "picked" ? "Link" : "Add";
+  const billingMissing =
+    isBilling && (!email.trim() || !street1.trim() || !postalCode.trim());
   const submitDisabled =
     create.isPending ||
     mode.kind === "searching" ||
-    (mode.kind === "creating" && !firstName.trim());
+    (mode.kind === "creating" &&
+      (!firstName.trim() || !lastName.trim() || billingMissing));
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
@@ -209,8 +212,9 @@ export function AddParentDialog({
                       inputProps={{ maxLength: 100 }}
                     />
                   </LabeledField>
-                  <LabeledField label="Last name">
+                  <LabeledField label="Last name" required>
                     <TextField
+                      required
                       value={lastName}
                       onChange={(e) => setLastName(e.target.value)}
                       fullWidth
@@ -219,9 +223,10 @@ export function AddParentDialog({
                   </LabeledField>
                 </Stack>
                 <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-                  <LabeledField label="Email">
+                  <LabeledField label="Email" required={isBilling}>
                     <TextField
                       type="email"
+                      required={isBilling}
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       fullWidth
@@ -235,9 +240,10 @@ export function AddParentDialog({
                     />
                   </LabeledField>
                 </Stack>
-                <LabeledField label="Street address">
+                <LabeledField label="Street address" required={isBilling}>
                   <TextField
                     placeholder="123 Main St"
+                    required={isBilling}
                     value={street1}
                     onChange={(e) => setStreet1(e.target.value)}
                     fullWidth
@@ -276,9 +282,10 @@ export function AddParentDialog({
                     </LabeledField>
                   </Box>
                   <Box sx={{ flex: 1 }}>
-                    <LabeledField label="ZIP / postal">
+                    <LabeledField label="ZIP / postal" required={isBilling}>
                       <TextField
                         placeholder="62701"
+                        required={isBilling}
                         value={postalCode}
                         onChange={(e) => setPostalCode(e.target.value)}
                         fullWidth
