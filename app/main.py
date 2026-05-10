@@ -21,6 +21,8 @@ from .routes import followups as followups_routes
 from .routes import health as health_routes
 from .routes import me as me_routes
 from .routes import notes as notes_routes
+from .routes import recommendations as recommendations_routes
+from .routes import school_visits as school_visits_routes
 from .routes import schools as schools_routes
 from .routes import students as students_routes
 from .routes import time_entries as time_entries_routes
@@ -160,4 +162,6 @@ app.include_router(notes_routes.router)
 app.include_router(followups_routes.router)
 app.include_router(time_entries_routes.router)
 app.include_router(expenses_routes.router)
+app.include_router(school_visits_routes.router)
+app.include_router(recommendations_routes.router)
 app.include_router(dashboard_routes.router)
