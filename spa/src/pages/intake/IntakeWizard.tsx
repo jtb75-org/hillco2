@@ -25,6 +25,7 @@ import { api } from "../../api/client";
 import type { components } from "../../api/schema";
 import { LabeledField } from "../../components/LabeledField";
 import { PersonSearchField } from "../../components/PersonSearchField";
+import { useSnackbar } from "../../components/Snackbar";
 
 type ParentCreate = components["schemas"]["ParentCreate"];
 
@@ -46,6 +47,7 @@ interface WizardState {
   familyId: string | null;
   familyName: string | null;
   guardianIds: string[];
+  studentIds: string[];
 }
 
 export function IntakeWizard() {
@@ -54,6 +56,7 @@ export function IntakeWizard() {
     familyId: null,
     familyName: null,
     guardianIds: [],
+    studentIds: [],
   });
 
   return (
@@ -93,12 +96,27 @@ export function IntakeWizard() {
             onContinue={() => setStep(2)}
           />
         )}
-        {step >= 2 && (
-          <ComingSoon
-            label={STEPS[step]}
-            onBack={() => setStep(step - 1)}
+        {step === 2 && state.familyId && state.familyName && (
+          <StudentsStep
             familyId={state.familyId}
+            familyName={state.familyName}
+            onBack={() => setStep(1)}
+            onContinue={(ids) => {
+              setState((s) => ({ ...s, studentIds: ids }));
+              setStep(3);
+            }}
           />
+        )}
+        {step === 3 && state.familyName && state.studentIds.length > 0 && (
+          <AtAGlanceStep
+            familyName={state.familyName}
+            studentIds={state.studentIds}
+            onBack={() => setStep(2)}
+            onContinue={() => setStep(4)}
+          />
+        )}
+        {step === 4 && (
+          <DoneStep familyId={state.familyId} familyName={state.familyName} />
         )}
       </Paper>
     </Stack>
@@ -121,6 +139,7 @@ function FamilyStep({
   initialFamilyId: string | null;
   onCommit: (familyId: string, householdName: string) => void;
 }) {
+  const snackbar = useSnackbar();
   const [mode, setMode] = useState<"existing" | "new">("existing");
   const [existingId, setExistingId] = useState<string | null>(initialFamilyId);
   const [existingName, setExistingName] = useState<string | null>(null);
@@ -150,11 +169,15 @@ function FamilyStep({
       }
       return data as unknown as { id: string; household_name: string };
     },
-    onSuccess: (row) => onCommit(row.id, row.household_name),
+    onSuccess: (row) => {
+      snackbar.show(`${row.household_name} family created`);
+      onCommit(row.id, row.household_name);
+    },
   });
 
   const handleContinue = () => {
     if (mode === "existing" && existingId && existingName) {
+      snackbar.show(`Continuing with ${existingName} family`, "info");
       onCommit(existingId, existingName);
     } else if (mode === "new" && householdName.trim()) {
       create.mutate();
@@ -346,6 +369,7 @@ function GuardiansStep({
           {adding ? (
             <AddGuardianInline
               familyId={familyId}
+              familyName={familyName}
               onAdded={onAdded}
               onCancel={() => setAdding(false)}
             />
@@ -378,13 +402,16 @@ function GuardiansStep({
 
 function AddGuardianInline({
   familyId,
+  familyName,
   onAdded,
   onCancel,
 }: {
   familyId: string;
+  familyName: string;
   onAdded: () => void;
   onCancel: () => void;
 }) {
+  const snackbar = useSnackbar();
   const [picked, setPicked] = useState<{
     kind: "existing";
     personId: string;
@@ -396,7 +423,7 @@ function AddGuardianInline({
   } | null>(null);
 
   const create = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (): Promise<string> => {
       if (!picked) throw new Error("nothing to add");
       const body: ParentCreate =
         picked.kind === "existing"
@@ -423,8 +450,16 @@ function AddGuardianInline({
           "Failed to add guardian.";
         throw new Error(msg);
       }
+      // Return the display name so onSuccess can spell out the toast.
+      return picked.kind === "existing"
+        ? picked.label
+        : `${picked.firstName.trim()}${picked.lastName.trim() ? " " + picked.lastName.trim() : ""}`;
     },
-    onSuccess: onAdded,
+    onSuccess: (name) => {
+      const verb = picked?.kind === "existing" ? "linked" : "added";
+      snackbar.show(`${name} ${verb} to ${familyName} family`);
+      onAdded();
+    },
   });
 
   const submitDisabled =
@@ -515,38 +550,468 @@ function AddGuardianInline({
   );
 }
 
-// ---- Steps 3-5: placeholders ----------------------------------------------
+// ---- Step 3: Students ------------------------------------------------------
 
-function ComingSoon({
-  label,
-  onBack,
+interface FamilyStudent {
+  id: string;
+  name: string;
+  current_grade: string | null;
+}
+
+function StudentsStep({
   familyId,
+  familyName,
+  onBack,
+  onContinue,
 }: {
-  label: string;
+  familyId: string;
+  familyName: string;
   onBack: () => void;
+  onContinue: (studentIds: string[]) => void;
+}) {
+  const qc = useQueryClient();
+  const family = useQuery({
+    queryKey: ["families", familyId, "wizard-students"],
+    queryFn: async () => {
+      const { data, error } = await api.GET("/api/families/{family_id}", {
+        params: { path: { family_id: familyId } },
+      });
+      if (error || !data) throw new Error("Failed to load family.");
+      return data as unknown as { students: FamilyStudent[] };
+    },
+  });
+  const students = family.data?.students ?? [];
+  const [adding, setAdding] = useState(students.length === 0);
+
+  const onAdded = () => {
+    setAdding(false);
+    qc.invalidateQueries({ queryKey: ["families", familyId, "wizard-students"] });
+  };
+
+  return (
+    <Stack spacing={3}>
+      <Box>
+        <Typography variant="overline" color="text.secondary">
+          Step 3
+        </Typography>
+        <Typography variant="h6" sx={{ fontWeight: 600 }}>
+          Students in {familyName}
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          Add the student(s) we're working with. DOB, grade, school, and
+          clinical details land on the student page; you'll set the
+          high-level flags in the next step.
+        </Typography>
+      </Box>
+
+      {family.isPending ? (
+        <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
+          <CircularProgress size={28} />
+        </Box>
+      ) : (
+        <Stack spacing={1.5}>
+          {students.map((s) => (
+            <Paper key={s.id} variant="outlined" sx={{ p: 2 }}>
+              <Stack direction="row" alignItems="center" spacing={1}>
+                <Box sx={{ flex: 1 }}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                    {s.name}
+                  </Typography>
+                  {s.current_grade && (
+                    <Typography variant="caption" color="text.secondary">
+                      Grade {s.current_grade}
+                    </Typography>
+                  )}
+                </Box>
+              </Stack>
+            </Paper>
+          ))}
+
+          {adding ? (
+            <AddStudentInline
+              familyId={familyId}
+              familyName={familyName}
+              onAdded={onAdded}
+              onCancel={() => setAdding(false)}
+            />
+          ) : (
+            <Button
+              variant="outlined"
+              onClick={() => setAdding(true)}
+              sx={{ alignSelf: "flex-start" }}
+            >
+              + Add a student
+            </Button>
+          )}
+        </Stack>
+      )}
+
+      <Divider />
+      <Stack direction="row" justifyContent="space-between">
+        <Button onClick={onBack}>Back</Button>
+        <Button
+          variant="contained"
+          onClick={() => onContinue(students.map((s) => s.id))}
+          disabled={students.length === 0 || adding}
+        >
+          Continue
+        </Button>
+      </Stack>
+    </Stack>
+  );
+}
+
+function AddStudentInline({
+  familyId,
+  familyName,
+  onAdded,
+  onCancel,
+}: {
+  familyId: string;
+  familyName: string;
+  onAdded: () => void;
+  onCancel: () => void;
+}) {
+  const snackbar = useSnackbar();
+  const [picked, setPicked] = useState<{
+    kind: "existing";
+    personId: string;
+    label: string;
+  } | {
+    kind: "creating";
+    firstName: string;
+    lastName: string;
+    grade: string;
+  } | null>(null);
+
+  const create = useMutation({
+    mutationFn: async (): Promise<string> => {
+      if (!picked) throw new Error("nothing to add");
+      const body =
+        picked.kind === "existing"
+          ? { person_id: picked.personId }
+          : {
+              first_name: picked.firstName.trim(),
+              last_name: picked.lastName.trim() || null,
+              current_grade: picked.grade.trim() || null,
+            };
+      const { error: respError } = await api.POST(
+        "/api/families/{family_id}/students",
+        { params: { path: { family_id: familyId } }, body: body as never },
+      );
+      if (respError) {
+        const msg =
+          (respError as { detail?: string } | undefined)?.detail ??
+          "Failed to add student.";
+        throw new Error(msg);
+      }
+      return picked.kind === "existing"
+        ? picked.label
+        : `${picked.firstName.trim()}${picked.lastName.trim() ? " " + picked.lastName.trim() : ""}`;
+    },
+    onSuccess: (name) => {
+      const verb = picked?.kind === "existing" ? "linked" : "added";
+      snackbar.show(`${name} ${verb} to ${familyName} family`);
+      onAdded();
+    },
+  });
+
+  const submitDisabled =
+    create.isPending ||
+    !picked ||
+    (picked.kind === "creating" && (!picked.firstName.trim() || !picked.lastName.trim()));
+
+  return (
+    <Paper variant="outlined" sx={{ p: 2, borderStyle: "dashed" }}>
+      <Stack spacing={2}>
+        {!picked && (
+          <LabeledField
+            label="Search or add"
+            helperText="Search existing students, or type a new name and pick &quot;Add new&quot;."
+          >
+            <PersonSearchField
+              autoFocus
+              kind="student"
+              onPickExisting={(person) =>
+                setPicked({
+                  kind: "existing",
+                  personId: person.id,
+                  label: `${person.first_name}${person.last_name ? " " + person.last_name : ""}`.trim(),
+                })
+              }
+              onCreateNew={(typed) => {
+                const trimmed = typed.trim();
+                const idx = trimmed.indexOf(" ");
+                setPicked({
+                  kind: "creating",
+                  firstName: idx === -1 ? trimmed : trimmed.slice(0, idx),
+                  lastName: idx === -1 ? "" : trimmed.slice(idx + 1).trim(),
+                  grade: "",
+                });
+              }}
+            />
+          </LabeledField>
+        )}
+
+        {picked?.kind === "existing" && (
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Typography variant="body2">Linking</Typography>
+            <Chip label={picked.label} onDelete={() => setPicked(null)} />
+          </Stack>
+        )}
+
+        {picked?.kind === "creating" && (
+          <>
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+              <LabeledField label="First name" required>
+                <TextField
+                  required
+                  value={picked.firstName}
+                  onChange={(e) =>
+                    setPicked({ ...picked, firstName: e.target.value })
+                  }
+                  fullWidth
+                  inputProps={{ maxLength: 100 }}
+                />
+              </LabeledField>
+              <LabeledField label="Last name" required>
+                <TextField
+                  required
+                  value={picked.lastName}
+                  onChange={(e) =>
+                    setPicked({ ...picked, lastName: e.target.value })
+                  }
+                  fullWidth
+                  inputProps={{ maxLength: 100 }}
+                />
+              </LabeledField>
+            </Stack>
+            <LabeledField label="Current grade">
+              <TextField
+                placeholder='e.g. "8th"'
+                value={picked.grade}
+                onChange={(e) =>
+                  setPicked({ ...picked, grade: e.target.value })
+                }
+                fullWidth
+              />
+            </LabeledField>
+          </>
+        )}
+
+        {create.error && <Alert severity="error">{create.error.message}</Alert>}
+
+        <Stack direction="row" spacing={1} justifyContent="flex-end">
+          <Button onClick={onCancel} disabled={create.isPending}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            disabled={submitDisabled}
+            onClick={() => create.mutate()}
+          >
+            {create.isPending ? "Saving…" : "Add student"}
+          </Button>
+        </Stack>
+      </Stack>
+    </Paper>
+  );
+}
+
+// ---- Step 4: At a glance ---------------------------------------------------
+
+// Compact view of the same flags the student detail page edits — chip
+// toggles only (no notes/level popovers here, so the wizard stays
+// quick). Operators land on the student page for full editing.
+interface StudentFlags {
+  id: string;
+  name: string;
+  has_504: boolean;
+  has_iep: boolean;
+  has_learning_disability: boolean;
+  has_adhd: boolean;
+  has_intellectual_disability: boolean;
+  has_health_impairment: boolean;
+  has_emotional_disturbance: boolean;
+  autism_level: 1 | 2 | 3 | null;
+  diagnosis_other: string | null;
+}
+
+function AtAGlanceStep({
+  familyName,
+  studentIds,
+  onBack,
+  onContinue,
+}: {
+  familyName: string;
+  studentIds: string[];
+  onBack: () => void;
+  onContinue: () => void;
+}) {
+  return (
+    <Stack spacing={3}>
+      <Box>
+        <Typography variant="overline" color="text.secondary">
+          Step 4
+        </Typography>
+        <Typography variant="h6" sx={{ fontWeight: 600 }}>
+          At a glance
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          Mark the flags that apply to each student. Notes, autism level,
+          and "Other" details land on the student page for fuller entry —
+          this step is just the quick-tick first pass.
+        </Typography>
+      </Box>
+
+      <Stack spacing={3}>
+        {studentIds.map((id) => (
+          <StudentFlagsBlock key={id} studentId={id} familyName={familyName} />
+        ))}
+      </Stack>
+
+      <Divider />
+      <Stack direction="row" justifyContent="space-between">
+        <Button onClick={onBack}>Back</Button>
+        <Button variant="contained" onClick={onContinue}>
+          Continue
+        </Button>
+      </Stack>
+    </Stack>
+  );
+}
+
+function StudentFlagsBlock({
+  studentId,
+  familyName,
+}: {
+  studentId: string;
+  familyName: string;
+}) {
+  const qc = useQueryClient();
+  const snackbar = useSnackbar();
+  const { data } = useQuery<StudentFlags, Error>({
+    queryKey: ["students", studentId, "flags"],
+    queryFn: async () => {
+      const { data, error } = await api.GET("/api/students/{student_id}", {
+        params: { path: { student_id: studentId } },
+      });
+      if (error || !data) throw new Error("Failed to load student.");
+      return data as unknown as StudentFlags;
+    },
+  });
+
+  const patch = useMutation({
+    mutationFn: async (body: Record<string, unknown>) => {
+      const { error } = await api.PATCH("/api/students/{student_id}", {
+        params: { path: { student_id: studentId } },
+        body: body as never,
+      });
+      if (error) {
+        const msg = (error as { detail?: string }).detail ?? "Save failed.";
+        throw new Error(msg);
+      }
+    },
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["students", studentId, "flags"] }),
+    onError: (e: Error) => snackbar.show(e.message, "error"),
+  });
+
+  if (!data) {
+    return (
+      <Box sx={{ display: "flex", justifyContent: "center", py: 2 }}>
+        <CircularProgress size={20} />
+      </Box>
+    );
+  }
+
+  // Don't mention the family on every flag click — it'd be too noisy.
+  // We just toast a one-time confirm when at least one flag is set,
+  // when the operator clicks Continue. For now, silent on toggles.
+  void familyName;
+
+  const flags: Array<[string, keyof StudentFlags, boolean]> = [
+    ["504 Plan", "has_504", data.has_504],
+    ["IEP", "has_iep", data.has_iep],
+    ["Learning disability", "has_learning_disability", data.has_learning_disability],
+    ["ADHD / ADD", "has_adhd", data.has_adhd],
+    ["Intellectual disability", "has_intellectual_disability", data.has_intellectual_disability],
+    ["Health impairment", "has_health_impairment", data.has_health_impairment],
+    ["Emotional disturbance", "has_emotional_disturbance", data.has_emotional_disturbance],
+  ];
+
+  return (
+    <Paper variant="outlined" sx={{ p: 2 }}>
+      <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
+        {data.name}
+      </Typography>
+      <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ gap: 1 }}>
+        {flags.map(([label, key, on]) => (
+          <Chip
+            key={key}
+            label={label}
+            clickable
+            color={on ? "primary" : "default"}
+            variant={on ? "filled" : "outlined"}
+            onClick={() => patch.mutate({ [key]: !on })}
+          />
+        ))}
+        <Chip
+          label={data.autism_level ? `Autism ${data.autism_level}` : "Autism"}
+          clickable
+          color={data.autism_level ? "primary" : "default"}
+          variant={data.autism_level ? "filled" : "outlined"}
+          onClick={() =>
+            patch.mutate({ autism_level: data.autism_level ? null : 1 })
+          }
+        />
+        <Chip
+          label="Other"
+          clickable
+          color={data.diagnosis_other ? "primary" : "default"}
+          variant={data.diagnosis_other ? "filled" : "outlined"}
+          onClick={() =>
+            patch.mutate({
+              diagnosis_other: data.diagnosis_other ? null : "(see student page)",
+            })
+          }
+        />
+      </Stack>
+    </Paper>
+  );
+}
+
+// ---- Step 5: Done ----------------------------------------------------------
+
+function DoneStep({
+  familyId,
+  familyName,
+}: {
   familyId: string | null;
+  familyName: string | null;
 }) {
   const navigate = useNavigate();
   return (
     <Stack spacing={3}>
       <Box>
         <Typography variant="overline" color="text.secondary">
-          {label}
+          Step 5
         </Typography>
-        <Typography variant="h6" sx={{ fontWeight: 600 }}>
-          Coming soon
+        <Typography variant="h4" sx={{ fontWeight: 600, mb: 0.5 }}>
+          {familyName ? `${familyName} family is set up.` : "Setup complete."}
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          The remaining wizard steps land in a follow-up PR. In the
-          meantime you can finish setup on the family page directly.
+          The family, guardian(s), and student(s) are all saved. Next
+          steps: fill in email + address on guardians, and capture
+          notes, autism level, or "Other" detail on the student page.
         </Typography>
       </Box>
       <Divider />
-      <Stack direction="row" justifyContent="space-between">
-        <Button onClick={onBack}>Back</Button>
+      <Stack direction="row" justifyContent="flex-end" spacing={1}>
+        <Button onClick={() => navigate("/")}>Back to home</Button>
         {familyId && (
           <Button variant="contained" onClick={() => navigate(`/families/${familyId}`)}>
-            Go to family page
+            Open family page
           </Button>
         )}
       </Stack>

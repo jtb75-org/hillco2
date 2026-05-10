@@ -8,6 +8,7 @@ import { BrowserRouter } from "react-router-dom";
 
 import { App } from "./App";
 import { queryClient } from "./queryClient";
+import { SnackbarProvider } from "./components/Snackbar";
 import { theme } from "./theme";
 
 createRoot(document.getElementById("root")!).render(
@@ -16,9 +17,11 @@ createRoot(document.getElementById("root")!).render(
       <CssBaseline />
       <LocalizationProvider dateAdapter={AdapterDayjs}>
         <QueryClientProvider client={queryClient}>
-          <BrowserRouter>
-            <App />
-          </BrowserRouter>
+          <SnackbarProvider>
+            <BrowserRouter>
+              <App />
+            </BrowserRouter>
+          </SnackbarProvider>
         </QueryClientProvider>
       </LocalizationProvider>
     </ThemeProvider>
