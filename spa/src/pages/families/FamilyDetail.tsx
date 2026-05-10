@@ -54,6 +54,16 @@ interface Student {
   id: string;
   name: string;
   current_grade: string | null;
+  // Clinical flags surface as small chips under the name. The full
+  // editing surface lives on /students/:id.
+  has_504?: boolean;
+  has_iep?: boolean;
+  has_learning_disability?: boolean;
+  has_adhd?: boolean;
+  has_intellectual_disability?: boolean;
+  has_health_impairment?: boolean;
+  has_emotional_disturbance?: boolean;
+  autism_level?: number | null;
 }
 interface Engagement {
   id: string;
@@ -365,10 +375,11 @@ function StudentsCard({
                       {s.name}
                     </Typography>
                     {s.current_grade && (
-                      <Typography variant="caption" color="text.secondary">
+                      <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
                         Grade {s.current_grade}
                       </Typography>
                     )}
+                    <StudentFlagChips student={s} />
                   </CardContent>
                 </CardActionArea>
                 <CardActionsMenu
@@ -528,5 +539,28 @@ function EngagementsCard({
         )}
       </CardContent>
     </Card>
+  );
+}
+
+// Compact active-flag chips for the student card. Hidden when nothing
+// is on; otherwise renders the labels for whichever flags are TRUE
+// plus "Autism N" when autism_level is set.
+function StudentFlagChips({ student: s }: { student: Student }) {
+  const chips: string[] = [];
+  if (s.has_504) chips.push("504");
+  if (s.has_iep) chips.push("IEP");
+  if (s.has_learning_disability) chips.push("LD");
+  if (s.autism_level != null) chips.push(`Autism ${s.autism_level}`);
+  if (s.has_adhd) chips.push("ADHD");
+  if (s.has_intellectual_disability) chips.push("Intellectual");
+  if (s.has_health_impairment) chips.push("Health");
+  if (s.has_emotional_disturbance) chips.push("Emotional");
+  if (chips.length === 0) return null;
+  return (
+    <Stack direction="row" spacing={0.5} flexWrap="wrap" sx={{ mt: 1, gap: 0.5 }}>
+      {chips.map((c) => (
+        <Chip key={c} size="small" label={c} variant="outlined" />
+      ))}
+    </Stack>
   );
 }
