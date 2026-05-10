@@ -12,7 +12,9 @@ router = APIRouter(prefix="/api", tags=["learning_profiles"])
 # ---- I/O models ------------------------------------------------------------
 
 class ProfileCreate(BaseModel):
-    student_id: UUID
+    # student_id is no longer accepted: the engagement uniquely determines
+    # the student under the new spine. Kept off the request to make the
+    # model match the DB invariant.
     strengths: str | None = None
     challenges: str | None = None
     accommodations_needed: str | None = None
@@ -31,25 +33,13 @@ class ProfileUpdate(BaseModel):
 # ---- Helpers ---------------------------------------------------------------
 
 async def _engagement_or_404(conn, engagement_id: UUID):
-    if not await conn.fetchval(
-        "SELECT 1 FROM engagements WHERE id = $1 AND deleted_at IS NULL",
+    row = await conn.fetchrow(
+        "SELECT student_id FROM engagements WHERE id = $1 AND deleted_at IS NULL",
         engagement_id,
-    ):
-        raise HTTPException(status_code=404, detail="Engagement not found")
-
-
-async def _student_in_engagement(conn, engagement_id: UUID, student_id: UUID) -> bool:
-    return bool(
-        await conn.fetchval(
-            """
-            SELECT 1
-            FROM engagement_students es
-            JOIN students s ON s.id = es.student_id AND s.deleted_at IS NULL
-            WHERE es.engagement_id = $1 AND es.student_id = $2
-            """,
-            engagement_id, student_id,
-        )
     )
+    if not row:
+        raise HTTPException(status_code=404, detail="Engagement not found")
+    return row
 
 
 async def _profile_or_404(conn, profile_id: UUID):
@@ -77,18 +67,20 @@ async def list_profiles(
     await _engagement_or_404(conn, engagement_id)
     rows = await conn.fetch(
         """
-        SELECT lp.id, lp.engagement_id, lp.student_id,
+        SELECT lp.id, lp.engagement_id,
                lp.strengths, lp.challenges,
                lp.accommodations_needed, lp.services_needed,
                lp.summary, lp.finalized_at,
                lp.created_by, lp.created_at, lp.updated_at,
+               e.student_id,
                s.name AS student_name, s.current_grade,
                u.name AS created_by_name
         FROM learning_profiles lp
-        JOIN students s ON s.id = lp.student_id
+        JOIN engagements e ON e.id = lp.engagement_id
+        JOIN students s ON s.id = e.student_id
         LEFT JOIN users u ON u.id = lp.created_by
         WHERE lp.engagement_id = $1
-        ORDER BY s.name
+        ORDER BY lp.created_at DESC
         """,
         engagement_id,
     )
@@ -102,37 +94,29 @@ async def add_profile(
     user=Depends(require_user),
     conn=Depends(get_conn),
 ):
-    """Creates a learning profile for the given (engagement, student). The
-    UNIQUE (engagement_id, student_id) constraint means there's only one
-    profile per pair — re-creating raises 409."""
+    """One learning profile per engagement (UNIQUE(engagement_id) at the
+    DB level). The student is implied by the engagement, so the request
+    body doesn't carry student_id."""
     await _engagement_or_404(conn, engagement_id)
-    if not await _student_in_engagement(conn, engagement_id, body.student_id):
-        raise HTTPException(
-            status_code=400,
-            detail="student_id is not on this engagement (check engagement_students)",
-        )
     if await conn.fetchval(
-        """
-        SELECT 1 FROM learning_profiles
-        WHERE engagement_id = $1 AND student_id = $2
-        """,
-        engagement_id, body.student_id,
+        "SELECT 1 FROM learning_profiles WHERE engagement_id = $1",
+        engagement_id,
     ):
         raise HTTPException(
             status_code=409,
-            detail="A learning profile already exists for this student in this engagement",
+            detail="A learning profile already exists for this engagement",
         )
 
-    fields = _normalize(body.model_dump(exclude={"student_id"}))
+    fields = _normalize(body.model_dump())
     row = await conn.fetchrow(
         """
         INSERT INTO learning_profiles (
-          engagement_id, student_id, strengths, challenges,
+          engagement_id, strengths, challenges,
           accommodations_needed, services_needed, summary, created_by
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING *
         """,
-        engagement_id, body.student_id,
+        engagement_id,
         fields["strengths"], fields["challenges"],
         fields["accommodations_needed"], fields["services_needed"],
         fields["summary"], user["id"],

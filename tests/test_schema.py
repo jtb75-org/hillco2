@@ -58,10 +58,12 @@ async def test_engagement_financial_summary_view_exists(db_pool):
     assert exists
 
 
-async def test_unique_engagement_student_learning_profile(db_pool):
-    """One profile per (engagement, student). Loosening this would let two
-    profiles for the same student in the same engagement co-exist, and the
-    SPA's lookup logic wouldn't know which to show."""
+async def test_unique_engagement_learning_profile(db_pool):
+    """One profile per engagement. Was UNIQUE(engagement_id, student_id) in
+    the M:N era; migration 0002 collapsed it to UNIQUE(engagement_id) once
+    each engagement was guaranteed exactly one student. Loosening this
+    would let two profiles for the same engagement co-exist and the SPA's
+    lookup logic wouldn't know which to show."""
     async with db_pool.acquire() as conn:
         rows = await conn.fetch(
             """
@@ -74,4 +76,4 @@ async def test_unique_engagement_student_learning_profile(db_pool):
             """
         )
     cols_sets = [tuple(r["cols"]) for r in rows]
-    assert ("engagement_id", "student_id") in cols_sets
+    assert ("engagement_id",) in cols_sets

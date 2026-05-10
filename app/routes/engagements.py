@@ -20,6 +20,7 @@ StatusFilter = Literal["active", "completed", "cancelled", "all"]
 # ---- I/O models ------------------------------------------------------------
 
 class EngagementCreate(BaseModel):
+    student_id: UUID
     engagement_type: EngagementType = "assessment"
     start_date: date | None = None
     target_end_date: date | None = None
@@ -27,7 +28,6 @@ class EngagementCreate(BaseModel):
     default_hourly_rate: Decimal | None = None
     lead_consultant_id: UUID | None = None  # defaults to the requester
     notes: str | None = None
-    student_ids: list[UUID] = Field(default_factory=list)
 
 
 class EngagementUpdate(BaseModel):
@@ -39,8 +39,9 @@ class EngagementUpdate(BaseModel):
     default_hourly_rate: Decimal | None = None
     lead_consultant_id: UUID | None = None
     notes: str | None = None
-    # When set, replaces the full engagement_students set. Pass [] to clear.
-    student_ids: list[UUID] | None = None
+    # Reassignment is rare but supported. Must belong to the same family;
+    # the DB-level composite FK on (student_id, family_id) enforces this.
+    student_id: UUID | None = None
 
 
 class StatusUpdate(BaseModel):
@@ -76,27 +77,22 @@ async def _engagement_or_404(conn, engagement_id: UUID):
     return row
 
 
-async def _replace_engagement_students(conn, engagement_id: UUID, family_id: UUID, student_ids: list[UUID]):
-    """Replace the full engagement_students set. Filters out students that
-    don't belong to the engagement's family — defends against stale or forged
-    UUIDs in the request without trusting client input."""
-    await conn.execute(
-        "DELETE FROM engagement_students WHERE engagement_id = $1",
-        engagement_id,
+async def _validate_student_in_family(conn, student_id: UUID, family_id: UUID) -> None:
+    """Refuse student/family combinations the DB's composite FK would reject.
+    Same check as the FK, but lets us return a clean 400 with a helpful
+    message instead of letting the constraint raise."""
+    belongs = await conn.fetchval(
+        """
+        SELECT 1 FROM students
+        WHERE id = $1 AND family_id = $2 AND deleted_at IS NULL
+        """,
+        student_id, family_id,
     )
-    for sid in student_ids:
-        belongs = await conn.fetchval(
-            """
-            SELECT 1 FROM students
-            WHERE id = $1 AND family_id = $2 AND deleted_at IS NULL
-            """,
-            sid, family_id,
+    if not belongs:
+        raise HTTPException(
+            status_code=400,
+            detail="student_id does not belong to this family.",
         )
-        if belongs:
-            await conn.execute(
-                "INSERT INTO engagement_students (engagement_id, student_id) VALUES ($1, $2)",
-                engagement_id, sid,
-            )
 
 
 async def _requirement_or_404(conn, requirement_id: UUID):
@@ -159,24 +155,24 @@ async def create_engagement(
     ):
         raise HTTPException(status_code=404, detail="Family not found")
 
+    await _validate_student_in_family(conn, body.student_id, family_id)
+
     lead_id = body.lead_consultant_id or user["id"]
     notes = (body.notes or "").strip() or None
 
     eng_id = await conn.fetchval(
         """
         INSERT INTO engagements (
-          family_id, engagement_type, status,
+          family_id, student_id, engagement_type, status,
           start_date, target_end_date,
           package_fee, default_hourly_rate, lead_consultant_id, notes
-        ) VALUES ($1, $2, 'in_progress', $3, $4, $5, $6, $7, $8)
+        ) VALUES ($1, $2, $3, 'in_progress', $4, $5, $6, $7, $8, $9)
         RETURNING id
         """,
-        family_id, body.engagement_type,
+        family_id, body.student_id, body.engagement_type,
         body.start_date, body.target_end_date,
         body.package_fee, body.default_hourly_rate, lead_id, notes,
     )
-
-    await _replace_engagement_students(conn, eng_id, family_id, body.student_ids)
 
     return await engagement_detail(eng_id, _user=user, conn=conn)
 
@@ -189,15 +185,13 @@ async def engagement_detail(
 ):
     engagement = await _engagement_or_404(conn, engagement_id)
 
-    students = await conn.fetch(
+    student = await conn.fetchrow(
         """
         SELECT s.id, s.name, s.dob, s.current_grade, s.current_school_id
-        FROM engagement_students es
-        JOIN students s ON s.id = es.student_id AND s.deleted_at IS NULL
-        WHERE es.engagement_id = $1
-        ORDER BY s.name
+        FROM students s
+        WHERE s.id = $1 AND s.deleted_at IS NULL
         """,
-        engagement_id,
+        engagement["student_id"],
     )
 
     requirements = await conn.fetch(
@@ -244,7 +238,7 @@ async def engagement_detail(
         if engagement["lead_consultant_name"] else None
     )
     out.pop("lead_consultant_name", None)
-    out["students"] = [dict(s) for s in students]
+    out["student"] = dict(student) if student else None
     out["requirements"] = [dict(r) for r in requirements]
     out["financial_summary"] = dict(finsum) if finsum else None
     out["counts"] = dict(counts) if counts else None
@@ -261,7 +255,8 @@ async def update_engagement(
     eng = await _engagement_or_404(conn, engagement_id)
 
     fields = body.model_dump(exclude_unset=True)
-    student_ids = fields.pop("student_ids", None)
+    if "student_id" in fields:
+        await _validate_student_in_family(conn, fields["student_id"], eng["family_id"])
     if "notes" in fields:
         fields["notes"] = (fields["notes"] or "").strip() or None
 
@@ -272,9 +267,6 @@ async def update_engagement(
             engagement_id,
             *fields.values(),
         )
-
-    if student_ids is not None:
-        await _replace_engagement_students(conn, engagement_id, eng["family_id"], student_ids)
 
     return await engagement_detail(engagement_id, _user=user, conn=conn)
 

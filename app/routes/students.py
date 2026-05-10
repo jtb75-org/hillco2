@@ -154,16 +154,15 @@ async def student_detail(
         """
         SELECT e.id, e.engagement_type, e.status, e.start_date, e.target_end_date,
                u.id AS lead_consultant_id, u.name AS lead_consultant_name
-        FROM engagement_students es
-        JOIN engagements e ON e.id = es.engagement_id AND e.deleted_at IS NULL
+        FROM engagements e
         LEFT JOIN users u ON u.id = e.lead_consultant_id
-        WHERE es.student_id = $1
+        WHERE e.student_id = $1 AND e.deleted_at IS NULL
         ORDER BY e.start_date DESC NULLS LAST, e.id DESC
         """,
         student_id,
     )
 
-    # Recent notes from any engagement that covers this student.
+    # Recent notes from any engagement for this student.
     notes = await conn.fetch(
         """
         SELECT n.id, n.kind, n.occurred_on, n.title, n.body, n.created_at,
@@ -171,9 +170,8 @@ async def student_detail(
                u.name AS created_by_name
         FROM notes n
         JOIN engagements e ON e.id = n.engagement_id AND e.deleted_at IS NULL
-        JOIN engagement_students es ON es.engagement_id = e.id
         LEFT JOIN users u ON u.id = n.created_by
-        WHERE es.student_id = $1
+        WHERE e.student_id = $1
         ORDER BY n.occurred_on DESC, n.id DESC
         LIMIT 30
         """,

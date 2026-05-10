@@ -3132,7 +3132,7 @@
           "learning_profiles"
         ],
         "summary": "Add Profile",
-        "description": "Creates a learning profile for the given (engagement, student). The\nUNIQUE (engagement_id, student_id) constraint means there's only one\nprofile per pair \u2014 re-creating raises 409.",
+        "description": "One learning profile per engagement (UNIQUE(engagement_id) at the\nDB level). The student is implied by the engagement, so the request\nbody doesn't carry student_id.",
         "operationId": "add_profile_api_engagements__engagement_id__learning_profiles_post",
         "parameters": [
           {
@@ -5746,6 +5746,11 @@
       },
       "EngagementCreate": {
         "properties": {
+          "student_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Student Id"
+          },
           "engagement_type": {
             "type": "string",
             "enum": [
@@ -5831,17 +5836,12 @@
               }
             ],
             "title": "Notes"
-          },
-          "student_ids": {
-            "items": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "type": "array",
-            "title": "Student Ids"
           }
         },
         "type": "object",
+        "required": [
+          "student_id"
+        ],
         "title": "EngagementCreate"
       },
       "EngagementUpdate": {
@@ -5955,20 +5955,17 @@
             ],
             "title": "Notes"
           },
-          "student_ids": {
+          "student_id": {
             "anyOf": [
               {
-                "items": {
-                  "type": "string",
-                  "format": "uuid"
-                },
-                "type": "array"
+                "type": "string",
+                "format": "uuid"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Student Ids"
+            "title": "Student Id"
           }
         },
         "type": "object",
@@ -7035,11 +7032,6 @@
       },
       "ProfileCreate": {
         "properties": {
-          "student_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Student Id"
-          },
           "strengths": {
             "anyOf": [
               {
@@ -7097,9 +7089,6 @@
           }
         },
         "type": "object",
-        "required": [
-          "student_id"
-        ],
         "title": "ProfileCreate"
       },
       "ProfileUpdate": {
