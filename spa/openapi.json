@@ -7837,7 +7837,8 @@
           "email": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "pattern": "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$"
               },
               {
                 "type": "null"
@@ -7903,7 +7904,8 @@
           "postal_code": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "pattern": "^\\d{5}(-\\d{4})?$"
               },
               {
                 "type": "null"
@@ -7990,7 +7992,8 @@
           "billing_postal_code": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "pattern": "^\\d{5}(-\\d{4})?$"
               },
               {
                 "type": "null"
@@ -8052,7 +8055,8 @@
           "email": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "pattern": "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$"
               },
               {
                 "type": "null"
@@ -8118,7 +8122,8 @@
           "postal_code": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "pattern": "^\\d{5}(-\\d{4})?$"
               },
               {
                 "type": "null"
@@ -8223,7 +8228,8 @@
           "billing_postal_code": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "pattern": "^\\d{5}(-\\d{4})?$"
               },
               {
                 "type": "null"
