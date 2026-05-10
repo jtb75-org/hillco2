@@ -40,7 +40,8 @@ DETAIL_TEXT_COLS = ("current_grade", "diagnosis_other", "needs_goals")
 # ---- I/O models ------------------------------------------------------------
 
 class StudentBase(BaseModel):
-    name: str | None = Field(default=None, min_length=1)
+    first_name: str | None = Field(default=None, min_length=1)
+    last_name: str | None = None
     dob: date | None = None
     current_school_id: UUID | None = None
     current_grade: str | None = None
@@ -64,8 +65,8 @@ class StudentCreate(StudentBase):
 
     @model_validator(mode="after")
     def _name_or_person_id(self):
-        if self.person_id is None and not (self.name or "").strip():
-            raise ValueError("Either person_id or name is required.")
+        if self.person_id is None and not (self.first_name or "").strip():
+            raise ValueError("Either person_id or first_name is required.")
         return self
 
 
@@ -74,17 +75,6 @@ class StudentUpdate(StudentBase):
 
 
 # ---- Helpers ---------------------------------------------------------------
-
-def _split_name(name: str) -> tuple[str, str | None]:
-    """Single-token names land entirely in first_name; whitespace-only
-    treated as empty first_name."""
-    name = (name or "").strip()
-    if not name:
-        return "", None
-    parts = name.split(None, 1)
-    if len(parts) == 1:
-        return parts[0], None
-    return parts[0], parts[1].strip() or None
 
 
 _LEGACY_SHAPE_SELECT = """
@@ -139,8 +129,11 @@ def _normalize_strings(fields: dict) -> dict:
         if col in fields and fields[col] is not None:
             stripped = fields[col].strip()
             fields[col] = stripped or None
-    if "name" in fields and fields["name"] is not None:
-        fields["name"] = fields["name"].strip()
+    if "first_name" in fields and fields["first_name"] is not None:
+        fields["first_name"] = fields["first_name"].strip()
+    if "last_name" in fields and fields["last_name"] is not None:
+        stripped = fields["last_name"].strip()
+        fields["last_name"] = stripped or None
     return fields
 
 
@@ -194,14 +187,13 @@ async def add_student(
         if fields.get(col) is None:
             fields[col] = False
 
-    first, last = _split_name(fields["name"])
     person_id = await conn.fetchval(
         """
         INSERT INTO people (kind, first_name, last_name, birthday)
         VALUES ('student', $1, $2, $3)
         RETURNING id
         """,
-        first, last, fields["dob"],
+        fields["first_name"], fields["last_name"], fields["dob"],
     )
     await conn.execute(
         "INSERT INTO family_students (family_id, person_id) VALUES ($1, $2)",
@@ -312,10 +304,12 @@ async def update_student(
 
     # Split the patch by destination table.
     people_updates: list[tuple[str, object]] = []
-    if "name" in fields:
-        first, last = _split_name(fields["name"])
-        people_updates.append(("first_name", first))
-        people_updates.append(("last_name", last))
+    if "first_name" in fields:
+        if not fields["first_name"]:
+            raise HTTPException(status_code=422, detail="first_name cannot be blank")
+        people_updates.append(("first_name", fields["first_name"]))
+    if "last_name" in fields:
+        people_updates.append(("last_name", fields["last_name"]))
     if "dob" in fields:
         people_updates.append(("birthday", fields["dob"]))
 
