@@ -40,27 +40,84 @@ async def auth_callback(request: Request):
     request.session.clear()
 
     async with request_conn(None) as conn:
-        # Attribute the upsert to the existing user when possible, so audit_log
-        # rows for repeat logins aren't anonymous.
-        existing_id = await conn.fetchval(
-            "SELECT id FROM users WHERE email = $1", email
-        )
-        if existing_id is not None:
-            await conn.execute(
-                "SELECT set_config('app.user_id', $1, true)", str(existing_id)
-            )
-
-        row = await conn.fetchrow(
+        # Lookup path post-0012: identity rows in auth_identities are the
+        # source of truth for "who's allowed to sign in." For Google we
+        # use the lowercase email as the subject (matches the legacy
+        # email-keyed flow), so backfilled consultants resolve cleanly.
+        identity = await conn.fetchrow(
             """
-            INSERT INTO users (email, name, role, last_login_at)
-            VALUES ($1, $2, 'consultant', NOW())
-            ON CONFLICT (email) DO UPDATE SET
-                name = EXCLUDED.name,
-                last_login_at = NOW()
-            RETURNING id, email, name
+            SELECT ai.person_id, p.email
+            FROM auth_identities ai
+            JOIN people p ON p.id = ai.person_id AND p.deleted_at IS NULL
+            WHERE ai.provider = 'google' AND ai.provider_subject = $1
             """,
             email,
-            name,
+        )
+
+        if identity is None:
+            # First time we see this email and they're in allowed_emails:
+            # auto-create person + auth + identity, the same way the
+            # legacy upsert-into-users path used to do.
+            first, _, last = name.partition(" ")
+            last = last.strip() or None
+            person_id = await conn.fetchval(
+                """
+                INSERT INTO people (kind, first_name, last_name, email)
+                VALUES ('other', $1, $2, $3)
+                RETURNING id
+                """,
+                first or email,
+                last,
+                email,
+            )
+            await conn.execute(
+                """
+                INSERT INTO auth (person_id, status, app_role, last_login_at)
+                VALUES ($1, 'active', 'consultant', NOW())
+                """,
+                person_id,
+            )
+            await conn.execute(
+                """
+                INSERT INTO auth_identities (person_id, provider, provider_subject)
+                VALUES ($1, 'google', $2)
+                """,
+                person_id, email,
+            )
+        else:
+            person_id = identity["person_id"]
+            # Attribute updates to the user themselves. audit_trigger
+            # picks up app.user_id from the transaction.
+            await conn.execute(
+                "SELECT set_config('app.user_id', $1, true)", str(person_id)
+            )
+            # Refresh display name from the OIDC userinfo, and stamp
+            # last_login on auth.
+            first, _, last = name.partition(" ")
+            last = last.strip() or None
+            await conn.execute(
+                "UPDATE people SET first_name = $1, last_name = $2 WHERE id = $3",
+                first or email, last, person_id,
+            )
+            await conn.execute(
+                "UPDATE auth SET last_login_at = NOW() WHERE person_id = $1",
+                person_id,
+            )
+
+        # Refetch the composed display name + email after any update above.
+        row = await conn.fetchrow(
+            """
+            SELECT
+              p.id, p.email,
+              TRIM(BOTH ' ' FROM
+                COALESCE(p.first_name, '') ||
+                CASE WHEN p.last_name IS NOT NULL AND p.last_name <> ''
+                     THEN ' ' || p.last_name ELSE '' END
+              ) AS name
+            FROM people p
+            WHERE p.id = $1
+            """,
+            person_id,
         )
 
     request.session["user_id"] = str(row["id"])

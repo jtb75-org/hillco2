@@ -4922,7 +4922,7 @@
           "admin"
         ],
         "summary": "List Users",
-        "description": "All users, sorted by name. Anyone authenticated can read this for\nnow; if the role surface grows we'll gate this on an admin role.",
+        "description": "All users (auth-provisioned people), sorted by active first then\nname. Anyone authenticated can read this for now; if the role\nsurface grows we'll gate this on an admin role.",
         "operationId": "list_users_api_admin_users_get",
         "responses": {
           "200": {
@@ -4946,7 +4946,7 @@
           "admin"
         ],
         "summary": "Create User",
-        "description": "Pre-authorize a new user. Until they sign in via Google OAuth\nthe row exists with last_login_at NULL; their first successful\nOAuth callback flips that. Email is CITEXT UNIQUE \u2014 duplicates\nreturn 409. Role gating for THIS endpoint is intentionally not\nenforced yet (matches list_users); the same caveat applies.",
+        "description": "Pre-authorize a new user. Creates a person + auth row + a Google\nauth_identity keyed on the email. The user's first successful\nGoogle sign-in finds the identity and flips last_login_at.",
         "operationId": "create_user_api_admin_users_post",
         "requestBody": {
           "content": {
@@ -4988,7 +4988,7 @@
           "admin"
         ],
         "summary": "Deactivate User",
-        "description": "Soft-delete: set is_active=false. Preserves audit_log.user_id\nforeign keys and lets us reactivate later. Refuses to deactivate\nthe caller's own account so an admin can't lock themselves out.",
+        "description": "Soft-delete: flip auth.status to 'suspended' so the user can no\nlonger sign in, and stamp people.deleted_at so they drop out of\nthe address book. audit_log entries stay valid (still FK to\npeople.id). Refuses to deactivate the caller's own account.",
         "operationId": "deactivate_user_api_admin_users__user_id__delete",
         "parameters": [
           {
@@ -5032,7 +5032,7 @@
           "admin"
         ],
         "summary": "Reactivate User",
-        "description": "Reverse of deactivate_user. Idempotent: reactivating an already-\nactive user is a no-op that still returns the current row.",
+        "description": "Reverse of deactivate_user. Idempotent: reactivating an already-\nactive user just refreshes timestamps and returns the row.",
         "operationId": "reactivate_user_api_admin_users__user_id__reactivate_post",
         "parameters": [
           {

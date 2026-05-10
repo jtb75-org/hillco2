@@ -57,7 +57,7 @@ async def _resolve_assignee(conn, supplied: UUID | None, fallback: UUID) -> UUID
     if supplied is None or supplied == fallback:
         return fallback
     if await conn.fetchval(
-        "SELECT 1 FROM users WHERE id = $1 AND is_active",
+        "SELECT 1 FROM auth WHERE person_id = $1 AND status = 'active'",
         supplied,
     ):
         return supplied
