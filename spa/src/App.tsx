@@ -8,6 +8,7 @@ import { AdminLayout } from "./pages/admin/AdminLayout";
 import { AdminUsers } from "./pages/admin/Users";
 import { AdminAuditLog } from "./pages/admin/AuditLog";
 import { AdminAbout } from "./pages/admin/About";
+import { ContactsList } from "./pages/contacts/ContactsList";
 import { FamiliesList } from "./pages/families/FamiliesList";
 import { FamilyDetail } from "./pages/families/FamilyDetail";
 
@@ -52,6 +53,7 @@ export function App() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/families" element={<FamiliesList />} />
             <Route path="/families/:id" element={<FamilyDetail />} />
+            <Route path="/contacts" element={<ContactsList />} />
             <Route path="/admin" element={<AdminLayout />}>
               <Route index element={<Navigate to="users" replace />} />
               <Route path="users" element={<AdminUsers />} />
