@@ -76,9 +76,9 @@ async def list_notes(
         """
         SELECT n.id, n.engagement_id, n.kind, n.occurred_on, n.title, n.body,
                n.created_by, n.created_at, n.updated_at,
-               u.name AS created_by_name
+               TRIM(BOTH ' ' FROM COALESCE(u.first_name,'') || CASE WHEN u.last_name IS NOT NULL AND u.last_name <> '' THEN ' ' || u.last_name ELSE '' END) AS created_by_name
         FROM notes n
-        LEFT JOIN users u ON u.id = n.created_by
+        LEFT JOIN people u ON u.id = n.created_by
         WHERE n.engagement_id = $1
         ORDER BY n.occurred_on DESC, n.id DESC
         """,

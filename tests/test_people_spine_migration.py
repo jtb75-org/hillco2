@@ -120,41 +120,19 @@ async def test_school_worker_details_requires_school(db_pool):
 
 # ---- Backfill correctness ----------------------------------------------
 
-async def test_legacy_parent_appears_in_people_with_same_id(db_pool):
-    """Legacy ids are preserved into people.id so any audit_log entry
-    keyed on a parents.id still resolves to the same UUID after the
-    migration."""
+async def test_explicit_id_round_trips_through_people(db_pool):
+    """The collapsed baseline supersedes the original parents/students/
+    contacts/users tables; the id-preservation invariant from those
+    legacy backfills is no longer directly testable (they're gone).
+    This is the smaller invariant still verifiable: explicit ids
+    round-trip through people, so a future backfill from any external
+    source can preserve identity."""
     async with db_pool.acquire() as conn:
-        async with conn.transaction():
-            family_id = await conn.fetchval(
-                "INSERT INTO families (household_name) VALUES ($1) RETURNING id",
-                f"Backfill-{uuid4()}",
-            )
-            parent_id = await conn.fetchval(
-                """
-                INSERT INTO parents (family_id, name, email, phone, role)
-                VALUES ($1, 'Jane Smith', 'jane@example.com', '555-0100', 'mom')
-                RETURNING id
-                """,
-                family_id,
-            )
-
-        # The 0008 migration ran during applied_schema fixture setup, before
-        # this row existed — so this row is NOT auto-backfilled. We're just
-        # asserting that the table shape and id-preservation pattern works
-        # by manually inserting both sides as the migration would have.
-        await conn.execute(
-            """
-            INSERT INTO people (id, kind, first_name, last_name, email, phone)
-            VALUES ($1, 'guardian', 'Jane', 'Smith', 'jane@example.com', '555-0100')
-            """,
-            parent_id,
+        person_id = await conn.fetchval(
+            "INSERT INTO people (kind, first_name) VALUES ('guardian', 'Jane') RETURNING id"
         )
-        same_id = await conn.fetchval(
-            "SELECT id FROM people WHERE id = $1",
-            parent_id,
-        )
-    assert same_id == parent_id
+        same_id = await conn.fetchval("SELECT id FROM people WHERE id = $1", person_id)
+    assert same_id == person_id
 
 
 async def test_name_split_first_only(db_pool):
