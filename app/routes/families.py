@@ -17,11 +17,26 @@ ParentRole = Literal["mom", "dad", "guardian", "other"]
 class FamilyCreate(BaseModel):
     household_name: str = Field(..., min_length=1)
     notes: str | None = None
+    # Optional billing overrides. When NULL, the SPA falls back to the
+    # primary parent's name/email and the household_name/parent address.
+    billing_name: str | None = None
+    billing_email: str | None = None
+    billing_attention_to: str | None = None
+    billing_address: str | None = None
 
 
 class FamilyUpdate(BaseModel):
     household_name: str | None = Field(default=None, min_length=1)
     notes: str | None = None
+    billing_name: str | None = None
+    billing_email: str | None = None
+    billing_attention_to: str | None = None
+    billing_address: str | None = None
+
+
+_BILLING_TEXT_COLS = (
+    "billing_name", "billing_email", "billing_attention_to", "billing_address",
+)
 
 
 class ParentCreate(BaseModel):
@@ -106,12 +121,21 @@ async def create_family(
 ):
     row = await conn.fetchrow(
         """
-        INSERT INTO families (household_name, notes)
-        VALUES ($1, $2)
-        RETURNING id, household_name, notes, created_at, updated_at
+        INSERT INTO families (
+          household_name, notes,
+          billing_name, billing_email, billing_attention_to, billing_address
+        )
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING id, household_name, notes,
+                  billing_name, billing_email, billing_attention_to, billing_address,
+                  created_at, updated_at
         """,
         body.household_name.strip(),
         (body.notes or "").strip() or None,
+        (body.billing_name or "").strip() or None,
+        (body.billing_email or "").strip() or None,
+        (body.billing_attention_to or "").strip() or None,
+        (body.billing_address or "").strip() or None,
     )
     return dict(row)
 
@@ -149,6 +173,13 @@ async def family_detail(
         "parents": [dict(p) for p in parents],
         "students": [dict(s) for s in students],
         "engagements": [dict(e) for e in engagements],
+        # Convenience for the SPA's billing block: which parent's contact
+        # info the renderer should use when the family doesn't have its
+        # own billing_* overrides set. None when no parent is flagged
+        # (DB allows zero primaries; partial unique only blocks two).
+        "billing_primary_parent_id": next(
+            (p["id"] for p in parents if p["is_primary_contact"]), None
+        ),
     }
 
 
@@ -164,16 +195,25 @@ async def update_family(
     if not fields:
         raise HTTPException(status_code=400, detail="No fields to update")
 
-    # Normalize: empty notes -> NULL, household_name trimmed
+    # Normalize: trim strings, blank → NULL.
     if "household_name" in fields:
         fields["household_name"] = fields["household_name"].strip()
     if "notes" in fields:
         fields["notes"] = (fields["notes"] or "").strip() or None
+    for col in _BILLING_TEXT_COLS:
+        if col in fields:
+            fields[col] = (fields[col] or "").strip() or None
 
     set_sql = ", ".join(f"{col} = ${i+2}" for i, col in enumerate(fields))
     values = list(fields.values())
     row = await conn.fetchrow(
-        f"UPDATE families SET {set_sql} WHERE id = $1 RETURNING id, household_name, notes, created_at, updated_at",
+        f"""
+        UPDATE families SET {set_sql}
+        WHERE id = $1
+        RETURNING id, household_name, notes,
+                  billing_name, billing_email, billing_attention_to, billing_address,
+                  created_at, updated_at
+        """,
         family_id,
         *values,
     )
