@@ -7,11 +7,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
-from weasyprint import HTML
 
 from ..auth import require_user
 from ..db import get_conn
-from ..pdf import safe_url_fetcher
+
+# weasyprint and ..pdf are lazy-imported inside the PDF endpoint so the
+# rest of the app (and the test suite on macOS) don't pay the
+# cffi/libpango dlopen cost. Importing weasyprint at module load time
+# segfaults on macOS hosts that lack libpango/libcairo.
 
 router = APIRouter(prefix="/api", tags=["invoices"])
 
@@ -377,6 +380,10 @@ async def invoice_pdf(
         """,
         invoice["family_id"],
     )
+
+    from weasyprint import HTML  # noqa: PLC0415
+
+    from ..pdf import safe_url_fetcher  # noqa: PLC0415
 
     template = _pdf_templates.env.get_template("invoices/_pdf.html")
     html = template.render(

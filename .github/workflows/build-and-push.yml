@@ -42,10 +42,45 @@ jobs:
       - name: Run ruff
         run: ruff check .
 
+  test:
+    name: Tests (pytest)
+    runs-on: jtb75-arc
+    needs: lint
+    container:
+      image: python:3.12-slim
+    services:
+      postgres:
+        image: ghcr.io/cloudnative-pg/postgresql:16.4
+        env:
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: hillco2_test
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install test deps
+        # weasyprint is in requirements.txt but lazy-imported inside the
+        # PDF endpoint, so tests don't need libpango/libcairo at runtime.
+        # If the test suite ever exercises PDF rendering, add the apt-get
+        # libpango/libcairo install here.
+        run: |
+          pip install --no-cache-dir -r requirements-test.txt
+
+      - name: Run pytest
+        env:
+          TEST_DATABASE_URL: postgresql://postgres:test@postgres:5432/hillco2_test
+        run: pytest -v --tb=short
+
   build:
     name: Build, push, and bump gitops
     runs-on: jtb75-arc
-    needs: lint
+    needs: [lint, test]
     container:
       # Same builder image atlas/hillco-portal use: alpine + kaniko at
       # /opt/kaniko/executor (node20 also present but unused here).

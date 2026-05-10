@@ -1,0 +1,14 @@
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+# Pin the default fixture loop to "session" so session-scoped fixtures
+# (db_pool) create asyncpg connections in the same loop the per-test
+# functions run in. Without this pytest-asyncio v0.23+ defaults to a
+# fresh loop per test and the pool's connections raise "attached to a
+# different loop".
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+testpaths = ["tests"]
+filterwarnings = [
+    # asyncpg's transaction context emits these on PG 16; not actionable.
+    "ignore::DeprecationWarning",
+]
