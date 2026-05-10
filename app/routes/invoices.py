@@ -1,0 +1,648 @@
+from datetime import date, timedelta
+from decimal import Decimal
+from typing import Literal
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
+from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel, Field
+from weasyprint import HTML
+
+from ..auth import require_user
+from ..db import get_conn
+from ..pdf import safe_url_fetcher
+
+router = APIRouter(prefix="/api", tags=["invoices"])
+
+# A Jinja2 environment scoped to PDF templates only — the rest of the app
+# is JSON. Lives here rather than in main.py so the PDF dependency stays
+# isolated to this module.
+_pdf_templates = Jinja2Templates(directory="app/templates")
+
+InvoiceStatus = Literal["draft", "sent", "paid", "overdue", "void"]
+InvoiceListFilter = Literal["open", "paid", "draft", "void", "all"]
+
+
+# ---- I/O models ------------------------------------------------------------
+
+class InvoiceCreate(BaseModel):
+    """Build a draft invoice from selected billable time entries and
+    expenses on an engagement. Either list may be empty but not both."""
+    issue_date: date | None = None  # defaults to today
+    due_date: date | None = None
+    tax: Decimal = Field(default=Decimal("0"), ge=0)
+    notes: str | None = None
+    time_entry_ids: list[UUID] = Field(default_factory=list)
+    expense_ids: list[UUID] = Field(default_factory=list)
+
+
+class InvoiceDraftUpdate(BaseModel):
+    issue_date: date | None = None
+    due_date: date | None = None
+    tax: Decimal | None = Field(default=None, ge=0)
+    notes: str | None = None
+
+
+class CustomLineItem(BaseModel):
+    description: str = Field(..., min_length=1)
+    quantity: Decimal = Field(default=Decimal("1"), gt=0)
+    unit_price: Decimal = Field(default=Decimal("0"), ge=0)
+
+
+class MarkPaid(BaseModel):
+    paid_date: date | None = None  # defaults to today
+    paid_amount: Decimal | None = None  # defaults to invoice total
+
+
+# ---- Helpers ---------------------------------------------------------------
+
+async def _invoice_or_404(conn, invoice_id: UUID):
+    row = await conn.fetchrow(
+        """
+        SELECT i.*,
+               e.id AS engagement_id_dup, f.id AS family_id, f.household_name
+        FROM invoices i
+        JOIN engagements e ON e.id = i.engagement_id
+        JOIN families f ON f.id = e.family_id
+        WHERE i.id = $1 AND i.deleted_at IS NULL
+        """,
+        invoice_id,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    return row
+
+
+async def _engagement_or_404(conn, engagement_id: UUID):
+    row = await conn.fetchrow(
+        "SELECT id, default_hourly_rate FROM engagements WHERE id = $1 AND deleted_at IS NULL",
+        engagement_id,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Engagement not found")
+    return row
+
+
+async def _recompute_totals(conn, invoice_id: UUID):
+    subtotal = await conn.fetchval(
+        "SELECT COALESCE(SUM(line_total), 0) FROM invoice_line_items WHERE invoice_id = $1",
+        invoice_id,
+    )
+    tax = await conn.fetchval("SELECT tax FROM invoices WHERE id = $1", invoice_id)
+    total = (subtotal or Decimal("0")) + (tax or Decimal("0"))
+    await conn.execute(
+        "UPDATE invoices SET subtotal = $1, total = $2 WHERE id = $3",
+        subtotal or Decimal("0"), total, invoice_id,
+    )
+
+
+def _is_overdue(status: str, due_date: date | None) -> bool:
+    return (
+        status == "sent"
+        and due_date is not None
+        and due_date < date.today()
+    )
+
+
+# ---- List + summary --------------------------------------------------------
+
+@router.get("/invoices")
+async def list_invoices(
+    status: InvoiceListFilter = Query("open"),
+    _user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    """Lists invoices and a financial summary across all engagements.
+    Status filter:
+      - open: sent + overdue
+      - paid: only paid
+      - draft / void: literal status match
+      - all: everything (still excludes deleted)"""
+    if status == "open":
+        status_filter = ["sent", "overdue"]
+    elif status in ("paid", "draft", "void"):
+        status_filter = [status]
+    else:
+        status_filter = None
+
+    rows = await conn.fetch(
+        """
+        SELECT i.id, i.invoice_number, i.status, i.issue_date, i.due_date,
+               i.subtotal, i.tax, i.total, i.paid_amount, i.paid_date,
+               i.sent_at, i.engagement_id,
+               f.id AS family_id, f.household_name
+        FROM invoices i
+        JOIN engagements e ON e.id = i.engagement_id
+        JOIN families f ON f.id = e.family_id
+        WHERE i.deleted_at IS NULL
+          AND ($1::text[] IS NULL OR i.status::text = ANY($1::text[]))
+        ORDER BY
+          CASE i.status
+            WHEN 'overdue' THEN 0 WHEN 'sent' THEN 1 WHEN 'draft' THEN 2
+            WHEN 'paid' THEN 3 WHEN 'void' THEN 4
+          END,
+          i.due_date ASC NULLS LAST, i.id DESC
+        """,
+        status_filter,
+    )
+
+    summary_rows = await conn.fetch(
+        """
+        SELECT fs.engagement_id,
+               fs.uninvoiced_total, fs.billed_total, fs.paid_total,
+               fs.outstanding_balance,
+               f.id AS family_id, f.household_name
+        FROM engagement_financial_summary fs
+        JOIN engagements e ON e.id = fs.engagement_id
+        JOIN families f ON f.id = e.family_id AND f.deleted_at IS NULL
+        WHERE fs.uninvoiced_total > 0
+           OR fs.billed_total > 0
+           OR fs.outstanding_balance > 0
+        ORDER BY fs.outstanding_balance DESC, fs.uninvoiced_total DESC,
+                 f.household_name
+        """
+    )
+
+    totals = {
+        "uninvoiced": sum(s["uninvoiced_total"] for s in summary_rows),
+        "invoiced":   sum(s["billed_total"]      for s in summary_rows),
+        "paid":       sum(s["paid_total"]        for s in summary_rows),
+        "outstanding":sum(s["outstanding_balance"] for s in summary_rows),
+    }
+    return {
+        "invoices": [dict(r) for r in rows],
+        "summary":  [dict(r) for r in summary_rows],
+        "totals":   totals,
+    }
+
+
+# ---- Per-engagement helpers ------------------------------------------------
+
+@router.get("/engagements/{engagement_id}/uninvoiced")
+async def uninvoiced_for_engagement(
+    engagement_id: UUID,
+    _user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    """Billable time entries + expenses on this engagement that aren't
+    yet attached to an invoice. Powers the SPA's "new invoice" picker."""
+    await _engagement_or_404(conn, engagement_id)
+    time_entries = await conn.fetch(
+        """
+        SELECT t.id, t.work_date, t.hours, t.description, t.hourly_rate,
+               u.name AS user_name
+        FROM time_entries t
+        LEFT JOIN users u ON u.id = t.user_id
+        WHERE t.engagement_id = $1 AND t.invoice_id IS NULL AND t.billable = TRUE
+        ORDER BY t.work_date, t.id
+        """,
+        engagement_id,
+    )
+    expenses = await conn.fetch(
+        """
+        SELECT x.id, x.expense_date, x.amount, x.category, x.description,
+               u.name AS user_name
+        FROM expenses x
+        LEFT JOIN users u ON u.id = x.user_id
+        WHERE x.engagement_id = $1 AND x.invoice_id IS NULL AND x.billable = TRUE
+        ORDER BY x.expense_date, x.id
+        """,
+        engagement_id,
+    )
+    return {
+        "time_entries": [dict(r) for r in time_entries],
+        "expenses":     [dict(r) for r in expenses],
+    }
+
+
+# ---- Create (under an engagement) ------------------------------------------
+
+@router.post("/engagements/{engagement_id}/invoices", status_code=201)
+async def create_invoice(
+    engagement_id: UUID,
+    body: InvoiceCreate,
+    user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    engagement = await _engagement_or_404(conn, engagement_id)
+    if not body.time_entry_ids and not body.expense_ids:
+        raise HTTPException(status_code=400, detail="Select at least one time entry or expense")
+
+    issue_date = body.issue_date or date.today()
+    notes = (body.notes or "").strip() or None
+
+    invoice_number = await conn.fetchval("SELECT next_invoice_number()")
+    invoice_id = await conn.fetchval(
+        """
+        INSERT INTO invoices (
+          invoice_number, engagement_id, status, issue_date, due_date,
+          subtotal, tax, total, notes, created_by
+        ) VALUES ($1, $2, 'draft', $3, $4, 0, $5, $5, $6, $7)
+        RETURNING id
+        """,
+        invoice_number, engagement_id, issue_date, body.due_date,
+        body.tax, notes, user["id"],
+    )
+
+    sort_order = 0
+    if body.time_entry_ids:
+        time_rows = await conn.fetch(
+            """
+            SELECT t.id, t.work_date, t.hours, t.description, t.hourly_rate,
+                   u.name AS user_name
+            FROM time_entries t
+            LEFT JOIN users u ON u.id = t.user_id
+            WHERE t.id = ANY($1::uuid[]) AND t.engagement_id = $2
+              AND t.invoice_id IS NULL AND t.billable = TRUE
+            ORDER BY t.work_date, t.id
+            """,
+            body.time_entry_ids, engagement_id,
+        )
+        for t in time_rows:
+            rate = t["hourly_rate"] or engagement["default_hourly_rate"] or Decimal("0")
+            line_total = t["hours"] * rate
+            desc_parts = [f"Time {t['work_date'].strftime('%Y-%m-%d')}"]
+            if t["description"]:
+                desc_parts.append(t["description"])
+            if t["user_name"]:
+                desc_parts.append(f"({t['user_name']})")
+            await conn.execute(
+                """
+                INSERT INTO invoice_line_items
+                  (invoice_id, sort_order, description, quantity, unit_price, line_total,
+                   source_type, source_id)
+                VALUES ($1, $2, $3, $4, $5, $6, 'time'::invoice_line_source, $7)
+                """,
+                invoice_id, sort_order, " — ".join(desc_parts),
+                t["hours"], rate, line_total, t["id"],
+            )
+            sort_order += 1
+            await conn.execute(
+                "UPDATE time_entries SET invoice_id = $1 WHERE id = $2",
+                invoice_id, t["id"],
+            )
+
+    if body.expense_ids:
+        expense_rows = await conn.fetch(
+            """
+            SELECT x.id, x.expense_date, x.amount, x.category, x.description
+            FROM expenses x
+            WHERE x.id = ANY($1::uuid[]) AND x.engagement_id = $2
+              AND x.invoice_id IS NULL AND x.billable = TRUE
+            ORDER BY x.expense_date, x.id
+            """,
+            body.expense_ids, engagement_id,
+        )
+        for x in expense_rows:
+            desc_parts = [f"Expense {x['expense_date'].strftime('%Y-%m-%d')}"]
+            if x["category"]:
+                desc_parts.append(x["category"])
+            if x["description"]:
+                desc_parts.append(x["description"])
+            await conn.execute(
+                """
+                INSERT INTO invoice_line_items
+                  (invoice_id, sort_order, description, quantity, unit_price, line_total,
+                   source_type, source_id)
+                VALUES ($1, $2, $3, 1, $4, $4, 'expense'::invoice_line_source, $5)
+                """,
+                invoice_id, sort_order, " — ".join(desc_parts),
+                x["amount"], x["id"],
+            )
+            sort_order += 1
+            await conn.execute(
+                "UPDATE expenses SET invoice_id = $1 WHERE id = $2",
+                invoice_id, x["id"],
+            )
+
+    await _recompute_totals(conn, invoice_id)
+    return await invoice_detail(invoice_id, _user=user, conn=conn)
+
+
+# ---- Detail ----------------------------------------------------------------
+
+@router.get("/invoices/{invoice_id}")
+async def invoice_detail(
+    invoice_id: UUID,
+    _user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    invoice = await _invoice_or_404(conn, invoice_id)
+    line_items = await conn.fetch(
+        """
+        SELECT id, sort_order, description, quantity, unit_price, line_total,
+               source_type, source_id
+        FROM invoice_line_items
+        WHERE invoice_id = $1
+        ORDER BY sort_order, id
+        """,
+        invoice_id,
+    )
+    out = dict(invoice)
+    out.pop("engagement_id_dup", None)
+    out["family"] = {"id": invoice["family_id"], "household_name": invoice["household_name"]}
+    out.pop("family_id", None)
+    out.pop("household_name", None)
+    out["line_items"] = [dict(li) for li in line_items]
+    out["is_overdue"] = _is_overdue(invoice["status"], invoice["due_date"])
+    return out
+
+
+# ---- PDF -------------------------------------------------------------------
+
+@router.get("/invoices/{invoice_id}/pdf")
+async def invoice_pdf(
+    invoice_id: UUID,
+    _user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    invoice = await _invoice_or_404(conn, invoice_id)
+    line_items = await conn.fetch(
+        """
+        SELECT description, quantity, unit_price, line_total, sort_order
+        FROM invoice_line_items
+        WHERE invoice_id = $1
+        ORDER BY sort_order, id
+        """,
+        invoice_id,
+    )
+    primary_contact = await conn.fetchrow(
+        """
+        SELECT name, email, phone
+        FROM parents
+        WHERE family_id = $1
+        ORDER BY is_primary_contact DESC, id
+        LIMIT 1
+        """,
+        invoice["family_id"],
+    )
+
+    template = _pdf_templates.env.get_template("invoices/_pdf.html")
+    html = template.render(
+        invoice=invoice,
+        line_items=line_items,
+        primary_contact=primary_contact,
+        is_overdue=_is_overdue(invoice["status"], invoice["due_date"]),
+    )
+    pdf_bytes = HTML(string=html, url_fetcher=safe_url_fetcher).write_pdf()
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="{invoice["invoice_number"]}.pdf"',
+        },
+    )
+
+
+# ---- Draft mutations -------------------------------------------------------
+
+@router.patch("/invoices/{invoice_id}")
+async def update_draft_meta(
+    invoice_id: UUID,
+    body: InvoiceDraftUpdate,
+    user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    """Edit issue_date / due_date / tax / notes on a draft. Sent/paid/void
+    invoices are immutable here — that's intentional, mutating a sent
+    invoice would silently change what the family was billed."""
+    inv = await conn.fetchrow(
+        "SELECT status FROM invoices WHERE id = $1 AND deleted_at IS NULL",
+        invoice_id,
+    )
+    if not inv:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    if inv["status"] != "draft":
+        raise HTTPException(status_code=400, detail="Only drafts are editable")
+
+    fields = body.model_dump(exclude_unset=True)
+    if not fields:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    if "notes" in fields:
+        fields["notes"] = (fields["notes"] or "").strip() or None
+
+    set_sql = ", ".join(f"{col} = ${i+2}" for i, col in enumerate(fields))
+    await conn.execute(
+        f"UPDATE invoices SET {set_sql} WHERE id = $1",
+        invoice_id,
+        *fields.values(),
+    )
+    await _recompute_totals(conn, invoice_id)
+    return await invoice_detail(invoice_id, _user=user, conn=conn)
+
+
+@router.post("/invoices/{invoice_id}/line-items", status_code=201)
+async def add_custom_line_item(
+    invoice_id: UUID,
+    body: CustomLineItem,
+    user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    """Add a 'custom' line — not derived from a time entry or expense."""
+    inv = await conn.fetchrow(
+        "SELECT status FROM invoices WHERE id = $1 AND deleted_at IS NULL",
+        invoice_id,
+    )
+    if not inv:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    if inv["status"] != "draft":
+        raise HTTPException(status_code=400, detail="Only drafts are editable")
+
+    line_total = body.quantity * body.unit_price
+    max_sort = await conn.fetchval(
+        "SELECT COALESCE(MAX(sort_order), -1) FROM invoice_line_items WHERE invoice_id = $1",
+        invoice_id,
+    )
+    await conn.execute(
+        """
+        INSERT INTO invoice_line_items
+          (invoice_id, sort_order, description, quantity, unit_price, line_total,
+           source_type)
+        VALUES ($1, $2, $3, $4, $5, $6, 'custom'::invoice_line_source)
+        """,
+        invoice_id, max_sort + 1, body.description.strip(),
+        body.quantity, body.unit_price, line_total,
+    )
+    await _recompute_totals(conn, invoice_id)
+    return await invoice_detail(invoice_id, _user=user, conn=conn)
+
+
+@router.delete("/invoices/{invoice_id}/line-items/{line_id}", status_code=204)
+async def delete_line_item(
+    invoice_id: UUID,
+    line_id: UUID,
+    _user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    """Drops the line and frees the source time entry / expense back to
+    the uninvoiced pool when applicable."""
+    inv = await conn.fetchrow(
+        "SELECT status FROM invoices WHERE id = $1 AND deleted_at IS NULL",
+        invoice_id,
+    )
+    if not inv:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    if inv["status"] != "draft":
+        raise HTTPException(status_code=400, detail="Only drafts are editable")
+
+    line = await conn.fetchrow(
+        "SELECT source_type, source_id FROM invoice_line_items WHERE id = $1 AND invoice_id = $2",
+        line_id, invoice_id,
+    )
+    if not line:
+        raise HTTPException(status_code=404, detail="Line item not found")
+
+    if line["source_type"] == "time" and line["source_id"]:
+        await conn.execute(
+            "UPDATE time_entries SET invoice_id = NULL WHERE id = $1",
+            line["source_id"],
+        )
+    elif line["source_type"] == "expense" and line["source_id"]:
+        await conn.execute(
+            "UPDATE expenses SET invoice_id = NULL WHERE id = $1",
+            line["source_id"],
+        )
+
+    await conn.execute("DELETE FROM invoice_line_items WHERE id = $1", line_id)
+    await _recompute_totals(conn, invoice_id)
+    return None
+
+
+# ---- Status transitions ----------------------------------------------------
+
+@router.post("/invoices/{invoice_id}/send")
+async def send_invoice(
+    invoice_id: UUID,
+    user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    inv = await conn.fetchrow(
+        "SELECT status FROM invoices WHERE id = $1 AND deleted_at IS NULL FOR UPDATE",
+        invoice_id,
+    )
+    if not inv:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    if inv["status"] != "draft":
+        raise HTTPException(status_code=400, detail="Only drafts can be sent")
+    await conn.execute(
+        "UPDATE invoices SET status = 'sent', sent_at = NOW() WHERE id = $1",
+        invoice_id,
+    )
+    return await invoice_detail(invoice_id, _user=user, conn=conn)
+
+
+@router.post("/invoices/{invoice_id}/mark-paid")
+async def mark_paid(
+    invoice_id: UUID,
+    body: MarkPaid,
+    user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    """Records full payment. Partial payments aren't supported — that
+    would require a second 'amount remaining' concept and a more
+    careful 'overdue' calculation."""
+    inv = await conn.fetchrow(
+        "SELECT status, total FROM invoices WHERE id = $1 AND deleted_at IS NULL FOR UPDATE",
+        invoice_id,
+    )
+    if not inv:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    if inv["status"] not in ("sent", "overdue"):
+        raise HTTPException(status_code=400, detail="Only sent invoices can be marked paid")
+
+    paid_amount = body.paid_amount if body.paid_amount is not None else inv["total"]
+    if paid_amount != inv["total"]:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Paid amount must equal the invoice total. "
+                "Partial payments are not supported."
+            ),
+        )
+
+    await conn.execute(
+        """
+        UPDATE invoices SET status = 'paid', paid_date = $1, paid_amount = $2
+        WHERE id = $3
+        """,
+        body.paid_date or date.today(), paid_amount, invoice_id,
+    )
+    return await invoice_detail(invoice_id, _user=user, conn=conn)
+
+
+@router.post("/invoices/{invoice_id}/void")
+async def void_invoice(
+    invoice_id: UUID,
+    user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    """Voids draft/sent/overdue invoices and frees their source time /
+    expense rows back to the uninvoiced pool. Refusing to void paid
+    invoices is intentional — that path needs an explicit refund flow
+    rather than the implicit free-and-rebill that would happen here."""
+    inv = await conn.fetchrow(
+        "SELECT status FROM invoices WHERE id = $1 AND deleted_at IS NULL FOR UPDATE",
+        invoice_id,
+    )
+    if not inv:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    if inv["status"] not in ("draft", "sent", "overdue"):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Cannot void an invoice with status '{inv['status']}'. "
+                "Only draft, sent, or overdue invoices can be voided."
+            ),
+        )
+    await conn.execute(
+        "UPDATE time_entries SET invoice_id = NULL WHERE invoice_id = $1",
+        invoice_id,
+    )
+    await conn.execute(
+        "UPDATE expenses SET invoice_id = NULL WHERE invoice_id = $1",
+        invoice_id,
+    )
+    await conn.execute(
+        "UPDATE invoices SET status = 'void' WHERE id = $1",
+        invoice_id,
+    )
+    return await invoice_detail(invoice_id, _user=user, conn=conn)
+
+
+@router.delete("/invoices/{invoice_id}", status_code=204)
+async def delete_invoice(
+    invoice_id: UUID,
+    _user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    """Soft delete; only allowed on drafts. Frees the source time /
+    expense rows the same way void does."""
+    inv = await conn.fetchrow(
+        "SELECT status FROM invoices WHERE id = $1 AND deleted_at IS NULL FOR UPDATE",
+        invoice_id,
+    )
+    if not inv:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    if inv["status"] != "draft":
+        raise HTTPException(status_code=400, detail="Only drafts can be deleted")
+
+    await conn.execute(
+        "UPDATE time_entries SET invoice_id = NULL WHERE invoice_id = $1",
+        invoice_id,
+    )
+    await conn.execute(
+        "UPDATE expenses SET invoice_id = NULL WHERE invoice_id = $1",
+        invoice_id,
+    )
+    await conn.execute(
+        "UPDATE invoices SET deleted_at = NOW() WHERE id = $1",
+        invoice_id,
+    )
+    return None
+
+
+# Suppress the linter on the unused timedelta import below — kept so future
+# default-due-date logic on the SPA stays consistent with hillco-portal's
+# 30-day window.
+_ = timedelta

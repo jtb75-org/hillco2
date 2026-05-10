@@ -19,6 +19,11 @@ RUN pip install -r requirements.txt
 
 COPY app ./app
 
+# Templates ride along with app/. Listed explicitly so a future repo
+# layout change that drops them surfaces here at build time instead of
+# at first PDF render.
+RUN test -f app/templates/invoices/_pdf.html
+
 ARG BUILD_COMMIT=unknown
 ENV BUILD_COMMIT=${BUILD_COMMIT}
 
