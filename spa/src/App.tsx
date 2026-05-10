@@ -1,9 +1,13 @@
 import { Box, Button, CircularProgress, Stack, Typography } from "@mui/material";
-import { Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router-dom";
 
 import { AppShell } from "./layout/AppShell";
 import { AuthProvider, redirectToLogin, useAuth } from "./auth";
 import { Dashboard } from "./pages/Dashboard";
+import { AdminLayout } from "./pages/admin/AdminLayout";
+import { AdminUsers } from "./pages/admin/Users";
+import { AdminAuditLog } from "./pages/admin/AuditLog";
+import { AdminAbout } from "./pages/admin/About";
 
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -44,6 +48,12 @@ export function App() {
         <Routes>
           <Route element={<AppShell />}>
             <Route path="/" element={<Dashboard />} />
+            <Route path="/admin" element={<AdminLayout />}>
+              <Route index element={<Navigate to="users" replace />} />
+              <Route path="users" element={<AdminUsers />} />
+              <Route path="audit-log" element={<AdminAuditLog />} />
+              <Route path="about" element={<AdminAbout />} />
+            </Route>
             <Route path="*" element={<NotFound />} />
           </Route>
         </Routes>

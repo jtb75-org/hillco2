@@ -4697,10 +4697,304 @@
           }
         }
       }
+    },
+    "/api/admin/users": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "List Users",
+        "description": "All users, sorted by name. Anyone authenticated can read this for\nnow; if the role surface grows we'll gate this on an admin role.",
+        "operationId": "list_users_api_admin_users_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AdminUser"
+                  },
+                  "type": "array",
+                  "title": "Response List Users Api Admin Users Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/audit-log": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "List Audit Log",
+        "description": "Recent audit_log entries, newest first. Offset-paginated;\nfine for the homelab scale (a few thousand rows). If we hit the\nwall, switch to keyset on audit_log.id.",
+        "operationId": "list_audit_log_api_admin_audit_log_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditLogPage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/about": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "About",
+        "description": "Build/runtime metadata for the about/settings tab. Counts give a\nquick sanity check on whether the app sees the data it should.",
+        "operationId": "about_api_admin_about_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AboutInfo"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "AboutInfo": {
+        "properties": {
+          "build_commit": {
+            "type": "string",
+            "title": "Build Commit"
+          },
+          "api_title": {
+            "type": "string",
+            "title": "Api Title"
+          },
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Counts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "build_commit",
+          "api_title",
+          "counts"
+        ],
+        "title": "AboutInfo"
+      },
+      "AdminUser": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "last_login_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Login At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "email",
+          "name",
+          "role",
+          "is_active",
+          "last_login_at",
+          "created_at"
+        ],
+        "title": "AdminUser"
+      },
+      "AuditLogEntry": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "ts": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ts"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          },
+          "user_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Email"
+          },
+          "user_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Name"
+          },
+          "table_name": {
+            "type": "string",
+            "title": "Table Name"
+          },
+          "row_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Row Id"
+          },
+          "action": {
+            "type": "string",
+            "title": "Action"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "ts",
+          "user_id",
+          "user_email",
+          "user_name",
+          "table_name",
+          "row_id",
+          "action"
+        ],
+        "title": "AuditLogEntry"
+      },
+      "AuditLogPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AuditLogEntry"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "AuditLogPage"
+      },
       "Body_upload_document_api_documents_upload_post": {
         "properties": {
           "owner_type": {

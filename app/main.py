@@ -11,6 +11,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from .config import settings
 from .db import db
+from .routes import admin as admin_routes
 from .routes import auth as auth_routes
 from .routes import catalog as catalog_routes
 from .routes import contacts as contacts_routes
@@ -184,3 +185,4 @@ app.include_router(catalog_routes.router)
 app.include_router(documents_routes.router)
 app.include_router(invoices_routes.router)
 app.include_router(dashboard_routes.router)
+app.include_router(admin_routes.router)
