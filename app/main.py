@@ -29,6 +29,7 @@ from .routes import learning_profiles as learning_profiles_routes
 from .routes import learning_supports as learning_supports_routes
 from .routes import me as me_routes
 from .routes import notes as notes_routes
+from .routes import people as people_routes
 from .routes import recommendations as recommendations_routes
 from .routes import school_visits as school_visits_routes
 from .routes import schools as schools_routes
@@ -190,3 +191,4 @@ app.include_router(invoices_routes.router)
 app.include_router(dashboard_routes.router)
 app.include_router(admin_routes.router)
 app.include_router(agreements_routes.router)
+app.include_router(people_routes.router)
