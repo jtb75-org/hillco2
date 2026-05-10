@@ -21,6 +21,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { api } from "../../api/client";
 import type { components } from "../../api/schema";
+import { AuditLogDrawer } from "./AuditLogDrawer";
 
 dayjs.extend(relativeTime);
 
@@ -35,6 +36,7 @@ const ACTION_COLORS: Record<string, "default" | "primary" | "warning" | "error">
 export function AdminAuditLog() {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(50);
+  const [openId, setOpenId] = useState<number | null>(null);
 
   const { data, isPending, error, isFetching } = useQuery<AuditLogPage, Error>({
     queryKey: ["admin", "audit-log", page, rowsPerPage],
@@ -91,7 +93,12 @@ export function AdminAuditLog() {
               ))
             ) : (
               items.map((row) => (
-                <TableRow key={row.id} hover>
+                <TableRow
+                  key={row.id}
+                  hover
+                  onClick={() => setOpenId(row.id)}
+                  sx={{ cursor: "pointer" }}
+                >
                   <TableCell title={dayjs(row.ts).format()}>
                     {dayjs(row.ts).fromNow()}
                   </TableCell>
@@ -137,6 +144,7 @@ export function AdminAuditLog() {
           sx={{ opacity: isFetching ? 0.7 : 1 }}
         />
       </TableContainer>
+      <AuditLogDrawer auditId={openId} onClose={() => setOpenId(null)} />
     </Stack>
   );
 }
