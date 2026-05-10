@@ -11,11 +11,12 @@ import {
   Toolbar,
   Typography,
 } from "@mui/material";
-import HomeIcon from "@mui/icons-material/Home";
-import GroupsIcon from "@mui/icons-material/Groups";
-import SchoolIcon from "@mui/icons-material/School";
+import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
 import EventNoteIcon from "@mui/icons-material/EventNote";
+import GroupsIcon from "@mui/icons-material/Groups";
+import HomeIcon from "@mui/icons-material/Home";
 import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
+import SchoolIcon from "@mui/icons-material/School";
 import { Link, Outlet, useLocation } from "react-router-dom";
 
 import { useAuth } from "../auth";
@@ -28,6 +29,7 @@ const NAV_ITEMS: ReadonlyArray<{ to: string; label: string; icon: JSX.Element }>
   { to: "/engagements", label: "Engagements", icon: <EventNoteIcon /> },
   { to: "/schools", label: "Schools", icon: <SchoolIcon /> },
   { to: "/invoices", label: "Invoices", icon: <ReceiptLongIcon /> },
+  { to: "/admin", label: "Admin", icon: <AdminPanelSettingsIcon /> },
 ];
 
 export function AppShell() {
