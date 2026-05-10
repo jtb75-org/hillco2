@@ -3,15 +3,12 @@ import {
   Alert,
   Box,
   Button,
-  Checkbox,
   Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
-  FormControlLabel,
   Link,
-  MenuItem,
   Stack,
   TextField,
   Typography,
@@ -26,13 +23,18 @@ import { PersonSearchField } from "../../components/PersonSearchField";
 type ParentCreate = components["schemas"]["ParentCreate"];
 type PersonRow = components["schemas"]["PersonListRow"];
 
-const ROLE_OPTIONS: Array<ParentCreate["role"]> = ["mom", "dad", "guardian", "other"];
-
 type Mode =
   | { kind: "searching" }
   | { kind: "picked"; person: PersonRow }
   | { kind: "creating"; presetName: string };
 
+/**
+ * Lightweight create-then-edit flow: this dialog only collects the
+ * minimum needed to insert a parent (first + last name, or a linked
+ * existing person). After save, the parent appears on the family page
+ * and the caller opens the detail drawer for everything else
+ * (email, address, flags, role).
+ */
 export function AddParentDialog({
   open,
   familyId,
@@ -42,24 +44,16 @@ export function AddParentDialog({
   open: boolean;
   familyId: string;
   onClose: () => void;
-  onCreated: () => void;
+  /** Receives the freshly-created (or linked) parent row so the caller
+   *  can pop the detail drawer for follow-up edits. */
+  onCreated: (parentId: string) => void;
 }) {
   const [mode, setMode] = useState<Mode>({ kind: "searching" });
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [street1, setStreet1] = useState("");
-  const [street2, setStreet2] = useState("");
-  const [city, setCity] = useState("");
-  const [stateCode, setStateCode] = useState("");
-  const [postalCode, setPostalCode] = useState("");
-  const [role, setRole] = useState<ParentCreate["role"]>("other");
-  const [isPrimary, setIsPrimary] = useState(false);
-  const [isBilling, setIsBilling] = useState(false);
 
   const create = useMutation({
-    mutationFn: async (body: ParentCreate) => {
+    mutationFn: async (body: ParentCreate): Promise<{ id: string }> => {
       const { data, error: respError } = await api.POST(
         "/api/families/{family_id}/parents",
         { params: { path: { family_id: familyId } }, body },
@@ -70,10 +64,10 @@ export function AddParentDialog({
           "Failed to add parent.";
         throw new Error(msg);
       }
-      return data;
+      return data as unknown as { id: string };
     },
-    onSuccess: () => {
-      onCreated();
+    onSuccess: (created) => {
+      onCreated(created.id);
       reset();
       onClose();
     },
@@ -83,16 +77,6 @@ export function AddParentDialog({
     setMode({ kind: "searching" });
     setFirstName("");
     setLastName("");
-    setEmail("");
-    setPhone("");
-    setStreet1("");
-    setStreet2("");
-    setCity("");
-    setStateCode("");
-    setPostalCode("");
-    setRole("other");
-    setIsPrimary(false);
-    setIsBilling(false);
     create.reset();
   };
 
@@ -104,53 +88,32 @@ export function AddParentDialog({
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    // Backend defaults role to "other" and both flags to False; the
+    // operator promotes/flags via the detail drawer that opens next.
+    const defaults = {
+      role: "other" as const,
+      is_primary_contact: false,
+      is_billing_contact: false,
+    };
     if (mode.kind === "picked") {
-      create.mutate({
-        person_id: mode.person.id,
-        role,
-        is_primary_contact: isPrimary,
-        is_billing_contact: isBilling,
-      });
+      create.mutate({ person_id: mode.person.id, ...defaults });
     } else if (mode.kind === "creating") {
       create.mutate({
         first_name: firstName.trim(),
         last_name: lastName.trim() || null,
-        email: email.trim() || null,
-        phone: phone.trim() || null,
-        street1: street1.trim() || null,
-        street2: street2.trim() || null,
-        city: city.trim() || null,
-        state: stateCode.trim() || null,
-        postal_code: postalCode.trim() || null,
-        role,
-        is_primary_contact: isPrimary,
-        is_billing_contact: isBilling,
+        ...defaults,
       });
     }
   };
 
-  // Email + ZIP format checks — mirror the backend regex so the user
-  // sees the problem before submit instead of a 422 round-trip.
-  const emailTrimmed = email.trim();
-  const zipTrimmed = postalCode.trim();
-  const emailLooksValid = !emailTrimmed || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrimmed);
-  const zipLooksValid = !zipTrimmed || /^\d{5}(-\d{4})?$/.test(zipTrimmed);
-
   const submitLabel = mode.kind === "picked" ? "Link" : "Add";
-  const billingMissing =
-    isBilling && (!emailTrimmed || !street1.trim() || !zipTrimmed);
   const submitDisabled =
     create.isPending ||
     mode.kind === "searching" ||
-    (mode.kind === "creating" &&
-      (!firstName.trim() ||
-        !lastName.trim() ||
-        billingMissing ||
-        !emailLooksValid ||
-        !zipLooksValid));
+    (mode.kind === "creating" && (!firstName.trim() || !lastName.trim()));
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+    <Dialog open={open} onClose={handleClose} maxWidth="xs" fullWidth>
       <form onSubmit={onSubmit}>
         <DialogTitle>Add parent / guardian</DialogTitle>
         <DialogContent>
@@ -163,16 +126,10 @@ export function AddParentDialog({
               >
                 <PersonSearchField
                   autoFocus
-                  // Bias the dropdown to people who can plausibly be a
-                  // guardian. Students are excluded server-side too.
-                  // We omit the kind filter so 'other'/'school_worker'
-                  // can also surface (e.g., a teacher who's also a parent).
                   onPickExisting={(person) => {
                     setMode({ kind: "picked", person });
                   }}
                   onCreateNew={(typed) => {
-                    // Best-effort split on first whitespace; user can
-                    // correct in the form below.
                     const trimmed = typed.trim();
                     const idx = trimmed.indexOf(" ");
                     if (idx === -1) {
@@ -233,84 +190,9 @@ export function AddParentDialog({
                     />
                   </LabeledField>
                 </Stack>
-                <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-                  <LabeledField label="Email" required={isBilling}>
-                    <TextField
-                      type="email"
-                      required={isBilling}
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      fullWidth
-                      error={!emailLooksValid}
-                      helperText={!emailLooksValid ? "Invalid email." : undefined}
-                    />
-                  </LabeledField>
-                  <LabeledField label="Phone">
-                    <TextField
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      fullWidth
-                    />
-                  </LabeledField>
-                </Stack>
-                <LabeledField label="Street address" required={isBilling}>
-                  <TextField
-                    placeholder="123 Main St"
-                    required={isBilling}
-                    value={street1}
-                    onChange={(e) => setStreet1(e.target.value)}
-                    fullWidth
-                    inputProps={{ maxLength: 200 }}
-                  />
-                </LabeledField>
-                <LabeledField label="Apt / suite / unit">
-                  <TextField
-                    placeholder="Apt 4B"
-                    value={street2}
-                    onChange={(e) => setStreet2(e.target.value)}
-                    fullWidth
-                    inputProps={{ maxLength: 100 }}
-                  />
-                </LabeledField>
-                <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-                  <Box sx={{ flex: 2 }}>
-                    <LabeledField label="City">
-                      <TextField
-                        value={city}
-                        onChange={(e) => setCity(e.target.value)}
-                        fullWidth
-                        inputProps={{ maxLength: 100 }}
-                      />
-                    </LabeledField>
-                  </Box>
-                  <Box sx={{ flex: 1 }}>
-                    <LabeledField label="State">
-                      <TextField
-                        placeholder="IL"
-                        value={stateCode}
-                        onChange={(e) => setStateCode(e.target.value)}
-                        fullWidth
-                        inputProps={{ maxLength: 50 }}
-                      />
-                    </LabeledField>
-                  </Box>
-                  <Box sx={{ flex: 1 }}>
-                    <LabeledField label="ZIP / postal" required={isBilling}>
-                      <TextField
-                        placeholder="62701"
-                        required={isBilling}
-                        value={postalCode}
-                        onChange={(e) => setPostalCode(e.target.value)}
-                        fullWidth
-                        inputProps={{ maxLength: 10 }}
-                        error={!zipLooksValid}
-                        helperText={
-                          !zipLooksValid ? "Use 5 digits or ZIP+4." : undefined
-                        }
-                      />
-                    </LabeledField>
-                  </Box>
-                </Stack>
+                <Typography variant="caption" color="text.secondary">
+                  You'll add email, address, and other details on the next step.
+                </Typography>
                 <Box>
                   <Link
                     component="button"
@@ -321,43 +203,6 @@ export function AddParentDialog({
                     ← search existing instead
                   </Link>
                 </Box>
-              </>
-            )}
-
-            {mode.kind !== "searching" && (
-              <>
-                <LabeledField label="Relationship">
-                  <TextField
-                    select
-                    value={role}
-                    onChange={(e) => setRole(e.target.value as ParentCreate["role"])}
-                    fullWidth
-                  >
-                    {ROLE_OPTIONS.map((r) => (
-                      <MenuItem key={r} value={r}>{r}</MenuItem>
-                    ))}
-                  </TextField>
-                </LabeledField>
-                <Stack direction="row" spacing={3}>
-                  <FormControlLabel
-                    control={
-                      <Checkbox
-                        checked={isPrimary}
-                        onChange={(e) => setIsPrimary(e.target.checked)}
-                      />
-                    }
-                    label="Primary contact"
-                  />
-                  <FormControlLabel
-                    control={
-                      <Checkbox
-                        checked={isBilling}
-                        onChange={(e) => setIsBilling(e.target.checked)}
-                      />
-                    }
-                    label="Billing contact"
-                  />
-                </Stack>
               </>
             )}
 

@@ -23,20 +23,17 @@ import {
 import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
-import StarOutlineIcon from "@mui/icons-material/StarOutline";
-import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import dayjs from "dayjs";
 import { Link as RouterLink, useParams } from "react-router-dom";
 
 import { api } from "../../api/client";
-import type { components } from "../../api/schema";
 import { CardActionsMenu } from "../../components/CardActionsMenu";
 
 import { AddParentDialog } from "./AddParentDialog";
 import { AddStudentDialog } from "./AddStudentDialog";
-import { EditParentDialog } from "./EditParentDialog";
 import { EditStudentDialog } from "./EditStudentDialog";
+import { ParentDrawer } from "./ParentDrawer";
 
 // /api/families/{id} returns a plain dict in the route — its OpenAPI
 // response schema is empty. Hand-typed for the parts we render; the
@@ -167,43 +164,15 @@ function ParentsCard({
   onChanged: () => void;
 }) {
   const [addOpen, setAddOpen] = useState(false);
-  const [editing, setEditing] = useState<Parent | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<Parent | null>(null);
+  const [drawerParent, setDrawerParent] = useState<Parent | null>(null);
   const hasBilling = parents?.some((p) => p.is_billing_contact) ?? false;
 
-  const patch = useMutation({
-    mutationFn: async (args: {
-      id: string;
-      body: components["schemas"]["ParentUpdate"];
-    }) => {
-      const { error: respError } = await api.PATCH(
-        "/api/parents/{parent_id}",
-        { params: { path: { parent_id: args.id } }, body: args.body },
-      );
-      if (respError) {
-        const msg = (respError as { detail?: string }).detail ?? "Failed.";
-        throw new Error(msg);
-      }
-    },
-    onSuccess: onChanged,
-  });
-
-  const remove = useMutation({
-    mutationFn: async (id: string) => {
-      const { error: respError } = await api.DELETE(
-        "/api/parents/{parent_id}",
-        { params: { path: { parent_id: id } } },
-      );
-      if (respError) {
-        const msg = (respError as { detail?: string }).detail ?? "Failed.";
-        throw new Error(msg);
-      }
-    },
-    onSuccess: () => {
-      setConfirmDelete(null);
-      onChanged();
-    },
-  });
+  // Keep the drawer's parent reference in sync as the family detail
+  // refetches after a save — otherwise the drawer holds stale data.
+  const liveDrawerParent =
+    drawerParent && (parents ?? []).find((p) => p.id === drawerParent.id)
+      ? (parents ?? []).find((p) => p.id === drawerParent.id)!
+      : drawerParent;
 
   return (
     <Box>
@@ -219,113 +188,79 @@ function ParentsCard({
             ))
           : (parents ?? []).map((p) => {
               const isBilling = p.id === billingId;
-              // Mirror the backend's billing-required predicate: email
-              // AND (mailing OR billing override) must be present. The
-              // composed `mailing_address` field is non-null if any of
-              // street1..country is set; same for billing_address.
-              const canBeBilling =
-                !!p.email && (!!p.mailing_address || !!p.billing_address);
               return (
                 <Grid key={p.id} item xs={12} sm={6} md={4}>
-                  <Card variant="outlined" sx={{ height: "100%", position: "relative" }}>
-                    <CardActionsMenu
-                      actions={[
-                        {
-                          label: "Primary contact",
-                          checked: p.id === primaryId,
-                          icon: <StarOutlineIcon fontSize="small" />,
-                          onClick: () =>
-                            patch.mutate({
-                              id: p.id,
-                              body: { is_primary_contact: p.id !== primaryId },
-                            }),
-                        },
-                        {
-                          label: "Billing contact",
-                          checked: isBilling,
-                          icon: <ReceiptLongIcon fontSize="small" />,
-                          disabledReason:
-                            !isBilling && !canBeBilling
-                              ? "Add an email and mailing address first."
-                              : undefined,
-                          onClick: () =>
-                            patch.mutate({
-                              id: p.id,
-                              body: { is_billing_contact: !isBilling },
-                            }),
-                        },
-                        {
-                          label: "Edit details",
-                          icon: <EditIcon fontSize="small" />,
-                          dividerAbove: true,
-                          onClick: () => setEditing(p),
-                        },
-                        {
-                          label: "Remove from family",
-                          icon: <DeleteOutlineIcon fontSize="small" />,
-                          variant: "danger",
-                          onClick: () => setConfirmDelete(p),
-                        },
-                      ]}
-                    />
-                    <CardContent sx={{ pb: "16px !important", pr: 5 }}>
-                      <Stack direction="row" alignItems="baseline" spacing={1} sx={{ mb: 0.5 }}>
-                        <Typography variant="subtitle1" sx={{ fontWeight: 600, flex: 1 }}>
-                          {p.name}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {p.role}
-                        </Typography>
-                      </Stack>
-                      <Stack direction="row" spacing={0.5} sx={{ mb: 1 }}>
-                        {p.id === primaryId && (
-                          <Chip size="small" label="primary" color="primary" variant="outlined" />
-                        )}
-                        {isBilling && (
-                          <Chip size="small" label="billing" color="success" variant="outlined" />
-                        )}
-                      </Stack>
-                      {p.email && (
-                        <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-                          {p.email}
-                        </Typography>
-                      )}
-                      {p.phone && (
-                        <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-                          {p.phone}
-                        </Typography>
-                      )}
-                      {p.mailing_address && (
-                        <Typography
-                          variant="caption"
-                          color="text.secondary"
-                          sx={{ display: "block", whiteSpace: "pre-line", mt: 0.75 }}
-                        >
-                          {p.mailing_address}
-                        </Typography>
-                      )}
-                      {isBilling && (p.billing_address || p.billing_attention_to) && (
-                        <Box sx={{ mt: 0.75, pt: 0.75, borderTop: 1, borderColor: "divider" }}>
-                          <Typography variant="caption" color="text.secondary" sx={{ fontStyle: "italic" }}>
-                            Billing override:
+                  <Card
+                    sx={{
+                      height: "100%",
+                      boxShadow: 1,
+                      transition: (t) => t.transitions.create("box-shadow"),
+                      "&:hover": { boxShadow: 3 },
+                    }}
+                  >
+                    <CardActionArea
+                      onClick={() => setDrawerParent(p)}
+                      sx={{ height: "100%" }}
+                    >
+                      <CardContent>
+                        <Stack direction="row" alignItems="baseline" spacing={1} sx={{ mb: 0.5 }}>
+                          <Typography variant="subtitle1" sx={{ fontWeight: 600, flex: 1 }}>
+                            {p.name}
                           </Typography>
-                          {p.billing_attention_to && (
-                            <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-                              Attn: {p.billing_attention_to}
-                            </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {p.role}
+                          </Typography>
+                        </Stack>
+                        <Stack direction="row" spacing={0.5} sx={{ mb: 1 }}>
+                          {p.id === primaryId && (
+                            <Chip size="small" label="primary" color="primary" variant="outlined" />
                           )}
-                          {p.billing_address && (
-                            <Typography
-                              variant="caption"
-                              color="text.secondary"
-                              sx={{ display: "block", whiteSpace: "pre-line" }}
-                            >
-                              {p.billing_address}
-                            </Typography>
+                          {isBilling && (
+                            <Chip size="small" label="billing" color="success" variant="outlined" />
                           )}
-                        </Box>
-                      )}
-                    </CardContent>
+                        </Stack>
+                        {p.email && (
+                          <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                            {p.email}
+                          </Typography>
+                        )}
+                        {p.phone && (
+                          <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                            {p.phone}
+                          </Typography>
+                        )}
+                        {p.mailing_address && (
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{ display: "block", whiteSpace: "pre-line", mt: 0.75 }}
+                          >
+                            {p.mailing_address}
+                          </Typography>
+                        )}
+                        {isBilling && (p.billing_address || p.billing_attention_to) && (
+                          <Box sx={{ mt: 0.75, pt: 0.75, borderTop: 1, borderColor: "divider" }}>
+                            <Typography variant="caption" color="text.secondary" sx={{ fontStyle: "italic" }}>
+                              Billing override:
+                            </Typography>
+                            {p.billing_attention_to && (
+                              <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                                Attn: {p.billing_attention_to}
+                              </Typography>
+                            )}
+                            {p.billing_address && (
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                                sx={{ display: "block", whiteSpace: "pre-line" }}
+                              >
+                                {p.billing_address}
+                              </Typography>
+                            )}
+                          </Box>
+                        )}
+                      </CardContent>
+                    </CardActionArea>
                   </Card>
                 </Grid>
               );
@@ -341,48 +276,25 @@ function ParentsCard({
           No billing contact flagged — invoices won't have a recipient.
         </Typography>
       )}
-      {patch.error && (
-        <Alert severity="error" sx={{ mt: 1 }} onClose={() => patch.reset()}>
-          {patch.error.message}
-        </Alert>
-      )}
       <AddParentDialog
         open={addOpen}
         familyId={familyId}
         onClose={() => setAddOpen(false)}
-        onCreated={onChanged}
+        onCreated={(parentId) => {
+          // Refetch so the new parent is in the family detail data,
+          // then pop the drawer for that parent so the operator fills
+          // in the rest (email, address, role, flags) right away.
+          onChanged();
+          setDrawerParent({ id: parentId } as Parent);
+        }}
       />
-      <EditParentDialog
-        open={!!editing}
-        parent={editing}
-        onClose={() => setEditing(null)}
-        onSaved={onChanged}
+      <ParentDrawer
+        open={!!drawerParent}
+        parent={liveDrawerParent}
+        onClose={() => setDrawerParent(null)}
+        onChanged={onChanged}
+        onRemoved={onChanged}
       />
-      <Dialog
-        open={!!confirmDelete}
-        onClose={() => setConfirmDelete(null)}
-        maxWidth="xs"
-        fullWidth
-      >
-        <DialogTitle>Remove {confirmDelete?.name}?</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            They'll be detached from this family. The contact record stays in
-            the address book so any audit history is preserved.
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setConfirmDelete(null)}>Cancel</Button>
-          <Button
-            color="error"
-            variant="contained"
-            disabled={remove.isPending}
-            onClick={() => confirmDelete && remove.mutate(confirmDelete.id)}
-          >
-            Remove
-          </Button>
-        </DialogActions>
-      </Dialog>
     </Box>
   );
 }
@@ -434,7 +346,15 @@ function StudentsCard({
         ) : (
           (students ?? []).map((s) => (
             <Grid key={s.id} item xs={12} sm={6} md={4}>
-              <Card variant="outlined" sx={{ height: "100%", position: "relative" }}>
+              <Card
+                sx={{
+                  height: "100%",
+                  position: "relative",
+                  boxShadow: 1,
+                  transition: (t) => t.transitions.create("box-shadow"),
+                  "&:hover": { boxShadow: 3 },
+                }}
+              >
                 <CardActionArea
                   component={RouterLink}
                   to={`/students/${s.id}`}
