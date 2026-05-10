@@ -13,6 +13,8 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
+import { DatePicker } from "@mui/x-date-pickers";
+import dayjs, { type Dayjs } from "dayjs";
 import { useMutation } from "@tanstack/react-query";
 
 import { api } from "../../api/client";
@@ -42,7 +44,7 @@ export function AddStudentDialog({
   const [mode, setMode] = useState<Mode>({ kind: "searching" });
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
-  const [dob, setDob] = useState("");
+  const [dob, setDob] = useState<Dayjs | null>(null);
   const [grade, setGrade] = useState("");
 
   const create = useMutation({
@@ -70,7 +72,7 @@ export function AddStudentDialog({
     setMode({ kind: "searching" });
     setFirstName("");
     setLastName("");
-    setDob("");
+    setDob(null);
     setGrade("");
     create.reset();
   };
@@ -89,7 +91,7 @@ export function AddStudentDialog({
       create.mutate({
         first_name: firstName.trim(),
         last_name: lastName.trim() || null,
-        dob: dob || null,
+        dob: dob && dob.isValid() ? dob.format("YYYY-MM-DD") : null,
         current_grade: grade.trim() || null,
       });
     }
@@ -185,11 +187,11 @@ export function AddStudentDialog({
                 </Stack>
                 <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
                   <LabeledField label="Date of birth">
-                    <TextField
-                      type="date"
+                    <DatePicker
                       value={dob}
-                      onChange={(e) => setDob(e.target.value)}
-                      fullWidth
+                      onChange={(v) => setDob(v)}
+                      maxDate={dayjs()}
+                      slotProps={{ textField: { fullWidth: true } }}
                     />
                   </LabeledField>
                   <LabeledField label="Current grade">
