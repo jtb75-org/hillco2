@@ -70,6 +70,14 @@ class AuditLogPage(BaseModel):
     offset: int
 
 
+class AuditLogDetail(AuditLogEntry):
+    # Snapshot of the row before the change (NULL on INSERT) and after
+    # (NULL on DELETE). Each is the raw `to_jsonb(row)` the trigger
+    # captured, so columns map 1:1 to the underlying table.
+    before_json: dict | None
+    after_json: dict | None
+
+
 class AboutInfo(BaseModel):
     build_commit: str
     api_title: str
@@ -260,6 +268,45 @@ async def list_audit_log(
         "limit": limit,
         "offset": offset,
     }
+
+
+@router.get("/audit-log/{audit_id}", response_model=AuditLogDetail)
+async def get_audit_log_entry(
+    audit_id: int,
+    _user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    """Single audit_log row with the captured before/after JSONB.
+    Drives the per-entry detail drawer on the audit-log page."""
+    row = await conn.fetchrow(
+        """
+        SELECT al.id, al.ts, al.user_id,
+               p.email AS user_email,
+               TRIM(BOTH ' ' FROM
+                 COALESCE(p.first_name, '') ||
+                 CASE WHEN p.last_name IS NOT NULL AND p.last_name <> ''
+                      THEN ' ' || p.last_name ELSE '' END
+               ) AS user_name,
+               al.table_name, al.row_id, al.action,
+               al.before_json, al.after_json
+        FROM audit_log al
+        LEFT JOIN people p ON p.id = al.user_id
+        WHERE al.id = $1
+        """,
+        audit_id,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Audit entry not found")
+    # asyncpg returns JSONB columns as strings; parse before returning so
+    # the Pydantic dict type holds. (FastAPI's json encoder would re-
+    # stringify anyway.)
+    import json as _json
+    out = dict(row)
+    if isinstance(out.get("before_json"), str):
+        out["before_json"] = _json.loads(out["before_json"])
+    if isinstance(out.get("after_json"), str):
+        out["after_json"] = _json.loads(out["after_json"])
+    return out
 
 
 @router.get("/about", response_model=AboutInfo)

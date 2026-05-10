@@ -5127,6 +5127,49 @@
         }
       }
     },
+    "/api/admin/audit-log/{audit_id}": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Get Audit Log Entry",
+        "description": "Single audit_log row with the captured before/after JSONB.\nDrives the per-entry detail drawer on the audit-log page.",
+        "operationId": "get_audit_log_entry_api_admin_audit_log__audit_id__get",
+        "parameters": [
+          {
+            "name": "audit_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Audit Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditLogDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/about": {
       "get": {
         "tags": [
@@ -5916,6 +5959,111 @@
         },
         "type": "object",
         "title": "AgreementUpdate"
+      },
+      "AuditLogDetail": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "ts": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ts"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          },
+          "user_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Email"
+          },
+          "user_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Name"
+          },
+          "table_name": {
+            "type": "string",
+            "title": "Table Name"
+          },
+          "row_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Row Id"
+          },
+          "action": {
+            "type": "string",
+            "title": "Action"
+          },
+          "before_json": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before Json"
+          },
+          "after_json": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Json"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "ts",
+          "user_id",
+          "user_email",
+          "user_name",
+          "table_name",
+          "row_id",
+          "action",
+          "before_json",
+          "after_json"
+        ],
+        "title": "AuditLogDetail"
       },
       "AuditLogEntry": {
         "properties": {
