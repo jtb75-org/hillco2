@@ -14,11 +14,15 @@ from .db import db
 from .routes import auth as auth_routes
 from .routes import contacts as contacts_routes
 from .routes import engagements as engagements_routes
+from .routes import expenses as expenses_routes
 from .routes import families as families_routes
+from .routes import followups as followups_routes
 from .routes import health as health_routes
 from .routes import me as me_routes
+from .routes import notes as notes_routes
 from .routes import schools as schools_routes
 from .routes import students as students_routes
+from .routes import time_entries as time_entries_routes
 
 
 @asynccontextmanager
@@ -151,3 +155,7 @@ app.include_router(students_routes.router)
 app.include_router(schools_routes.router)
 app.include_router(contacts_routes.router)
 app.include_router(engagements_routes.router)
+app.include_router(notes_routes.router)
+app.include_router(followups_routes.router)
+app.include_router(time_entries_routes.router)
+app.include_router(expenses_routes.router)

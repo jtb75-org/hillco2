@@ -1,0 +1,171 @@
+from datetime import date
+from decimal import Decimal
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
+
+from ..auth import require_user
+from ..db import get_conn
+
+router = APIRouter(prefix="/api", tags=["time_entries"])
+
+
+# ---- I/O models ------------------------------------------------------------
+
+class TimeEntryCreate(BaseModel):
+    work_date: date | None = None  # defaults to today
+    hours: Decimal = Field(..., gt=0)
+    description: str | None = None
+    billable: bool = True
+    hourly_rate: Decimal | None = None
+    user_id: UUID | None = None  # who did the work; defaults to the requester
+
+
+class TimeEntryUpdate(BaseModel):
+    work_date: date | None = None
+    hours: Decimal | None = Field(default=None, gt=0)
+    description: str | None = None
+    billable: bool | None = None
+    hourly_rate: Decimal | None = None
+    user_id: UUID | None = None
+
+
+# ---- Helpers ---------------------------------------------------------------
+
+async def _engagement_or_404(conn, engagement_id: UUID):
+    row = await conn.fetchrow(
+        "SELECT id, default_hourly_rate FROM engagements WHERE id = $1 AND deleted_at IS NULL",
+        engagement_id,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Engagement not found")
+    return row
+
+
+async def _time_entry_or_404(conn, entry_id: UUID):
+    row = await conn.fetchrow("SELECT * FROM time_entries WHERE id = $1", entry_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Time entry not found")
+    return row
+
+
+async def _resolve_active_user(conn, supplied: UUID | None, fallback: UUID) -> UUID:
+    if supplied is None or supplied == fallback:
+        return fallback
+    if await conn.fetchval(
+        "SELECT 1 FROM users WHERE id = $1 AND is_active",
+        supplied,
+    ):
+        return supplied
+    return fallback
+
+
+# ---- Routes ----------------------------------------------------------------
+
+@router.get("/engagements/{engagement_id}/time-entries")
+async def list_time_entries(
+    engagement_id: UUID,
+    _user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    await _engagement_or_404(conn, engagement_id)
+    rows = await conn.fetch(
+        """
+        SELECT t.id, t.engagement_id, t.user_id, t.work_date, t.hours,
+               t.description, t.billable, t.hourly_rate,
+               t.invoice_id, t.created_at, t.updated_at,
+               u.name AS user_name,
+               i.invoice_number AS invoice_number
+        FROM time_entries t
+        LEFT JOIN users u    ON u.id = t.user_id
+        LEFT JOIN invoices i ON i.id = t.invoice_id
+        WHERE t.engagement_id = $1
+        ORDER BY t.work_date DESC, t.id DESC
+        """,
+        engagement_id,
+    )
+    return [dict(r) for r in rows]
+
+
+@router.post("/engagements/{engagement_id}/time-entries", status_code=201)
+async def add_time_entry(
+    engagement_id: UUID,
+    body: TimeEntryCreate,
+    user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    await _engagement_or_404(conn, engagement_id)
+    work_date = body.work_date or date.today()
+    description = (body.description or "").strip() or None
+    worked_user_id = await _resolve_active_user(conn, body.user_id, user["id"])
+
+    row = await conn.fetchrow(
+        """
+        INSERT INTO time_entries
+          (engagement_id, user_id, work_date, hours, description, billable, hourly_rate)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING id, engagement_id, user_id, work_date, hours,
+                  description, billable, hourly_rate, invoice_id,
+                  created_at, updated_at
+        """,
+        engagement_id, worked_user_id, work_date, body.hours,
+        description, body.billable, body.hourly_rate,
+    )
+    return dict(row)
+
+
+@router.patch("/time-entries/{entry_id}")
+async def update_time_entry(
+    entry_id: UUID,
+    body: TimeEntryUpdate,
+    user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    entry = await _time_entry_or_404(conn, entry_id)
+    if entry["invoice_id"] is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="Time entry is on an invoice. Void or edit the invoice first.",
+        )
+    fields = body.model_dump(exclude_unset=True)
+    if not fields:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    if "description" in fields:
+        fields["description"] = (fields["description"] or "").strip() or None
+    if "user_id" in fields and fields["user_id"] is not None:
+        fields["user_id"] = await _resolve_active_user(
+            conn, fields["user_id"], user["id"]
+        )
+
+    set_sql = ", ".join(f"{col} = ${i+2}" for i, col in enumerate(fields))
+    row = await conn.fetchrow(
+        f"""
+        UPDATE time_entries SET {set_sql} WHERE id = $1
+        RETURNING id, engagement_id, user_id, work_date, hours,
+                  description, billable, hourly_rate, invoice_id,
+                  created_at, updated_at
+        """,
+        entry_id,
+        *fields.values(),
+    )
+    return dict(row)
+
+
+@router.delete("/time-entries/{entry_id}", status_code=204)
+async def delete_time_entry(
+    entry_id: UUID,
+    _user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    """Refuses to delete an entry that's already on an invoice — that
+    invoice's totals are derived from this row and silently mutating
+    them is bad UX. Void or edit the invoice instead."""
+    entry = await _time_entry_or_404(conn, entry_id)
+    if entry["invoice_id"] is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="Time entry is on an invoice. Void or edit the invoice first.",
+        )
+    await conn.execute("DELETE FROM time_entries WHERE id = $1", entry_id)
+    return None

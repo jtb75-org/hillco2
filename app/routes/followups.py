@@ -1,0 +1,191 @@
+from datetime import date
+from typing import Literal
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
+
+from ..auth import require_user
+from ..db import get_conn
+
+router = APIRouter(prefix="/api", tags=["followups"])
+
+FollowupStatus = Literal["open", "done", "cancelled"]
+
+
+# ---- I/O models ------------------------------------------------------------
+
+class FollowupCreate(BaseModel):
+    title: str = Field(..., min_length=1)
+    due_date: date
+    body: str | None = None
+    assignee_id: UUID | None = None  # defaults to the requester
+
+
+class FollowupUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1)
+    body: str | None = None
+    due_date: date | None = None
+    assignee_id: UUID | None = None
+
+
+class FollowupStatusUpdate(BaseModel):
+    status: FollowupStatus
+
+
+# ---- Helpers ---------------------------------------------------------------
+
+async def _engagement_or_404(conn, engagement_id: UUID):
+    if not await conn.fetchval(
+        "SELECT 1 FROM engagements WHERE id = $1 AND deleted_at IS NULL",
+        engagement_id,
+    ):
+        raise HTTPException(status_code=404, detail="Engagement not found")
+
+
+async def _followup_or_404(conn, followup_id: UUID):
+    row = await conn.fetchrow("SELECT * FROM followups WHERE id = $1", followup_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Followup not found")
+    return row
+
+
+async def _resolve_assignee(conn, supplied: UUID | None, fallback: UUID) -> UUID:
+    """Validate assignee is an active user. Falls back to the caller's id
+    if the supplied id isn't active — same defensive behavior as
+    hillco-portal."""
+    if supplied is None or supplied == fallback:
+        return fallback
+    if await conn.fetchval(
+        "SELECT 1 FROM users WHERE id = $1 AND is_active",
+        supplied,
+    ):
+        return supplied
+    return fallback
+
+
+# ---- Routes ----------------------------------------------------------------
+
+@router.get("/engagements/{engagement_id}/followups")
+async def list_followups(
+    engagement_id: UUID,
+    _user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    await _engagement_or_404(conn, engagement_id)
+    rows = await conn.fetch(
+        """
+        SELECT f.id, f.engagement_id, f.title, f.body, f.due_date, f.status,
+               f.completed_at, f.assignee_id, f.created_by,
+               f.created_at, f.updated_at,
+               assignee.name AS assignee_name,
+               creator.name  AS created_by_name
+        FROM followups f
+        LEFT JOIN users assignee ON assignee.id = f.assignee_id
+        LEFT JOIN users creator  ON creator.id  = f.created_by
+        WHERE f.engagement_id = $1
+        ORDER BY
+          CASE f.status
+            WHEN 'open' THEN 0
+            WHEN 'done' THEN 1
+            WHEN 'cancelled' THEN 2
+          END,
+          f.due_date ASC,
+          f.id DESC
+        """,
+        engagement_id,
+    )
+    return [dict(r) for r in rows]
+
+
+@router.post("/engagements/{engagement_id}/followups", status_code=201)
+async def add_followup(
+    engagement_id: UUID,
+    body: FollowupCreate,
+    user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    await _engagement_or_404(conn, engagement_id)
+    assignee_id = await _resolve_assignee(conn, body.assignee_id, user["id"])
+    title = body.title.strip()
+    body_txt = (body.body or "").strip() or None
+
+    row = await conn.fetchrow(
+        """
+        INSERT INTO followups (
+          engagement_id, title, body, due_date, assignee_id, status, created_by
+        ) VALUES ($1, $2, $3, $4, $5, 'open', $6)
+        RETURNING id, engagement_id, title, body, due_date, status, completed_at,
+                  assignee_id, created_by, created_at, updated_at
+        """,
+        engagement_id, title, body_txt, body.due_date, assignee_id, user["id"],
+    )
+    return dict(row)
+
+
+@router.patch("/followups/{followup_id}")
+async def update_followup(
+    followup_id: UUID,
+    body: FollowupUpdate,
+    user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    await _followup_or_404(conn, followup_id)
+    fields = body.model_dump(exclude_unset=True)
+    if not fields:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    if "title" in fields:
+        fields["title"] = fields["title"].strip()
+    if "body" in fields:
+        fields["body"] = (fields["body"] or "").strip() or None
+    if "assignee_id" in fields and fields["assignee_id"] is not None:
+        fields["assignee_id"] = await _resolve_assignee(
+            conn, fields["assignee_id"], user["id"]
+        )
+
+    set_sql = ", ".join(f"{col} = ${i+2}" for i, col in enumerate(fields))
+    row = await conn.fetchrow(
+        f"""
+        UPDATE followups SET {set_sql} WHERE id = $1
+        RETURNING id, engagement_id, title, body, due_date, status, completed_at,
+                  assignee_id, created_by, created_at, updated_at
+        """,
+        followup_id,
+        *fields.values(),
+    )
+    return dict(row)
+
+
+@router.post("/followups/{followup_id}/status")
+async def update_followup_status(
+    followup_id: UUID,
+    body: FollowupStatusUpdate,
+    _user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    """Dedicated status transition endpoint — completed_at is auto-stamped
+    on the 'done' transition and cleared on any other transition."""
+    await _followup_or_404(conn, followup_id)
+    row = await conn.fetchrow(
+        """
+        UPDATE followups
+        SET status = $1::followup_status,
+            completed_at = CASE WHEN $1 = 'done' THEN NOW() ELSE NULL END
+        WHERE id = $2
+        RETURNING id, engagement_id, title, body, due_date, status, completed_at,
+                  assignee_id, created_by, created_at, updated_at
+        """,
+        body.status, followup_id,
+    )
+    return dict(row)
+
+
+@router.delete("/followups/{followup_id}", status_code=204)
+async def delete_followup(
+    followup_id: UUID,
+    _user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    await _followup_or_404(conn, followup_id)
+    await conn.execute("DELETE FROM followups WHERE id = $1", followup_id)
+    return None
