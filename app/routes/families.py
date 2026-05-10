@@ -328,7 +328,14 @@ async def family_detail(
           )                                       AS name,
           p.birthday                              AS dob,
           sd.current_grade,
-          sd.current_school_id
+          sd.current_school_id,
+          -- Clinical flags surface on the family-detail student card as
+          -- chips. The detail page reads the full set from
+          -- /api/students/{id} for inline editing.
+          sd.has_504, sd.has_iep, sd.has_learning_disability,
+          sd.has_adhd, sd.has_intellectual_disability,
+          sd.has_health_impairment, sd.has_emotional_disturbance,
+          sd.autism_level
         FROM family_students fs
         JOIN people p ON p.id = fs.person_id
                      AND p.kind = 'student'

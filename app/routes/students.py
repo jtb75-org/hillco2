@@ -34,7 +34,15 @@ DIAGNOSTIC_BOOL_COLS = (
     "has_health_impairment",
     "has_emotional_disturbance",
 )
-DETAIL_TEXT_COLS = ("current_grade", "diagnosis_other", "needs_goals")
+DETAIL_TEXT_COLS = (
+    "current_grade",
+    "diagnosis_other",
+    "needs_goals",
+    "learning_disability_notes",
+    "intellectual_disability_notes",
+    "health_impairment_notes",
+    "emotional_disturbance_notes",
+)
 
 
 # ---- I/O models ------------------------------------------------------------
@@ -55,6 +63,10 @@ class StudentBase(BaseModel):
     has_emotional_disturbance: bool | None = None
     diagnosis_other: str | None = None
     needs_goals: str | None = None
+    learning_disability_notes: str | None = None
+    intellectual_disability_notes: str | None = None
+    health_impairment_notes: str | None = None
+    emotional_disturbance_notes: str | None = None
 
 
 class StudentCreate(StudentBase):
@@ -98,6 +110,8 @@ _LEGACY_SHAPE_SELECT = """
       sd.has_adhd, sd.has_intellectual_disability,
       sd.has_health_impairment, sd.has_emotional_disturbance,
       sd.diagnosis_other, sd.needs_goals,
+      sd.learning_disability_notes, sd.intellectual_disability_notes,
+      sd.health_impairment_notes, sd.emotional_disturbance_notes,
       p.deleted_at,
       p.created_at, p.updated_at,
       f.household_name AS family_household_name
@@ -212,8 +226,13 @@ async def add_student(
           has_504, has_iep, has_learning_disability,
           has_adhd, has_intellectual_disability,
           has_health_impairment, has_emotional_disturbance,
-          diagnosis_other, needs_goals
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+          diagnosis_other, needs_goals,
+          learning_disability_notes, intellectual_disability_notes,
+          health_impairment_notes, emotional_disturbance_notes
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
+          $14, $15, $16, $17
+        )
         """,
         person_id,
         fields["current_school_id"], fields["current_grade"],
@@ -222,6 +241,8 @@ async def add_student(
         fields["has_adhd"], fields["has_intellectual_disability"],
         fields["has_health_impairment"], fields["has_emotional_disturbance"],
         fields["diagnosis_other"], fields["needs_goals"],
+        fields["learning_disability_notes"], fields["intellectual_disability_notes"],
+        fields["health_impairment_notes"], fields["emotional_disturbance_notes"],
     )
 
     row = await conn.fetchrow(
@@ -273,6 +294,28 @@ async def student_detail(
         student_id,
     )
 
+    # Primary parent on this family (if any) — the student page's
+    # "Reach" line uses this. Falls back to billing parent if no primary
+    # is flagged, then null.
+    primary = await conn.fetchrow(
+        """
+        SELECT
+          p.id,
+          TRIM(BOTH ' ' FROM
+            COALESCE(p.first_name, '') ||
+            CASE WHEN p.last_name IS NOT NULL AND p.last_name <> ''
+                 THEN ' ' || p.last_name ELSE '' END
+          ) AS name,
+          p.email, p.phone
+        FROM family_guardians fg
+        JOIN people p ON p.id = fg.person_id AND p.deleted_at IS NULL
+        WHERE fg.family_id = $1
+        ORDER BY fg.is_primary_contact DESC, fg.is_billing_contact DESC
+        LIMIT 1
+        """,
+        student["family_id"],
+    )
+
     out = dict(student)
     out["family"] = {
         "id": student["family_id"],
@@ -280,6 +323,7 @@ async def student_detail(
     }
     out.pop("family_household_name", None)
     out["school"] = dict(school) if school else None
+    out["primary_parent"] = dict(primary) if primary else None
     out["engagements"] = [dict(e) for e in engagements]
     out["recent_notes"] = [dict(n) for n in notes]
     return out

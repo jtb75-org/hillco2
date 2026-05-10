@@ -9345,6 +9345,50 @@
             ],
             "title": "Needs Goals"
           },
+          "learning_disability_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Learning Disability Notes"
+          },
+          "intellectual_disability_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intellectual Disability Notes"
+          },
+          "health_impairment_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Health Impairment Notes"
+          },
+          "emotional_disturbance_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Emotional Disturbance Notes"
+          },
           "person_id": {
             "anyOf": [
               {
@@ -9532,6 +9576,50 @@
               }
             ],
             "title": "Needs Goals"
+          },
+          "learning_disability_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Learning Disability Notes"
+          },
+          "intellectual_disability_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intellectual Disability Notes"
+          },
+          "health_impairment_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Health Impairment Notes"
+          },
+          "emotional_disturbance_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Emotional Disturbance Notes"
           }
         },
         "type": "object",
