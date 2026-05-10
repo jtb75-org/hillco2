@@ -1,0 +1,96 @@
+name: Build builder image
+
+# Rebuilds the hillco2/builder CI image whenever its Dockerfile (or
+# this workflow) changes. Other workflows pin the resulting image by
+# digest, so app-only changes never trigger a rebuild here.
+#
+# Bootstrap note: this is the one workflow that can't run inside
+# hillco2/builder, since it's the workflow that produces it. It runs
+# in atlas/builder:latest — the same image we're trying to retire from
+# the rest of CI. Confining the dependency to this single workflow is
+# the trade-off we accept for not building from scratch on every run;
+# once we have a hillco2/builder digest we can pin to, this image can
+# be swapped for hillco2/builder@<previous-digest> in a follow-up.
+#
+# kaniko/executor:debug would have been the "right" base, but it's
+# busybox/distroless and actions/checkout@v4 needs a glibc node20.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'Dockerfile.builder'
+      - '.github/workflows/build-builder.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'Dockerfile.builder'
+      - '.github/workflows/build-builder.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  REGISTRY: zot.lan.ng20.org
+  IMAGE_NAME: hillco2/builder
+
+jobs:
+  build:
+    name: Kaniko build
+    runs-on: jtb75-arc
+    container:
+      image: zot.lan.ng20.org/atlas/builder:latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get short SHA
+        id: sha
+        run: |
+          short=$(echo "${GITHUB_SHA}" | cut -c1-7)
+          echo "short=${short}" >> "$GITHUB_OUTPUT"
+
+      - name: Configure registry auth (kaniko)
+        env:
+          ZOT_USERNAME: ${{ secrets.ZOT_USERNAME }}
+          ZOT_PASSWORD: ${{ secrets.ZOT_PASSWORD }}
+        run: |
+          AUTH=$(printf '%s:%s' "${ZOT_USERNAME}" "${ZOT_PASSWORD}" | base64 | tr -d '\n')
+          CONFIG=$(printf '{"auths":{"%s":{"auth":"%s"}}}' "${REGISTRY}" "${AUTH}")
+          mkdir -p /opt/kaniko/.docker /root/.docker "${HOME:-/root}/.docker"
+          printf '%s\n' "${CONFIG}" > /opt/kaniko/.docker/config.json
+          printf '%s\n' "${CONFIG}" > /root/.docker/config.json
+          printf '%s\n' "${CONFIG}" > "${HOME:-/root}/.docker/config.json"
+
+      - name: Build (PR — no push)
+        if: github.event_name == 'pull_request'
+        run: |
+          /opt/kaniko/executor \
+            --context="${GITHUB_WORKSPACE}" \
+            --dockerfile="${GITHUB_WORKSPACE}/Dockerfile.builder" \
+            --no-push \
+            --snapshot-mode=redo
+
+      - name: Build and push (main)
+        if: github.event_name != 'pull_request'
+        run: |
+          /opt/kaniko/executor \
+            --context="${GITHUB_WORKSPACE}" \
+            --dockerfile="${GITHUB_WORKSPACE}/Dockerfile.builder" \
+            --destination="${REGISTRY}/${IMAGE_NAME}:${{ steps.sha.outputs.short }}" \
+            --destination="${REGISTRY}/${IMAGE_NAME}:main-latest" \
+            --image-name-with-digest-file=/tmp/digest.txt \
+            --snapshot-mode=redo
+
+      - name: Print digest for consumers
+        if: github.event_name != 'pull_request'
+        run: |
+          echo "=== hillco2/builder digest (pin consumers to this) ==="
+          cat /tmp/digest.txt
+          echo ""
+          echo "=== Tag also pushed: ${{ steps.sha.outputs.short }} ==="
