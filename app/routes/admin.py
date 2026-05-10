@@ -1,13 +1,22 @@
 import os
+import re
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
+import asyncpg
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field, field_validator
 
 from ..auth import require_user
 from ..db import get_conn
 from ..migrations import db_alembic_revision, image_alembic_head
+
+# Loose RFC-5322-shaped email check. Picks up obvious typos (no @,
+# trailing space) without pulling in the email-validator package just
+# for one form. The SPA's <input type="email"> covers the rest.
+_EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+_VALID_ROLES = ("consultant", "assistant", "admin")
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -22,6 +31,25 @@ class AdminUser(BaseModel):
     is_active: bool
     last_login_at: datetime | None
     created_at: datetime
+
+
+class CreateUserRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+    name: str = Field(min_length=1, max_length=200)
+    role: Literal["consultant", "assistant", "admin"]
+
+    @field_validator("email")
+    @classmethod
+    def _email_shape(cls, v: str) -> str:
+        v = v.strip()
+        if not _EMAIL_RE.match(v):
+            raise ValueError("must be a valid email address")
+        return v
+
+    @field_validator("name")
+    @classmethod
+    def _name_strip(cls, v: str) -> str:
+        return v.strip()
 
 
 class AuditLogEntry(BaseModel):
@@ -65,6 +93,78 @@ async def list_users(_user=Depends(require_user), conn=Depends(get_conn)):
         """
     )
     return [dict(r) for r in rows]
+
+
+@router.post("/users", response_model=AdminUser, status_code=201)
+async def create_user(
+    body: CreateUserRequest,
+    _user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    """Pre-authorize a new user. Until they sign in via Google OAuth
+    the row exists with last_login_at NULL; their first successful
+    OAuth callback flips that. Email is CITEXT UNIQUE — duplicates
+    return 409. Role gating for THIS endpoint is intentionally not
+    enforced yet (matches list_users); the same caveat applies."""
+    try:
+        row = await conn.fetchrow(
+            """
+            INSERT INTO users (email, name, role, is_active)
+            VALUES ($1, $2, $3, TRUE)
+            RETURNING id, email, name, role, is_active, last_login_at, created_at
+            """,
+            body.email, body.name, body.role,
+        )
+    except asyncpg.UniqueViolationError as e:
+        raise HTTPException(status_code=409, detail="A user with that email already exists.") from e
+    return dict(row)
+
+
+@router.delete("/users/{user_id}", response_model=AdminUser)
+async def deactivate_user(
+    user_id: UUID,
+    user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    """Soft-delete: set is_active=false. Preserves audit_log.user_id
+    foreign keys and lets us reactivate later. Refuses to deactivate
+    the caller's own account so an admin can't lock themselves out."""
+    if user and user["id"] == user_id:
+        raise HTTPException(status_code=400, detail="You cannot deactivate your own account.")
+    row = await conn.fetchrow(
+        """
+        UPDATE users
+           SET is_active = FALSE, updated_at = NOW()
+         WHERE id = $1
+        RETURNING id, email, name, role, is_active, last_login_at, created_at
+        """,
+        user_id,
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="User not found.")
+    return dict(row)
+
+
+@router.post("/users/{user_id}/reactivate", response_model=AdminUser)
+async def reactivate_user(
+    user_id: UUID,
+    _user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    """Reverse of deactivate_user. Idempotent: reactivating an already-
+    active user is a no-op that still returns the current row."""
+    row = await conn.fetchrow(
+        """
+        UPDATE users
+           SET is_active = TRUE, updated_at = NOW()
+         WHERE id = $1
+        RETURNING id, email, name, role, is_active, last_login_at, created_at
+        """,
+        user_id,
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="User not found.")
+    return dict(row)
 
 
 @router.get("/audit-log", response_model=AuditLogPage)
