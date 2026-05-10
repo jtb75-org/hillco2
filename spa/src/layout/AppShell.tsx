@@ -1,13 +1,18 @@
+import { useState } from "react";
 import {
   AppBar,
   Avatar,
   Box,
+  Divider,
   Drawer,
+  IconButton,
   List,
   ListItem,
   ListItemButton,
   ListItemIcon,
   ListItemText,
+  Menu,
+  MenuItem,
   Toolbar,
   Typography,
 } from "@mui/material";
@@ -15,11 +20,12 @@ import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
 import EventNoteIcon from "@mui/icons-material/EventNote";
 import GroupsIcon from "@mui/icons-material/Groups";
 import HomeIcon from "@mui/icons-material/Home";
+import LogoutIcon from "@mui/icons-material/Logout";
 import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
 import SchoolIcon from "@mui/icons-material/School";
 import { Link, Outlet, useLocation } from "react-router-dom";
 
-import { useAuth } from "../auth";
+import { signOut, useAuth } from "../auth";
 
 const DRAWER_WIDTH = 240;
 
@@ -35,6 +41,7 @@ const NAV_ITEMS: ReadonlyArray<{ to: string; label: string; icon: JSX.Element }>
 export function AppShell() {
   const { user } = useAuth();
   const { pathname } = useLocation();
+  const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   return (
     <Box sx={{ display: "flex", minHeight: "100vh" }}>
       <AppBar
@@ -49,7 +56,39 @@ export function AppShell() {
           {user && (
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
               <Typography variant="body2">{user.name}</Typography>
-              <Avatar sx={{ width: 32, height: 32 }}>{user.name.charAt(0)}</Avatar>
+              <IconButton
+                onClick={(e) => setMenuAnchor(e.currentTarget)}
+                size="small"
+                aria-label="Account menu"
+                aria-haspopup="true"
+                aria-expanded={menuAnchor ? "true" : undefined}
+                sx={{ p: 0 }}
+              >
+                <Avatar sx={{ width: 32, height: 32 }}>
+                  {user.name.charAt(0)}
+                </Avatar>
+              </IconButton>
+              <Menu
+                anchorEl={menuAnchor}
+                open={!!menuAnchor}
+                onClose={() => setMenuAnchor(null)}
+                anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+                transformOrigin={{ vertical: "top", horizontal: "right" }}
+              >
+                <Box sx={{ px: 2, py: 1, minWidth: 200 }}>
+                  <Typography variant="body2">{user.name}</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {user.email}
+                  </Typography>
+                </Box>
+                <Divider />
+                <MenuItem onClick={() => { setMenuAnchor(null); signOut(); }}>
+                  <ListItemIcon>
+                    <LogoutIcon fontSize="small" />
+                  </ListItemIcon>
+                  <ListItemText>Sign out</ListItemText>
+                </MenuItem>
+              </Menu>
             </Box>
           )}
         </Toolbar>
