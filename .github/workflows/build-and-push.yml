@@ -6,18 +6,23 @@ on:
       - main
     tags:
       - 'v*'
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
-# Per-branch concurrency. Two pushes close together both checkout the
-# gitops repo and edit the same kustomization.yaml; without this they
-# race on the gitops push and one tag-bump can land out of order or
-# fail on a non-fast-forward. cancel-in-progress is intentionally
-# false: each main commit's image should be built and deployed, not
-# canceled mid-build because a fresher one arrived. Builds queue
-# instead.
+# Per-ref concurrency. cancel-in-progress is conditional:
+#   - PR events: cancel older runs on the same PR when a new commit
+#     arrives. PR validation should track the latest commit, not waste
+#     cycles on stale ones.
+#   - main pushes: don't cancel — each main commit's image should be
+#     built and deployed, not canceled mid-build because a fresher one
+#     arrived. Builds queue instead. (Two close-together pushes both
+#     checkout gitops and edit the same kustomization.yaml; the queue
+#     prevents non-fast-forward push races on the gitops repo.)
 concurrency:
-  group: deploy-${{ github.ref }}
-  cancel-in-progress: false
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   REGISTRY: zot.lan.ng20.org
@@ -95,6 +100,10 @@ jobs:
     name: Build, push, and bump gitops
     runs-on: jtb75-arc
     needs: [lint, test]
+    # Build only on the merged commit; PRs run lint + test only. Building
+    # PR commits would push throwaway image tags to zot and try to bump
+    # the gitops overlay before merge, which we explicitly don't want.
+    if: github.event_name != 'pull_request'
     container:
       # Same builder image atlas/hillco-portal use: alpine + kaniko at
       # /opt/kaniko/executor (node20 also present but unused here).
