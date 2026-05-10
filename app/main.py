@@ -12,6 +12,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from .config import settings
 from .db import db
 from .routes import auth as auth_routes
+from .routes import families as families_routes
 from .routes import health as health_routes
 from .routes import me as me_routes
 
@@ -141,3 +142,4 @@ async def auth_aware_validation_error(request: Request, exc: RequestValidationEr
 app.include_router(health_routes.router)
 app.include_router(auth_routes.router)
 app.include_router(me_routes.router)
+app.include_router(families_routes.router)
