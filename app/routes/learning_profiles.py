@@ -79,12 +79,12 @@ async def list_profiles(
                       THEN ' ' || s.last_name ELSE '' END
                )                                AS student_name,
                sd.current_grade,
-               u.name AS created_by_name
+               TRIM(BOTH ' ' FROM COALESCE(u.first_name,'') || CASE WHEN u.last_name IS NOT NULL AND u.last_name <> '' THEN ' ' || u.last_name ELSE '' END) AS created_by_name
         FROM learning_profiles lp
         JOIN engagements e ON e.id = lp.engagement_id
         JOIN people s ON s.id = e.student_id AND s.kind = 'student'
         LEFT JOIN student_details sd ON sd.person_id = s.id
-        LEFT JOIN users u ON u.id = lp.created_by
+        LEFT JOIN people u ON u.id = lp.created_by
         WHERE lp.engagement_id = $1
         ORDER BY lp.created_at DESC
         """,

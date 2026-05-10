@@ -109,7 +109,7 @@ async def list_documents(
         SELECT
           d.id, d.kind, d.filename, d.content_type, d.byte_size,
           d.created_at, d.owner_type, d.owner_id, d.uploaded_by,
-          u.name AS uploaded_by_name,
+          TRIM(BOTH ' ' FROM COALESCE(u.first_name,'') || CASE WHEN u.last_name IS NOT NULL AND u.last_name <> '' THEN ' ' || u.last_name ELSE '' END) AS uploaded_by_name,
           CASE d.owner_type
             WHEN 'family'     THEN (SELECT household_name FROM families  WHERE id = d.owner_id)
             WHEN 'student'    THEN (SELECT TRIM(BOTH ' ' FROM
@@ -130,7 +130,7 @@ async def list_documents(
             ELSE NULL
           END AS owner_label
         FROM documents d
-        LEFT JOIN users u ON u.id = d.uploaded_by
+        LEFT JOIN people u ON u.id = d.uploaded_by
         WHERE {" AND ".join(clauses)}
         ORDER BY d.created_at DESC
         LIMIT ${len(args)}
@@ -227,7 +227,7 @@ async def family_merged_documents(
         """
         SELECT d.id, d.kind, d.filename, d.content_type, d.byte_size,
                d.created_at, d.owner_type, d.owner_id, d.uploaded_by,
-               u.name AS uploaded_by_name,
+               TRIM(BOTH ' ' FROM COALESCE(u.first_name,'') || CASE WHEN u.last_name IS NOT NULL AND u.last_name <> '' THEN ' ' || u.last_name ELSE '' END) AS uploaded_by_name,
                CASE
                  WHEN d.owner_type = 'family'  THEN 'This family'
                  WHEN d.owner_type = 'student' THEN
@@ -239,7 +239,7 @@ async def family_merged_documents(
                END AS source_label
         FROM documents d
         LEFT JOIN people s ON d.owner_type = 'student' AND s.id = d.owner_id AND s.kind = 'student'
-        LEFT JOIN users u ON u.id = d.uploaded_by
+        LEFT JOIN people u ON u.id = d.uploaded_by
         WHERE d.deleted_at IS NULL AND (
               (d.owner_type = 'family'  AND d.owner_id = $1)
            OR (d.owner_type = 'student' AND d.owner_id IN (
@@ -278,7 +278,7 @@ async def engagement_merged_documents(
         )
         SELECT d.id, d.kind, d.filename, d.content_type, d.byte_size,
                d.created_at, d.owner_type, d.owner_id, d.uploaded_by,
-               u.name AS uploaded_by_name,
+               TRIM(BOTH ' ' FROM COALESCE(u.first_name,'') || CASE WHEN u.last_name IS NOT NULL AND u.last_name <> '' THEN ' ' || u.last_name ELSE '' END) AS uploaded_by_name,
                CASE
                  WHEN d.owner_type = 'engagement' THEN 'This engagement'
                  WHEN d.owner_type = 'family'     THEN f.household_name || ' family'
@@ -295,7 +295,7 @@ async def engagement_merged_documents(
           )
         LEFT JOIN families f ON d.owner_type = 'family'  AND f.id = d.owner_id
         LEFT JOIN people s ON d.owner_type = 'student' AND s.id = d.owner_id AND s.kind = 'student'
-        LEFT JOIN users u    ON u.id = d.uploaded_by
+        LEFT JOIN people u    ON u.id = d.uploaded_by
         ORDER BY
           CASE d.owner_type
             WHEN 'engagement' THEN 1

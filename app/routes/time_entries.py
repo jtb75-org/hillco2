@@ -75,10 +75,10 @@ async def list_time_entries(
         SELECT t.id, t.engagement_id, t.user_id, t.work_date, t.hours,
                t.description, t.billable, t.hourly_rate,
                t.invoice_id, t.created_at, t.updated_at,
-               u.name AS user_name,
+               TRIM(BOTH ' ' FROM COALESCE(u.first_name,'') || CASE WHEN u.last_name IS NOT NULL AND u.last_name <> '' THEN ' ' || u.last_name ELSE '' END) AS user_name,
                i.invoice_number AS invoice_number
         FROM time_entries t
-        LEFT JOIN users u    ON u.id = t.user_id
+        LEFT JOIN people u    ON u.id = t.user_id
         LEFT JOIN invoices i ON i.id = t.invoice_id
         WHERE t.engagement_id = $1
         ORDER BY t.work_date DESC, t.id DESC

@@ -8,11 +8,17 @@
 --
 -- Hour estimates are starting points; tune in the UI as the workflow settles.
 
+-- Attribute seed inserts to whichever auth-provisioned person was
+-- created earliest. The legacy `users` table is gone post-collapse;
+-- `auth` is the source of truth for "who can sign in."
 DO $$
 DECLARE
     v_user_id UUID;
 BEGIN
-    SELECT id INTO v_user_id FROM users ORDER BY created_at LIMIT 1;
+    SELECT a.person_id INTO v_user_id
+      FROM auth a
+     ORDER BY a.created_at
+     LIMIT 1;
     IF v_user_id IS NOT NULL THEN
         PERFORM set_config('app.user_id', v_user_id::text, true);
     END IF;

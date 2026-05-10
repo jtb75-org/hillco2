@@ -78,11 +78,11 @@ async def list_followups(
         SELECT f.id, f.engagement_id, f.title, f.body, f.due_date, f.status,
                f.completed_at, f.assignee_id, f.created_by,
                f.created_at, f.updated_at,
-               assignee.name AS assignee_name,
-               creator.name  AS created_by_name
+               TRIM(BOTH ' ' FROM COALESCE(assignee.first_name,'') || CASE WHEN assignee.last_name IS NOT NULL AND assignee.last_name <> '' THEN ' ' || assignee.last_name ELSE '' END) AS assignee_name,
+               TRIM(BOTH ' ' FROM COALESCE(creator.first_name,'') || CASE WHEN creator.last_name IS NOT NULL AND creator.last_name <> '' THEN ' ' || creator.last_name ELSE '' END) AS created_by_name
         FROM followups f
-        LEFT JOIN users assignee ON assignee.id = f.assignee_id
-        LEFT JOIN users creator  ON creator.id  = f.created_by
+        LEFT JOIN people assignee ON assignee.id = f.assignee_id
+        LEFT JOIN people creator  ON creator.id  = f.created_by
         WHERE f.engagement_id = $1
         ORDER BY
           CASE f.status

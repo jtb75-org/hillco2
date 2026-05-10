@@ -211,9 +211,9 @@ async def student_detail(
     engagements = await conn.fetch(
         """
         SELECT e.id, e.engagement_type, e.status, e.start_date, e.target_end_date,
-               u.id AS lead_consultant_id, u.name AS lead_consultant_name
+               u.id AS lead_consultant_id, TRIM(BOTH ' ' FROM COALESCE(u.first_name,'') || CASE WHEN u.last_name IS NOT NULL AND u.last_name <> '' THEN ' ' || u.last_name ELSE '' END) AS lead_consultant_name
         FROM engagements e
-        LEFT JOIN users u ON u.id = e.lead_consultant_id
+        LEFT JOIN people u ON u.id = e.lead_consultant_id
         WHERE e.student_id = $1 AND e.deleted_at IS NULL
         ORDER BY e.start_date DESC NULLS LAST, e.id DESC
         """,
@@ -224,10 +224,10 @@ async def student_detail(
         """
         SELECT n.id, n.kind, n.occurred_on, n.title, n.body, n.created_at,
                n.engagement_id,
-               u.name AS created_by_name
+               TRIM(BOTH ' ' FROM COALESCE(u.first_name,'') || CASE WHEN u.last_name IS NOT NULL AND u.last_name <> '' THEN ' ' || u.last_name ELSE '' END) AS created_by_name
         FROM notes n
         JOIN engagements e ON e.id = n.engagement_id AND e.deleted_at IS NULL
-        LEFT JOIN users u ON u.id = n.created_by
+        LEFT JOIN people u ON u.id = n.created_by
         WHERE e.student_id = $1
         ORDER BY n.occurred_on DESC, n.id DESC
         LIMIT 30

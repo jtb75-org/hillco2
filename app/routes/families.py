@@ -154,8 +154,11 @@ async def list_families(_user=Depends(require_user), conn=Depends(get_conn)):
             CASE WHEN pp.last_name IS NOT NULL AND pp.last_name <> ''
                  THEN ' ' || pp.last_name ELSE '' END
           )       AS primary_parent_name,
-          (SELECT COUNT(*) FROM students s
-             WHERE s.family_id = f.id AND s.deleted_at IS NULL) AS student_count,
+          (SELECT COUNT(*) FROM family_students fs
+             JOIN people sp ON sp.id = fs.person_id
+                          AND sp.kind = 'student'
+                          AND sp.deleted_at IS NULL
+             WHERE fs.family_id = f.id) AS student_count,
           (SELECT COUNT(*) FROM family_guardians fg
              WHERE fg.family_id = f.id) AS parent_count,
           (SELECT COUNT(*) FROM engagements e
@@ -207,10 +210,23 @@ async def family_detail(
     # own endpoints (/api/students/{id}, /api/engagements/{id}).
     students = await conn.fetch(
         """
-        SELECT id, name, dob, current_grade, current_school_id
-        FROM students
-        WHERE family_id = $1 AND deleted_at IS NULL
-        ORDER BY name
+        SELECT
+          p.id,
+          TRIM(BOTH ' ' FROM
+            COALESCE(p.first_name, '') ||
+            CASE WHEN p.last_name IS NOT NULL AND p.last_name <> ''
+                 THEN ' ' || p.last_name ELSE '' END
+          )                                       AS name,
+          p.birthday                              AS dob,
+          sd.current_grade,
+          sd.current_school_id
+        FROM family_students fs
+        JOIN people p ON p.id = fs.person_id
+                     AND p.kind = 'student'
+                     AND p.deleted_at IS NULL
+        LEFT JOIN student_details sd ON sd.person_id = p.id
+        WHERE fs.family_id = $1
+        ORDER BY p.last_name NULLS LAST, p.first_name
         """,
         family_id,
     )

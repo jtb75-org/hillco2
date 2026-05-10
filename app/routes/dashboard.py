@@ -140,11 +140,11 @@ async def dashboard(user=Depends(require_user), conn=Depends(get_conn)):
         SELECT n.id, n.kind, n.occurred_on, n.title, n.created_at,
                n.engagement_id,
                f.id AS family_id, f.household_name,
-               u.name AS created_by_name
+               TRIM(BOTH ' ' FROM COALESCE(u.first_name,'') || CASE WHEN u.last_name IS NOT NULL AND u.last_name <> '' THEN ' ' || u.last_name ELSE '' END) AS created_by_name
         FROM notes n
         JOIN engagements e ON e.id = n.engagement_id AND e.deleted_at IS NULL
         JOIN families f ON f.id = e.family_id AND f.deleted_at IS NULL
-        LEFT JOIN users u ON u.id = n.created_by
+        LEFT JOIN people u ON u.id = n.created_by
         ORDER BY n.created_at DESC
         LIMIT 8
         """
@@ -154,7 +154,7 @@ async def dashboard(user=Depends(require_user), conn=Depends(get_conn)):
         """
         SELECT al.ts, al.table_name, al.action, u.email AS user_email
         FROM audit_log al
-        LEFT JOIN users u ON u.id = al.user_id
+        LEFT JOIN people u ON u.id = al.user_id
         ORDER BY al.id DESC
         LIMIT 8
         """

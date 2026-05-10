@@ -232,15 +232,29 @@ async def test_families_table_no_longer_has_billing_columns(db_pool):
         assert gone not in cols
 
 
-async def test_parents_table_has_new_billing_columns(db_pool):
+async def test_family_guardians_has_billing_columns(db_pool):
+    """After the spine flip + collapse, guardian-side billing data
+    lives on family_guardians (the flag) plus people (billing_address
+    + billing_attention_to overrides). The legacy `parents` table is
+    gone."""
     async with db_pool.acquire() as conn:
-        cols = {
+        fg_cols = {
             r["column_name"] for r in await conn.fetch(
                 """
                 SELECT column_name FROM information_schema.columns
-                WHERE table_name = 'parents'
+                WHERE table_name = 'family_guardians'
                 """
             )
         }
-    for present in ("is_billing_contact", "billing_address", "billing_attention_to"):
-        assert present in cols
+        people_cols = {
+            r["column_name"] for r in await conn.fetch(
+                """
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'people'
+                """
+            )
+        }
+    assert "is_billing_contact" in fg_cols
+    assert "is_primary_contact" in fg_cols
+    assert "billing_attention_to" in people_cols
+    assert "billing_street1" in people_cols
