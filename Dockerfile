@@ -19,17 +19,25 @@ RUN pip install -r requirements.txt
 
 COPY app ./app
 
+# Alembic config + migrations. The bootstrap Job in hillco2-gitops
+# runs `alembic -c /app/alembic.ini upgrade head` from this image,
+# so the migrations directory has to be on disk here. Also lets
+# `alembic stamp` work for the live-DB cutover.
+COPY alembic.ini ./alembic.ini
+COPY alembic ./alembic
+
 # Templates ride along with app/. Listed explicitly so a future repo
 # layout change that drops them surfaces here at build time instead of
 # at first PDF render.
 RUN test -f app/templates/invoices/_pdf.html
+RUN test -f alembic/versions/0001_baseline.sql
 
 # Non-root user for runAsNonRoot in k8s. WeasyPrint needs nothing
 # user-specific — fonts in /usr/share/fonts are world-readable. /app
 # is read-only at runtime (see container.securityContext.readOnlyRootFilesystem).
 RUN groupadd --system --gid 1000 hillco \
  && useradd --system --uid 1000 --gid hillco --no-create-home --shell /usr/sbin/nologin hillco \
- && chown -R hillco:hillco /app
+ && chown -R hillco:hillco /app /app/alembic /app/alembic.ini
 USER hillco
 
 ARG BUILD_COMMIT=unknown
