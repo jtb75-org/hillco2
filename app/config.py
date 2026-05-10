@@ -28,6 +28,13 @@ class Settings(BaseSettings):
 
     upload_max_bytes: int = 25 * 1024 * 1024
 
+    # When False (default), FastAPI's /docs, /redoc, and /openapi.json are
+    # disabled. The SPA's openapi codegen reads from the committed
+    # spa/openapi.json snapshot rather than the live host, so production
+    # doesn't need to expose the spec. Flip to True in dev (or use
+    # `npm run update-openapi` against a port-forwarded backend).
+    expose_docs: bool = False
+
     @property
     def allowed_email_set(self) -> set[str]:
         return {e.strip().lower() for e in self.allowed_emails.split(",") if e.strip()}

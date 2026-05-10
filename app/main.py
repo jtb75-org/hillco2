@@ -44,7 +44,16 @@ async def lifespan(_: FastAPI):
 
 BUILD_COMMIT = os.environ.get("BUILD_COMMIT", "dev")
 
-app = FastAPI(title="HillCo2 API", lifespan=lifespan)
+app = FastAPI(
+    title="HillCo2 API",
+    lifespan=lifespan,
+    # Gate /docs, /redoc, and /openapi.json behind a setting; default
+    # off so production doesn't advertise its route topology. Dev sets
+    # EXPOSE_DOCS=true.
+    docs_url="/docs" if settings.expose_docs else None,
+    redoc_url="/redoc" if settings.expose_docs else None,
+    openapi_url="/openapi.json" if settings.expose_docs else None,
+)
 
 app.add_middleware(
     SessionMiddleware,

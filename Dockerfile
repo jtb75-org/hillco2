@@ -24,6 +24,14 @@ COPY app ./app
 # at first PDF render.
 RUN test -f app/templates/invoices/_pdf.html
 
+# Non-root user for runAsNonRoot in k8s. WeasyPrint needs nothing
+# user-specific — fonts in /usr/share/fonts are world-readable. /app
+# is read-only at runtime (see container.securityContext.readOnlyRootFilesystem).
+RUN groupadd --system --gid 1000 hillco \
+ && useradd --system --uid 1000 --gid hillco --no-create-home --shell /usr/sbin/nologin hillco \
+ && chown -R hillco:hillco /app
+USER hillco
+
 ARG BUILD_COMMIT=unknown
 ENV BUILD_COMMIT=${BUILD_COMMIT}
 

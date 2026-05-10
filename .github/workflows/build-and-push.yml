@@ -8,6 +8,17 @@ on:
       - 'v*'
   workflow_dispatch:
 
+# Per-branch concurrency. Two pushes close together both checkout the
+# gitops repo and edit the same kustomization.yaml; without this they
+# race on the gitops push and one tag-bump can land out of order or
+# fail on a non-fast-forward. cancel-in-progress is intentionally
+# false: each main commit's image should be built and deployed, not
+# canceled mid-build because a fresher one arrived. Builds queue
+# instead.
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   REGISTRY: zot.lan.ng20.org
   IMAGE_NAME: hillco2
