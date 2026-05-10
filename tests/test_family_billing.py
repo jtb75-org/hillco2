@@ -1,164 +1,238 @@
-"""Family billing rollup (migration 0004).
+"""Family billing — now living on parents (migration 0007).
 
-Locks in:
-  - billing_* columns round-trip through POST and PATCH
-  - family_detail surfaces billing_primary_parent_id derived from the
-    primary parent
-  - the partial UNIQUE index on parents (family_id) WHERE is_primary_contact
-    rejects a second primary even when the route's app-level demotion is
-    bypassed
+Migration 0004 first put four billing_* columns on the families table
+as overrides. 0007 moved billing onto whichever parent is flagged
+is_billing_contact (with optional billing_address / billing_attention_to
+overrides on that parent), because billing always reduces to a person —
+the family-level columns were duplicating the parent's data.
+
+Coverage:
+  - Family POST/PATCH no longer accept billing_* (they're gone)
+  - ParentCreate / Update accept is_billing_contact + the two address
+    overrides
+  - family_detail surfaces primary_parent_id + billing_parent_id
+  - Partial UNIQUE on parents (family_id) WHERE is_billing_contact
+    rejects two billing contacts even if the route check is bypassed
+  - Successive POSTs with is_billing_contact=True work because the
+    route demotes the previous holder in the same transaction
+  - is_primary_contact and is_billing_contact are independent
 """
 from uuid import uuid4
 
 import asyncpg
 import pytest
 
-# ---- Family billing fields ----------------------------------------------
+# ---- Family POST no longer takes billing fields ------------------------
 
-async def test_create_family_with_billing_fields(authed_client):
-    r = await authed_client.post("/api/families", json={
-        "household_name": f"Bill-{uuid4()}",
-        "billing_name": "Smith Family Trust",
-        "billing_email": "billing@smith.example",
-        "billing_attention_to": "Jane Doe, CPA",
-        "billing_address": "1 Main St, Springfield, IL 62701",
-    })
-    assert r.status_code == 201, r.text
-    body = r.json()
-    assert body["billing_name"] == "Smith Family Trust"
-    assert body["billing_email"] == "billing@smith.example"
-    assert body["billing_attention_to"] == "Jane Doe, CPA"
-    assert body["billing_address"].startswith("1 Main St")
-
-
-async def test_create_family_without_billing_fields_returns_nulls(authed_client):
+async def test_create_family_succeeds_with_just_household(authed_client):
     r = await authed_client.post("/api/families", json={
         "household_name": f"Plain-{uuid4()}",
     })
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["household_name"].startswith("Plain-")
+    # billing_* columns are gone from the family row.
+    for k in ("billing_name", "billing_email", "billing_attention_to", "billing_address"):
+        assert k not in body
+
+
+async def test_family_extra_billing_fields_are_silently_ignored(authed_client):
+    """Pydantic default extra='ignore' — passing legacy billing_* fields
+    in the request body shouldn't cause a 422; they just don't land
+    anywhere."""
+    r = await authed_client.post("/api/families", json={
+        "household_name": f"Legacy-{uuid4()}",
+        "billing_name": "Trust",
+        "billing_email": "trust@example.com",
+    })
     assert r.status_code == 201
-    body = r.json()
-    assert body["billing_name"] is None
-    assert body["billing_email"] is None
 
 
-async def test_patch_family_billing_fields(authed_client):
-    create = await authed_client.post("/api/families", json={
-        "household_name": f"Patch-{uuid4()}",
-    })
-    fid = create.json()["id"]
+# ---- Parent POST with billing fields -----------------------------------
 
-    r = await authed_client.patch(f"/api/families/{fid}", json={
-        "billing_name": "New Trust",
-        "billing_address": "PO Box 42",
-    })
-    assert r.status_code == 200, r.text
-    body = r.json()
-    assert body["billing_name"] == "New Trust"
-    assert body["billing_address"] == "PO Box 42"
-
-    # blanking a field stores NULL, not the empty string.
-    r2 = await authed_client.patch(f"/api/families/{fid}", json={"billing_name": ""})
-    assert r2.json()["billing_name"] is None
-
-
-async def test_billing_email_is_case_insensitive_via_citext(db_pool, authed_client):
+async def test_create_parent_with_billing_contact_and_address(authed_client):
     fid = (await authed_client.post("/api/families", json={
-        "household_name": f"Citext-{uuid4()}",
-        "billing_email": "Mixed.Case@Example.COM",
+        "household_name": f"Bill-{uuid4()}",
     })).json()["id"]
-    async with db_pool.acquire() as conn:
-        match = await conn.fetchval(
-            "SELECT 1 FROM families WHERE id = $1 AND billing_email = $2",
-            fid, "mixed.case@example.com",
-        )
-    assert match == 1
+    r = await authed_client.post(f"/api/families/{fid}/parents", json={
+        "name": "Trust Account",
+        "email": "trust@example.com",
+        "role": "other",
+        "is_billing_contact": True,
+        "billing_address": "1 Main St\nSpringfield, IL 62701",
+        "billing_attention_to": "Jane Doe, CPA",
+    })
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["is_billing_contact"] is True
+    assert body["billing_address"].startswith("1 Main St")
+    assert body["billing_attention_to"] == "Jane Doe, CPA"
 
 
-# ---- billing_primary_parent_id derivation -------------------------------
-
-async def test_family_detail_surfaces_primary_parent_id(authed_client):
+async def test_billing_address_blank_normalizes_to_null(authed_client):
     fid = (await authed_client.post("/api/families", json={
-        "household_name": f"Primary-{uuid4()}",
+        "household_name": f"Trim-{uuid4()}",
+    })).json()["id"]
+    pid = (await authed_client.post(f"/api/families/{fid}/parents", json={
+        "name": "Test",
+        "billing_address": "  ",
     })).json()["id"]
 
-    a = await authed_client.post(f"/api/families/{fid}/parents", json={
+    r = await authed_client.patch(f"/api/parents/{pid}", json={"billing_address": ""})
+    assert r.json()["billing_address"] is None
+
+
+# ---- Detail rollup -----------------------------------------------------
+
+async def test_family_detail_returns_primary_and_billing_parent_ids(authed_client):
+    fid = (await authed_client.post("/api/families", json={
+        "household_name": f"Roles-{uuid4()}",
+    })).json()["id"]
+    mom = await authed_client.post(f"/api/families/{fid}/parents", json={
         "name": "Mom", "is_primary_contact": True,
     })
-    await authed_client.post(f"/api/families/{fid}/parents", json={
-        "name": "Dad", "is_primary_contact": False,
+    dad = await authed_client.post(f"/api/families/{fid}/parents", json={
+        "name": "Dad", "is_billing_contact": True,
     })
-
     detail = await authed_client.get(f"/api/families/{fid}")
-    assert detail.json()["billing_primary_parent_id"] == a.json()["id"]
+    body = detail.json()
+    assert body["primary_parent_id"] == mom.json()["id"]
+    assert body["billing_parent_id"] == dad.json()["id"]
 
 
-async def test_family_detail_primary_parent_id_is_null_when_unset(authed_client):
+async def test_same_parent_can_be_both_primary_and_billing(authed_client):
+    """The 90% case: one parent does both."""
     fid = (await authed_client.post("/api/families", json={
-        "household_name": f"NoPrimary-{uuid4()}",
+        "household_name": f"Both-{uuid4()}",
+    })).json()["id"]
+    p = await authed_client.post(f"/api/families/{fid}/parents", json={
+        "name": "Solo Parent",
+        "is_primary_contact": True,
+        "is_billing_contact": True,
+    })
+    detail = (await authed_client.get(f"/api/families/{fid}")).json()
+    assert detail["primary_parent_id"] == p.json()["id"]
+    assert detail["billing_parent_id"] == p.json()["id"]
+
+
+async def test_billing_parent_id_null_when_unset(authed_client):
+    fid = (await authed_client.post("/api/families", json={
+        "household_name": f"NoBill-{uuid4()}",
     })).json()["id"]
     await authed_client.post(f"/api/families/{fid}/parents", json={
-        "name": "Solo", "is_primary_contact": False,
+        "name": "Generic",
     })
-    detail = await authed_client.get(f"/api/families/{fid}")
-    assert detail.json()["billing_primary_parent_id"] is None
+    detail = (await authed_client.get(f"/api/families/{fid}")).json()
+    assert detail["billing_parent_id"] is None
 
 
-# ---- Partial unique index ----------------------------------------------
+# ---- Partial unique invariants -----------------------------------------
 
-async def test_db_rejects_two_primaries_per_family(db_pool):
-    """Belt-and-braces: even if the route's demote-others step is
-    bypassed, the partial UNIQUE index must reject a second primary."""
+async def test_db_rejects_two_billing_contacts_per_family(db_pool):
+    """Belt-and-braces: even bypassing the routes, the partial UNIQUE
+    must reject a second billing contact for the same family."""
     async with db_pool.acquire() as conn:
         family_id = await conn.fetchval(
             "INSERT INTO families (household_name) VALUES ($1) RETURNING id",
-            f"DupPrimary-{uuid4()}",
+            f"DupBill-{uuid4()}",
         )
         await conn.execute(
-            "INSERT INTO parents (family_id, name, is_primary_contact) VALUES ($1, 'A', TRUE)",
+            "INSERT INTO parents (family_id, name, is_billing_contact) VALUES ($1, 'A', TRUE)",
             family_id,
         )
         with pytest.raises(asyncpg.UniqueViolationError):
             await conn.execute(
-                "INSERT INTO parents (family_id, name, is_primary_contact) VALUES ($1, 'B', TRUE)",
+                "INSERT INTO parents (family_id, name, is_billing_contact) VALUES ($1, 'B', TRUE)",
                 family_id,
             )
 
 
-async def test_db_allows_zero_primaries_per_family(db_pool):
-    """Partial unique only constrains when is_primary_contact is TRUE.
-    Multiple non-primaries are fine (covers the 'no billing contact set
-    yet' state)."""
+async def test_db_allows_zero_billing_contacts_per_family(db_pool):
+    """Partial unique only constrains when is_billing_contact is TRUE.
+    Multiple non-billing parents are fine."""
     async with db_pool.acquire() as conn:
         family_id = await conn.fetchval(
             "INSERT INTO families (household_name) VALUES ($1) RETURNING id",
-            f"NoPrim-{uuid4()}",
+            f"NoBill-{uuid4()}",
         )
         await conn.execute(
-            "INSERT INTO parents (family_id, name, is_primary_contact) VALUES ($1, 'A', FALSE)",
+            "INSERT INTO parents (family_id, name, is_billing_contact) VALUES ($1, 'A', FALSE)",
             family_id,
         )
         await conn.execute(
-            "INSERT INTO parents (family_id, name, is_primary_contact) VALUES ($1, 'B', FALSE)",
+            "INSERT INTO parents (family_id, name, is_billing_contact) VALUES ($1, 'B', FALSE)",
             family_id,
         )
-    # No exception = pass.
 
 
-async def test_route_demotion_still_works_with_partial_unique(authed_client):
-    """The route demotes any existing primary before promoting a new one,
-    so successive `is_primary_contact: True` POSTs land cleanly under
-    the new index."""
+async def test_route_demotion_handles_successive_billing_promotions(authed_client):
+    """The route demotes any existing billing parent before promoting
+    a new one, so successive POSTs with is_billing_contact=True don't
+    trip the partial UNIQUE."""
     fid = (await authed_client.post("/api/families", json={
-        "household_name": f"Demote-{uuid4()}",
+        "household_name": f"Promote-{uuid4()}",
     })).json()["id"]
     a = await authed_client.post(f"/api/families/{fid}/parents", json={
-        "name": "First", "is_primary_contact": True,
+        "name": "First", "is_billing_contact": True,
     })
     b = await authed_client.post(f"/api/families/{fid}/parents", json={
-        "name": "Second", "is_primary_contact": True,
+        "name": "Second", "is_billing_contact": True,
     })
     assert a.status_code == 201
     assert b.status_code == 201
+    detail = (await authed_client.get(f"/api/families/{fid}")).json()
+    assert detail["billing_parent_id"] == b.json()["id"]
 
-    detail = await authed_client.get(f"/api/families/{fid}")
-    assert detail.json()["billing_primary_parent_id"] == b.json()["id"]
+
+async def test_patch_billing_contact_demotes_previous(authed_client):
+    """PATCH path: flipping is_billing_contact=True on parent B should
+    demote A's flag, not collide with the partial UNIQUE."""
+    fid = (await authed_client.post("/api/families", json={
+        "household_name": f"PatchPromote-{uuid4()}",
+    })).json()["id"]
+    a = (await authed_client.post(f"/api/families/{fid}/parents", json={
+        "name": "Old Bill", "is_billing_contact": True,
+    })).json()
+    b = (await authed_client.post(f"/api/families/{fid}/parents", json={
+        "name": "New Bill",
+    })).json()
+
+    r = await authed_client.patch(f"/api/parents/{b['id']}", json={
+        "is_billing_contact": True,
+    })
+    assert r.status_code == 200, r.text
+
+    parents = (await authed_client.get(f"/api/families/{fid}")).json()["parents"]
+    flags = {p["id"]: p["is_billing_contact"] for p in parents}
+    assert flags[a["id"]] is False
+    assert flags[b["id"]] is True
+
+
+# ---- Schema-level: billing_* really gone from families -----------------
+
+async def test_families_table_no_longer_has_billing_columns(db_pool):
+    async with db_pool.acquire() as conn:
+        cols = {
+            r["column_name"] for r in await conn.fetch(
+                """
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'families'
+                """
+            )
+        }
+    for gone in ("billing_name", "billing_email", "billing_attention_to", "billing_address"):
+        assert gone not in cols
+
+
+async def test_parents_table_has_new_billing_columns(db_pool):
+    async with db_pool.acquire() as conn:
+        cols = {
+            r["column_name"] for r in await conn.fetch(
+                """
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'parents'
+                """
+            )
+        }
+    for present in ("is_billing_contact", "billing_address", "billing_attention_to"):
+        assert present in cols

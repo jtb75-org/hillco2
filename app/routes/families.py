@@ -17,26 +17,11 @@ ParentRole = Literal["mom", "dad", "guardian", "other"]
 class FamilyCreate(BaseModel):
     household_name: str = Field(..., min_length=1)
     notes: str | None = None
-    # Optional billing overrides. When NULL, the SPA falls back to the
-    # primary parent's name/email and the household_name/parent address.
-    billing_name: str | None = None
-    billing_email: str | None = None
-    billing_attention_to: str | None = None
-    billing_address: str | None = None
 
 
 class FamilyUpdate(BaseModel):
     household_name: str | None = Field(default=None, min_length=1)
     notes: str | None = None
-    billing_name: str | None = None
-    billing_email: str | None = None
-    billing_attention_to: str | None = None
-    billing_address: str | None = None
-
-
-_BILLING_TEXT_COLS = (
-    "billing_name", "billing_email", "billing_attention_to", "billing_address",
-)
 
 
 class ParentCreate(BaseModel):
@@ -45,6 +30,12 @@ class ParentCreate(BaseModel):
     phone: str | None = None
     role: ParentRole = "other"
     is_primary_contact: bool = False
+    is_billing_contact: bool = False
+    # Optional override — only relevant when is_billing_contact=true. Used
+    # when invoices physically go to a different address than wherever
+    # else we might surface for this person.
+    billing_address: str | None = None
+    billing_attention_to: str | None = None
 
 
 class ParentUpdate(BaseModel):
@@ -53,6 +44,9 @@ class ParentUpdate(BaseModel):
     phone: str | None = None
     role: ParentRole | None = None
     is_primary_contact: bool | None = None
+    is_billing_contact: bool | None = None
+    billing_address: str | None = None
+    billing_attention_to: str | None = None
 
 
 # ---- Helpers ---------------------------------------------------------------
@@ -70,7 +64,9 @@ async def _family_or_404(conn, family_id: UUID):
 async def _parents_for_family(conn, family_id: UUID):
     return await conn.fetch(
         """
-        SELECT id, family_id, name, email, phone, role, is_primary_contact,
+        SELECT id, family_id, name, email, phone, role,
+               is_primary_contact, is_billing_contact,
+               billing_address, billing_attention_to,
                created_at, updated_at
         FROM parents
         WHERE family_id = $1
@@ -127,21 +123,12 @@ async def create_family(
 ):
     row = await conn.fetchrow(
         """
-        INSERT INTO families (
-          household_name, notes,
-          billing_name, billing_email, billing_attention_to, billing_address
-        )
-        VALUES ($1, $2, $3, $4, $5, $6)
-        RETURNING id, household_name, notes,
-                  billing_name, billing_email, billing_attention_to, billing_address,
-                  created_at, updated_at
+        INSERT INTO families (household_name, notes)
+        VALUES ($1, $2)
+        RETURNING id, household_name, notes, created_at, updated_at
         """,
         body.household_name.strip(),
         (body.notes or "").strip() or None,
-        (body.billing_name or "").strip() or None,
-        (body.billing_email or "").strip() or None,
-        (body.billing_attention_to or "").strip() or None,
-        (body.billing_address or "").strip() or None,
     )
     return dict(row)
 
@@ -179,12 +166,14 @@ async def family_detail(
         "parents": [dict(p) for p in parents],
         "students": [dict(s) for s in students],
         "engagements": [dict(e) for e in engagements],
-        # Convenience for the SPA's billing block: which parent's contact
-        # info the renderer should use when the family doesn't have its
-        # own billing_* overrides set. None when no parent is flagged
-        # (DB allows zero primaries; partial unique only blocks two).
-        "billing_primary_parent_id": next(
-            (p["id"] for p in parents if p["is_primary_contact"]), None
+        # Convenience pointers for the SPA's billing/contact blocks.
+        # Both are None when no parent is flagged — partial UNIQUE only
+        # blocks two, not zero.
+        "primary_parent_id": next(
+            (p["id"] for p in parents if p["is_primary_contact"]), None,
+        ),
+        "billing_parent_id": next(
+            (p["id"] for p in parents if p["is_billing_contact"]), None,
         ),
     }
 
@@ -206,20 +195,11 @@ async def update_family(
         fields["household_name"] = fields["household_name"].strip()
     if "notes" in fields:
         fields["notes"] = (fields["notes"] or "").strip() or None
-    for col in _BILLING_TEXT_COLS:
-        if col in fields:
-            fields[col] = (fields[col] or "").strip() or None
 
     set_sql = ", ".join(f"{col} = ${i+2}" for i, col in enumerate(fields))
     values = list(fields.values())
     row = await conn.fetchrow(
-        f"""
-        UPDATE families SET {set_sql}
-        WHERE id = $1
-        RETURNING id, household_name, notes,
-                  billing_name, billing_email, billing_attention_to, billing_address,
-                  created_at, updated_at
-        """,
+        f"UPDATE families SET {set_sql} WHERE id = $1 RETURNING id, household_name, notes, created_at, updated_at",
         family_id,
         *values,
     )
@@ -258,11 +238,25 @@ async def add_parent(
             "UPDATE parents SET is_primary_contact = FALSE WHERE family_id = $1",
             family_id,
         )
+    if body.is_billing_contact:
+        await conn.execute(
+            "UPDATE parents SET is_billing_contact = FALSE WHERE family_id = $1",
+            family_id,
+        )
     row = await conn.fetchrow(
         """
-        INSERT INTO parents (family_id, name, email, phone, role, is_primary_contact)
-        VALUES ($1, $2, NULLIF($3,''), NULLIF($4,''), $5, $6)
-        RETURNING id, family_id, name, email, phone, role, is_primary_contact,
+        INSERT INTO parents (
+          family_id, name, email, phone, role,
+          is_primary_contact, is_billing_contact,
+          billing_address, billing_attention_to
+        )
+        VALUES (
+          $1, $2, NULLIF($3,''), NULLIF($4,''), $5, $6, $7,
+          NULLIF($8,''), NULLIF($9,'')
+        )
+        RETURNING id, family_id, name, email, phone, role,
+                  is_primary_contact, is_billing_contact,
+                  billing_address, billing_attention_to,
                   created_at, updated_at
         """,
         family_id,
@@ -271,6 +265,9 @@ async def add_parent(
         (body.phone or "").strip(),
         body.role,
         body.is_primary_contact,
+        body.is_billing_contact,
+        (body.billing_address or "").strip(),
+        (body.billing_attention_to or "").strip(),
     )
     return dict(row)
 
@@ -289,19 +286,20 @@ async def update_parent(
 
     if "name" in fields:
         fields["name"] = fields["name"].strip()
-    for empty_to_null_col in ("email", "phone"):
+    for empty_to_null_col in ("email", "phone", "billing_address", "billing_attention_to"):
         if empty_to_null_col in fields:
             fields[empty_to_null_col] = (fields[empty_to_null_col] or "").strip() or None
 
-    # If toggling is_primary_contact to True, demote any other primary in the
-    # same family first — keeps the "exactly one primary" invariant the form
-    # implied without enforcing it in the schema.
-    if fields.get("is_primary_contact") is True:
-        await conn.execute(
-            "UPDATE parents SET is_primary_contact = FALSE WHERE family_id = $1 AND id <> $2",
-            parent["family_id"],
-            parent_id,
-        )
+    # Demote any other holder of either flag before promoting this row,
+    # so the partial UNIQUE indexes on (family_id) WHERE is_primary_contact
+    # and (family_id) WHERE is_billing_contact don't reject the update.
+    for flag in ("is_primary_contact", "is_billing_contact"):
+        if fields.get(flag) is True:
+            await conn.execute(
+                f"UPDATE parents SET {flag} = FALSE WHERE family_id = $1 AND id <> $2",
+                parent["family_id"],
+                parent_id,
+            )
 
     set_sql = ", ".join(f"{col} = ${i+2}" for i, col in enumerate(fields))
     values = list(fields.values())
@@ -309,7 +307,9 @@ async def update_parent(
         f"""
         UPDATE parents SET {set_sql}
         WHERE id = $1
-        RETURNING id, family_id, name, email, phone, role, is_primary_contact,
+        RETURNING id, family_id, name, email, phone, role,
+                  is_primary_contact, is_billing_contact,
+                  billing_address, billing_attention_to,
                   created_at, updated_at
         """,
         parent_id,

@@ -28,6 +28,9 @@ interface Parent {
   phone: string | null;
   role: string;
   is_primary_contact: boolean;
+  is_billing_contact: boolean;
+  billing_address: string | null;
+  billing_attention_to: string | null;
 }
 interface Student {
   id: string;
@@ -45,11 +48,8 @@ interface FamilyDetail {
   id: string;
   household_name: string;
   notes: string | null;
-  billing_name: string | null;
-  billing_email: string | null;
-  billing_attention_to: string | null;
-  billing_address: string | null;
-  billing_primary_parent_id: string | null;
+  primary_parent_id: string | null;
+  billing_parent_id: string | null;
   parents: Parent[];
   students: Student[];
   engagements: Engagement[];
@@ -102,10 +102,15 @@ export function FamilyDetail() {
 
       <Grid container spacing={3}>
         <Grid item xs={12} md={5}>
-          <BillingCard family={data} loading={isPending} />
+          <BillingCard parents={data?.parents} loading={isPending} />
         </Grid>
         <Grid item xs={12} md={7}>
-          <ParentsCard parents={data?.parents} loading={isPending} primaryId={data?.billing_primary_parent_id ?? null} />
+          <ParentsCard
+            parents={data?.parents}
+            loading={isPending}
+            primaryId={data?.primary_parent_id ?? null}
+            billingId={data?.billing_parent_id ?? null}
+          />
         </Grid>
       </Grid>
 
@@ -118,10 +123,14 @@ export function FamilyDetail() {
 
 // ---- Billing -----------------------------------------------------------
 
-function BillingCard({ family, loading }: { family?: FamilyDetail; loading: boolean }) {
-  const primary = family?.parents.find((p) => p.is_primary_contact);
-  const billingName = family?.billing_name ?? primary?.name ?? null;
-  const billingEmail = family?.billing_email ?? primary?.email ?? null;
+function BillingCard({ parents, loading }: { parents?: Parent[]; loading: boolean }) {
+  // Billing data lives on whichever parent is flagged is_billing_contact.
+  // No billing parent → fall back to the primary parent's name+email so
+  // the operator at least sees who'd get the bill in practice; UI flags
+  // the missing flag so they can promote one.
+  const billing = parents?.find((p) => p.is_billing_contact);
+  const primary = parents?.find((p) => p.is_primary_contact);
+  const display = billing ?? primary ?? null;
   return (
     <Card variant="outlined" sx={{ height: "100%" }}>
       <CardContent>
@@ -134,27 +143,32 @@ function BillingCard({ family, loading }: { family?: FamilyDetail; loading: bool
             <Skeleton width="80%" />
             <Skeleton width="40%" />
           </Stack>
+        ) : !display ? (
+          <Typography variant="body2" color="text.disabled" sx={{ mt: 1 }}>
+            No billing contact set. Add a parent and flag them as the
+            billing contact.
+          </Typography>
         ) : (
           <Stack spacing={0.5} sx={{ mt: 1 }}>
             <Typography variant="body1" sx={{ fontWeight: 500 }}>
-              {billingName ?? <span style={{ color: "rgba(0,0,0,0.4)" }}>not set</span>}
+              {display.name}
             </Typography>
-            {billingEmail && (
-              <Typography variant="body2" color="text.secondary">{billingEmail}</Typography>
+            {display.email && (
+              <Typography variant="body2" color="text.secondary">{display.email}</Typography>
             )}
-            {family?.billing_attention_to && (
+            {billing?.billing_attention_to && (
               <Typography variant="body2" color="text.secondary">
-                Attn: {family.billing_attention_to}
+                Attn: {billing.billing_attention_to}
               </Typography>
             )}
-            {family?.billing_address && (
+            {billing?.billing_address && (
               <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: "pre-line" }}>
-                {family.billing_address}
+                {billing.billing_address}
               </Typography>
             )}
-            {!family?.billing_email && primary?.email && (
+            {!billing && primary && (
               <Typography variant="caption" color="text.disabled" sx={{ mt: 1 }}>
-                Falling back to primary parent contact info.
+                No billing contact flagged — falling back to the primary parent.
               </Typography>
             )}
           </Stack>
@@ -170,10 +184,12 @@ function ParentsCard({
   parents,
   loading,
   primaryId,
+  billingId,
 }: {
   parents?: Parent[];
   loading: boolean;
   primaryId: string | null;
+  billingId: string | null;
 }) {
   return (
     <Card variant="outlined" sx={{ height: "100%" }}>
@@ -200,6 +216,9 @@ function ParentsCard({
                   </Typography>
                   {p.id === primaryId && (
                     <Chip size="small" label="primary" color="primary" variant="outlined" />
+                  )}
+                  {p.id === billingId && (
+                    <Chip size="small" label="billing" color="success" variant="outlined" />
                   )}
                   <Typography variant="caption" color="text.secondary" sx={{ ml: "auto" }}>
                     {p.role}
