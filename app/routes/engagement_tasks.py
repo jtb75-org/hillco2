@@ -155,11 +155,11 @@ async def list_tasks(
                t.est_hours, t.actual_hours, t.billable,
                t.deliverable, t.owner_role, t.assignee_id, t.sort_order,
                t.completed_at, t.notes, t.created_at, t.updated_at,
-               u.name AS assignee_name,
+               TRIM(BOTH ' ' FROM COALESCE(u.first_name,'') || CASE WHEN u.last_name IS NOT NULL AND u.last_name <> '' THEN ' ' || u.last_name ELSE '' END) AS assignee_name,
                cp.scope AS phase_scope, cp.title AS phase_title,
                cp.sort_order AS phase_sort_order
         FROM engagement_tasks t
-        LEFT JOIN users u ON u.id = t.assignee_id
+        LEFT JOIN people u ON u.id = t.assignee_id
         LEFT JOIN catalog_phases cp ON cp.id = t.phase_id
         WHERE t.engagement_id = $1
         ORDER BY cp.sort_order NULLS LAST, t.sort_order, t.title

@@ -114,10 +114,10 @@ async def list_for_student(
     await _student_or_404(conn, student_id)
     rows = await conn.fetch(
         """
-        SELECT ls.*, sch.name AS school_name, u.name AS created_by_name
+        SELECT ls.*, sch.name AS school_name, TRIM(BOTH ' ' FROM COALESCE(u.first_name,'') || CASE WHEN u.last_name IS NOT NULL AND u.last_name <> '' THEN ' ' || u.last_name ELSE '' END) AS created_by_name
         FROM learning_supports ls
         LEFT JOIN schools sch ON sch.id = ls.school_id
-        LEFT JOIN users   u   ON u.id   = ls.created_by
+        LEFT JOIN people   u   ON u.id   = ls.created_by
         WHERE ls.student_id = $1
         ORDER BY ls.created_at DESC, ls.id DESC
         """,
@@ -177,10 +177,10 @@ async def support_detail(
 ):
     row = await conn.fetchrow(
         """
-        SELECT ls.*, sch.name AS school_name, u.name AS created_by_name
+        SELECT ls.*, sch.name AS school_name, TRIM(BOTH ' ' FROM COALESCE(u.first_name,'') || CASE WHEN u.last_name IS NOT NULL AND u.last_name <> '' THEN ' ' || u.last_name ELSE '' END) AS created_by_name
         FROM learning_supports ls
         LEFT JOIN schools sch ON sch.id = ls.school_id
-        LEFT JOIN users   u   ON u.id   = ls.created_by
+        LEFT JOIN people   u   ON u.id   = ls.created_by
         WHERE ls.id = $1
         """,
         support_id,

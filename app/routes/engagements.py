@@ -65,10 +65,10 @@ async def _engagement_or_404(conn, engagement_id: UUID):
     row = await conn.fetchrow(
         """
         SELECT e.*, f.household_name AS family_household_name,
-               u.name AS lead_consultant_name
+               TRIM(BOTH ' ' FROM COALESCE(u.first_name,'') || CASE WHEN u.last_name IS NOT NULL AND u.last_name <> '' THEN ' ' || u.last_name ELSE '' END) AS lead_consultant_name
         FROM engagements e
         JOIN families f ON f.id = e.family_id AND f.deleted_at IS NULL
-        LEFT JOIN users u ON u.id = e.lead_consultant_id
+        LEFT JOIN people u ON u.id = e.lead_consultant_id
         WHERE e.id = $1 AND e.deleted_at IS NULL
         """,
         engagement_id,
@@ -135,10 +135,10 @@ async def list_engagements(
           e.id, e.engagement_type, e.status, e.start_date, e.target_end_date,
           e.default_hourly_rate,
           f.id AS family_id, f.household_name,
-          u.id AS lead_consultant_id, u.name AS lead_consultant_name
+          u.id AS lead_consultant_id, TRIM(BOTH ' ' FROM COALESCE(u.first_name,'') || CASE WHEN u.last_name IS NOT NULL AND u.last_name <> '' THEN ' ' || u.last_name ELSE '' END) AS lead_consultant_name
         FROM engagements e
         JOIN families f ON f.id = e.family_id AND f.deleted_at IS NULL
-        LEFT JOIN users u ON u.id = e.lead_consultant_id
+        LEFT JOIN people u ON u.id = e.lead_consultant_id
         WHERE e.deleted_at IS NULL {clause}
         ORDER BY e.start_date DESC NULLS LAST, e.id DESC
         """

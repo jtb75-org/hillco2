@@ -119,9 +119,9 @@ async def list_for_engagement(
                a.amount, a.signed_at, a.effective_date, a.expires_at,
                a.supersedes_id, a.document_id, a.notes,
                a.created_by, a.created_at, a.updated_at,
-               u.name AS created_by_name
+               TRIM(BOTH ' ' FROM COALESCE(u.first_name,'') || CASE WHEN u.last_name IS NOT NULL AND u.last_name <> '' THEN ' ' || u.last_name ELSE '' END) AS created_by_name
         FROM agreements a
-        LEFT JOIN users u ON u.id = a.created_by
+        LEFT JOIN people u ON u.id = a.created_by
         WHERE a.engagement_id = $1
         ORDER BY a.created_at DESC, a.id DESC
         """,
@@ -171,9 +171,9 @@ async def agreement_detail(
 ):
     row = await conn.fetchrow(
         """
-        SELECT a.*, u.name AS created_by_name
+        SELECT a.*, TRIM(BOTH ' ' FROM COALESCE(u.first_name,'') || CASE WHEN u.last_name IS NOT NULL AND u.last_name <> '' THEN ' ' || u.last_name ELSE '' END) AS created_by_name
         FROM agreements a
-        LEFT JOIN users u ON u.id = a.created_by
+        LEFT JOIN people u ON u.id = a.created_by
         WHERE a.id = $1
         """,
         agreement_id,

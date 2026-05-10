@@ -194,9 +194,9 @@ async def uninvoiced_for_engagement(
     time_entries = await conn.fetch(
         """
         SELECT t.id, t.work_date, t.hours, t.description, t.hourly_rate,
-               u.name AS user_name
+               TRIM(BOTH ' ' FROM COALESCE(u.first_name,'') || CASE WHEN u.last_name IS NOT NULL AND u.last_name <> '' THEN ' ' || u.last_name ELSE '' END) AS user_name
         FROM time_entries t
-        LEFT JOIN users u ON u.id = t.user_id
+        LEFT JOIN people u ON u.id = t.user_id
         WHERE t.engagement_id = $1 AND t.invoice_id IS NULL AND t.billable = TRUE
         ORDER BY t.work_date, t.id
         """,
@@ -205,9 +205,9 @@ async def uninvoiced_for_engagement(
     expenses = await conn.fetch(
         """
         SELECT x.id, x.expense_date, x.amount, x.category, x.description,
-               u.name AS user_name
+               TRIM(BOTH ' ' FROM COALESCE(u.first_name,'') || CASE WHEN u.last_name IS NOT NULL AND u.last_name <> '' THEN ' ' || u.last_name ELSE '' END) AS user_name
         FROM expenses x
-        LEFT JOIN users u ON u.id = x.user_id
+        LEFT JOIN people u ON u.id = x.user_id
         WHERE x.engagement_id = $1 AND x.invoice_id IS NULL AND x.billable = TRUE
         ORDER BY x.expense_date, x.id
         """,
@@ -253,9 +253,9 @@ async def create_invoice(
         time_rows = await conn.fetch(
             """
             SELECT t.id, t.work_date, t.hours, t.description, t.hourly_rate,
-                   u.name AS user_name
+                   TRIM(BOTH ' ' FROM COALESCE(u.first_name,'') || CASE WHEN u.last_name IS NOT NULL AND u.last_name <> '' THEN ' ' || u.last_name ELSE '' END) AS user_name
             FROM time_entries t
-            LEFT JOIN users u ON u.id = t.user_id
+            LEFT JOIN people u ON u.id = t.user_id
             WHERE t.id = ANY($1::uuid[]) AND t.engagement_id = $2
               AND t.invoice_id IS NULL AND t.billable = TRUE
             ORDER BY t.work_date, t.id
@@ -372,10 +372,18 @@ async def invoice_pdf(
     )
     primary_contact = await conn.fetchrow(
         """
-        SELECT name, email, phone
-        FROM parents
-        WHERE family_id = $1
-        ORDER BY is_primary_contact DESC, id
+        SELECT
+          TRIM(BOTH ' ' FROM
+            COALESCE(p.first_name, '') ||
+            CASE WHEN p.last_name IS NOT NULL AND p.last_name <> ''
+                 THEN ' ' || p.last_name ELSE '' END
+          )       AS name,
+          p.email,
+          p.phone
+        FROM family_guardians fg
+        JOIN people p ON p.id = fg.person_id AND p.deleted_at IS NULL
+        WHERE fg.family_id = $1
+        ORDER BY fg.is_primary_contact DESC, p.last_name NULLS LAST, p.first_name
         LIMIT 1
         """,
         invoice["family_id"],

@@ -91,10 +91,10 @@ async def list_expenses(
         SELECT x.id, x.engagement_id, x.user_id, x.expense_date, x.amount,
                x.category, x.description, x.billable, x.receipt_doc_id,
                x.invoice_id, x.created_at, x.updated_at,
-               u.name AS user_name,
+               TRIM(BOTH ' ' FROM COALESCE(u.first_name,'') || CASE WHEN u.last_name IS NOT NULL AND u.last_name <> '' THEN ' ' || u.last_name ELSE '' END) AS user_name,
                i.invoice_number AS invoice_number
         FROM expenses x
-        LEFT JOIN users u    ON u.id = x.user_id
+        LEFT JOIN people u    ON u.id = x.user_id
         LEFT JOIN invoices i ON i.id = x.invoice_id
         WHERE x.engagement_id = $1
         ORDER BY x.expense_date DESC, x.id DESC
