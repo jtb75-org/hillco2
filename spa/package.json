@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "codegen": "openapi-typescript ./openapi.json -o ./src/api/schema.ts",
+    "build": "npm run codegen && tsc -b && vite build",
     "preview": "vite preview",
     "lint": "tsc --noEmit",
     "update-openapi": "curl -fsSL https://hillco2.ng20.org/openapi.json -o openapi.json && echo 'updated openapi.json'"
