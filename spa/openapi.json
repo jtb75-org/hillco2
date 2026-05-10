@@ -7844,7 +7844,7 @@
             ],
             "title": "Phone"
           },
-          "mailing_address": {
+          "street1": {
             "anyOf": [
               {
                 "type": "string"
@@ -7853,7 +7853,62 @@
                 "type": "null"
               }
             ],
-            "title": "Mailing Address"
+            "title": "Street1"
+          },
+          "street2": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Street2"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
+          "postal_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Postal Code"
+          },
+          "country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country"
           },
           "role": {
             "type": "string",
@@ -7876,7 +7931,7 @@
             "title": "Is Billing Contact",
             "default": false
           },
-          "billing_address": {
+          "billing_street1": {
             "anyOf": [
               {
                 "type": "string"
@@ -7885,7 +7940,62 @@
                 "type": "null"
               }
             ],
-            "title": "Billing Address"
+            "title": "Billing Street1"
+          },
+          "billing_street2": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Street2"
+          },
+          "billing_city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing City"
+          },
+          "billing_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing State"
+          },
+          "billing_postal_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Postal Code"
+          },
+          "billing_country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Country"
           },
           "billing_attention_to": {
             "anyOf": [
@@ -7938,7 +8048,7 @@
             ],
             "title": "Phone"
           },
-          "mailing_address": {
+          "street1": {
             "anyOf": [
               {
                 "type": "string"
@@ -7947,7 +8057,62 @@
                 "type": "null"
               }
             ],
-            "title": "Mailing Address"
+            "title": "Street1"
+          },
+          "street2": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Street2"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
+          "postal_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Postal Code"
+          },
+          "country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country"
           },
           "role": {
             "anyOf": [
@@ -7988,7 +8153,7 @@
             ],
             "title": "Is Billing Contact"
           },
-          "billing_address": {
+          "billing_street1": {
             "anyOf": [
               {
                 "type": "string"
@@ -7997,7 +8162,62 @@
                 "type": "null"
               }
             ],
-            "title": "Billing Address"
+            "title": "Billing Street1"
+          },
+          "billing_street2": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Street2"
+          },
+          "billing_city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing City"
+          },
+          "billing_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing State"
+          },
+          "billing_postal_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Postal Code"
+          },
+          "billing_country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Country"
           },
           "billing_attention_to": {
             "anyOf": [
