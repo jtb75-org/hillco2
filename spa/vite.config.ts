@@ -26,11 +26,18 @@ export default defineConfig({
         target: API_BASE,
         changeOrigin: true,
         secure: true,
+        // Backend's CSRF middleware compares the request's Origin/Referer
+        // to its own host. `changeOrigin` rewrites Host, but the browser's
+        // Origin header sticks as http://localhost:5173, so POST/PATCH/
+        // DELETE get rejected with "CSRF check failed: origin mismatch".
+        // Spoof the upstream headers so the API sees a same-origin call.
+        headers: { origin: API_BASE, referer: `${API_BASE}/` },
       },
       "/auth": {
         target: API_BASE,
         changeOrigin: true,
         secure: true,
+        headers: { origin: API_BASE, referer: `${API_BASE}/` },
       },
     },
   },
