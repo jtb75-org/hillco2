@@ -48,7 +48,11 @@ export function AddParentDialog({
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [mailingAddress, setMailingAddress] = useState("");
+  const [street1, setStreet1] = useState("");
+  const [street2, setStreet2] = useState("");
+  const [city, setCity] = useState("");
+  const [stateCode, setStateCode] = useState("");
+  const [postalCode, setPostalCode] = useState("");
   const [role, setRole] = useState<ParentCreate["role"]>("other");
   const [isPrimary, setIsPrimary] = useState(false);
   const [isBilling, setIsBilling] = useState(false);
@@ -79,7 +83,11 @@ export function AddParentDialog({
     setName("");
     setEmail("");
     setPhone("");
-    setMailingAddress("");
+    setStreet1("");
+    setStreet2("");
+    setCity("");
+    setStateCode("");
+    setPostalCode("");
     setRole("other");
     setIsPrimary(false);
     setIsBilling(false);
@@ -106,7 +114,11 @@ export function AddParentDialog({
         name: name.trim(),
         email: email.trim() || null,
         phone: phone.trim() || null,
-        mailing_address: mailingAddress.trim() || null,
+        street1: street1.trim() || null,
+        street2: street2.trim() || null,
+        city: city.trim() || null,
+        state: stateCode.trim() || null,
+        postal_code: postalCode.trim() || null,
         role,
         is_primary_contact: isPrimary,
         is_billing_contact: isBilling,
@@ -201,19 +213,58 @@ export function AddParentDialog({
                     />
                   </LabeledField>
                 </Stack>
-                <LabeledField
-                  label="Mailing address"
-                  helperText="Used as the default for invoices unless a billing override is set later."
-                >
+                <LabeledField label="Street address">
                   <TextField
-                    multiline
-                    minRows={2}
-                    placeholder={"123 Main St\nApt 4\nSpringfield, IL 62701"}
-                    value={mailingAddress}
-                    onChange={(e) => setMailingAddress(e.target.value)}
+                    placeholder="123 Main St"
+                    value={street1}
+                    onChange={(e) => setStreet1(e.target.value)}
                     fullWidth
+                    inputProps={{ maxLength: 200 }}
                   />
                 </LabeledField>
+                <LabeledField label="Apt / suite / unit">
+                  <TextField
+                    placeholder="Apt 4B"
+                    value={street2}
+                    onChange={(e) => setStreet2(e.target.value)}
+                    fullWidth
+                    inputProps={{ maxLength: 100 }}
+                  />
+                </LabeledField>
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                  <Box sx={{ flex: 2 }}>
+                    <LabeledField label="City">
+                      <TextField
+                        value={city}
+                        onChange={(e) => setCity(e.target.value)}
+                        fullWidth
+                        inputProps={{ maxLength: 100 }}
+                      />
+                    </LabeledField>
+                  </Box>
+                  <Box sx={{ flex: 1 }}>
+                    <LabeledField label="State">
+                      <TextField
+                        placeholder="IL"
+                        value={stateCode}
+                        onChange={(e) => setStateCode(e.target.value)}
+                        fullWidth
+                        inputProps={{ maxLength: 50 }}
+                      />
+                    </LabeledField>
+                  </Box>
+                  <Box sx={{ flex: 1 }}>
+                    <LabeledField label="ZIP / postal">
+                      <TextField
+                        placeholder="62701"
+                        value={postalCode}
+                        onChange={(e) => setPostalCode(e.target.value)}
+                        fullWidth
+                        inputProps={{ maxLength: 20 }}
+                      />
+                    </LabeledField>
+                  </Box>
+                </Stack>
                 <Box>
                   <Link
                     component="button"

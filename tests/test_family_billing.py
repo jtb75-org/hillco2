@@ -59,13 +59,18 @@ async def test_create_parent_with_billing_contact_and_address(authed_client):
         "email": "trust@example.com",
         "role": "other",
         "is_billing_contact": True,
-        "billing_address": "1 Main St\nSpringfield, IL 62701",
+        "billing_street1": "1 Main St",
+        "billing_city": "Springfield",
+        "billing_state": "IL",
+        "billing_postal_code": "62701",
         "billing_attention_to": "Jane Doe, CPA",
     })
     assert r.status_code == 201, r.text
     body = r.json()
     assert body["is_billing_contact"] is True
+    # billing_address is the composed read-side blob from billing_*.
     assert body["billing_address"].startswith("1 Main St")
+    assert "Springfield IL 62701" in body["billing_address"]
     assert body["billing_attention_to"] == "Jane Doe, CPA"
 
 
@@ -75,9 +80,13 @@ async def test_create_parent_with_mailing_address(authed_client):
     })).json()["id"]
     p = (await authed_client.post(f"/api/families/{fid}/parents", json={
         "name": "Pat Parent",
-        "mailing_address": "9 Oak St\nSpringfield, IL 62701",
+        "street1": "9 Oak St",
+        "city": "Springfield",
+        "state": "IL",
+        "postal_code": "62701",
     })).json()
     assert p["mailing_address"].startswith("9 Oak St")
+    assert "Springfield IL 62701" in p["mailing_address"]
     # billing_address stays NULL when only mailing was provided.
     assert p["billing_address"] is None
 
@@ -92,9 +101,11 @@ async def test_mailing_address_blank_normalizes_to_null(authed_client):
         "household_name": f"Trim-mail-{uuid4()}",
     })).json()["id"]
     pid = (await authed_client.post(f"/api/families/{fid}/parents", json={
-        "name": "Test", "mailing_address": "  ",
+        "name": "Test", "street1": "  ", "city": "",
     })).json()["id"]
-    r = await authed_client.patch(f"/api/parents/{pid}", json={"mailing_address": ""})
+    r = await authed_client.patch(f"/api/parents/{pid}", json={
+        "street1": "", "city": "  ",
+    })
     assert r.json()["mailing_address"] is None
 
 
@@ -104,10 +115,12 @@ async def test_billing_address_blank_normalizes_to_null(authed_client):
     })).json()["id"]
     pid = (await authed_client.post(f"/api/families/{fid}/parents", json={
         "name": "Test",
-        "billing_address": "  ",
+        "billing_street1": "  ",
     })).json()["id"]
 
-    r = await authed_client.patch(f"/api/parents/{pid}", json={"billing_address": ""})
+    r = await authed_client.patch(f"/api/parents/{pid}", json={
+        "billing_street1": "",
+    })
     assert r.json()["billing_address"] is None
 
 

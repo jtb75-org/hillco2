@@ -33,17 +33,26 @@ class ParentCreate(BaseModel):
     name: str | None = Field(default=None, min_length=1)
     email: str | None = None
     phone: str | None = None
-    # Free-text mailing address — a single multi-line blob today. Lands
-    # in people.street1; the other structured mailing_* columns stay
-    # NULL until a future address editor breaks them out.
-    mailing_address: str | None = None
+    # Mailing address — structured. Each field maps 1:1 to people.
+    # Empty/whitespace strings normalize to NULL.
+    street1: str | None = None
+    street2: str | None = None
+    city: str | None = None
+    state: str | None = None
+    postal_code: str | None = None
+    country: str | None = None
     role: ParentRole = "other"
     is_primary_contact: bool = False
     is_billing_contact: bool = False
-    # Optional override — only relevant when is_billing_contact=true. Used
-    # when invoices physically go to a different address than the
-    # person's mailing_address.
-    billing_address: str | None = None
+    # Billing override — only relevant when is_billing_contact=True.
+    # Used when invoices physically go to a different address than the
+    # person's mailing address.
+    billing_street1: str | None = None
+    billing_street2: str | None = None
+    billing_city: str | None = None
+    billing_state: str | None = None
+    billing_postal_code: str | None = None
+    billing_country: str | None = None
     billing_attention_to: str | None = None
 
     @model_validator(mode="after")
@@ -57,12 +66,35 @@ class ParentUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1)
     email: str | None = None
     phone: str | None = None
-    mailing_address: str | None = None
+    street1: str | None = None
+    street2: str | None = None
+    city: str | None = None
+    state: str | None = None
+    postal_code: str | None = None
+    country: str | None = None
     role: ParentRole | None = None
     is_primary_contact: bool | None = None
     is_billing_contact: bool | None = None
-    billing_address: str | None = None
+    billing_street1: str | None = None
+    billing_street2: str | None = None
+    billing_city: str | None = None
+    billing_state: str | None = None
+    billing_postal_code: str | None = None
+    billing_country: str | None = None
     billing_attention_to: str | None = None
+
+
+# Address columns that round-trip through the API as their structured
+# selves; empty/whitespace strings normalize to NULL on read+write.
+_MAILING_ADDR_COLS = ("street1", "street2", "city", "state", "postal_code", "country")
+_BILLING_ADDR_COLS = (
+    "billing_street1", "billing_street2", "billing_city",
+    "billing_state", "billing_postal_code", "billing_country",
+)
+
+
+def _strip_or_null(s: str | None) -> str | None:
+    return (s or "").strip() or None
 
 
 # ---- Helpers ---------------------------------------------------------------
@@ -387,27 +419,30 @@ async def add_parent(
 
     if person_id is None:
         first, last = _split_name(body.name or "")
-        # Mailing + billing addresses are single TEXT blobs; structured
-        # columns stay NULL until a future address editor breaks them out.
-        mailing_blob = (body.mailing_address or "").strip() or None
-        billing_blob = (body.billing_address or "").strip() or None
         person_id = await conn.fetchval(
             """
             INSERT INTO people (
               kind, first_name, last_name, email, phone,
-              street1,
-              billing_street1, billing_attention_to
+              street1, street2, city, state, postal_code, country,
+              billing_street1, billing_street2, billing_city, billing_state,
+              billing_postal_code, billing_country, billing_attention_to
             ) VALUES (
-              'guardian', $1, $2, NULLIF($3,''), NULLIF($4,''), $5, $6, NULLIF($7,'')
+              'guardian', $1, $2, NULLIF($3,''), NULLIF($4,''),
+              $5, $6, $7, $8, $9, $10,
+              $11, $12, $13, $14, $15, $16, $17
             )
             RETURNING id
             """,
             first, last,
             (body.email or "").strip(),
             (body.phone or "").strip(),
-            mailing_blob,
-            billing_blob,
-            (body.billing_attention_to or "").strip(),
+            _strip_or_null(body.street1), _strip_or_null(body.street2),
+            _strip_or_null(body.city), _strip_or_null(body.state),
+            _strip_or_null(body.postal_code), _strip_or_null(body.country),
+            _strip_or_null(body.billing_street1), _strip_or_null(body.billing_street2),
+            _strip_or_null(body.billing_city), _strip_or_null(body.billing_state),
+            _strip_or_null(body.billing_postal_code), _strip_or_null(body.billing_country),
+            _strip_or_null(body.billing_attention_to),
         )
     await conn.execute(
         """
@@ -438,12 +473,16 @@ async def update_parent(
     if not fields:
         raise HTTPException(status_code=400, detail="No fields to update")
 
-    # Normalize text fields the same way the legacy code did.
+    # Normalize text fields: trim, empty-to-NULL.
     if "name" in fields:
         fields["name"] = (fields["name"] or "").strip()
-    for empty_to_null_col in ("email", "phone", "mailing_address", "billing_address", "billing_attention_to"):
-        if empty_to_null_col in fields:
-            fields[empty_to_null_col] = (fields[empty_to_null_col] or "").strip() or None
+    nullable_text_cols = (
+        "email", "phone", "billing_attention_to",
+        *_MAILING_ADDR_COLS, *_BILLING_ADDR_COLS,
+    )
+    for col in nullable_text_cols:
+        if col in fields:
+            fields[col] = _strip_or_null(fields[col])
 
     # Demote any other holder of either flag before promoting this row.
     # Legacy code did this on `parents`; same shape on family_guardians.
@@ -467,30 +506,9 @@ async def update_parent(
         people_updates.append(("email", fields["email"]))
     if "phone" in fields:
         people_updates.append(("phone", fields["phone"]))
-    if "mailing_address" in fields:
-        # Single-blob editor — clear the structured mailing_* so a
-        # previously-structured value doesn't compose alongside the
-        # new blob.
-        people_updates.extend([
-            ("street1", fields["mailing_address"]),
-            ("street2", None),
-            ("city", None),
-            ("state", None),
-            ("postal_code", None),
-            ("country", None),
-        ])
-    if "billing_address" in fields:
-        # Same shape on billing_*.
-        people_updates.extend([
-            ("billing_street1", fields["billing_address"]),
-            ("billing_street2", None),
-            ("billing_city", None),
-            ("billing_state", None),
-            ("billing_postal_code", None),
-            ("billing_country", None),
-        ])
-    if "billing_attention_to" in fields:
-        people_updates.append(("billing_attention_to", fields["billing_attention_to"]))
+    for col in (*_MAILING_ADDR_COLS, *_BILLING_ADDR_COLS, "billing_attention_to"):
+        if col in fields:
+            people_updates.append((col, fields[col]))
 
     if people_updates:
         set_sql = ", ".join(f"{col} = ${i+2}" for i, (col, _) in enumerate(people_updates))
