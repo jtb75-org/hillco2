@@ -1,0 +1,10 @@
+node_modules/
+dist/
+dist-tsbuildinfo/
+.vite/
+*.local
+*.tsbuildinfo
+openapi-ts-error-*.log
+
+# When openapi-ts codegen lands again, re-add src/api/ here. Skeleton
+# doesn't generate a typed client yet — auth.tsx uses plain fetch.

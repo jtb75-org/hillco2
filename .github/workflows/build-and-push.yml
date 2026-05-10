@@ -112,13 +112,34 @@ jobs:
           printf '%s\n' "${CONFIG}" > /root/.docker/config.json
           printf '%s\n' "${CONFIG}" > "${HOME:-/root}/.docker/config.json"
 
-      - name: Build and push image with kaniko
+      - name: Build SPA bundle (outside Docker)
+        # Same convention hillco-portal used for Tailwind: build assets
+        # outside the Dockerfile so kaniko sees a single-stage build
+        # (multi-stage kaniko has known push-auth bugs). The atlas/builder
+        # image ships node20 + corepack.
+        working-directory: spa
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          ls -la dist/
+
+      - name: Build and push web image with kaniko
         run: |
           /opt/kaniko/executor \
             --context="${GITHUB_WORKSPACE}" \
             --dockerfile="${GITHUB_WORKSPACE}/Dockerfile" \
             --destination="${REGISTRY}/${IMAGE_NAME}:${{ steps.sha.outputs.short }}" \
             --destination="${REGISTRY}/${IMAGE_NAME}:main-latest" \
+            --build-arg="BUILD_COMMIT=${{ steps.sha.outputs.short }}" \
+            --snapshot-mode=redo
+
+      - name: Build and push SPA image with kaniko
+        run: |
+          /opt/kaniko/executor \
+            --context="${GITHUB_WORKSPACE}" \
+            --dockerfile="${GITHUB_WORKSPACE}/spa/Dockerfile" \
+            --destination="${REGISTRY}/${IMAGE_NAME}-spa:${{ steps.sha.outputs.short }}" \
+            --destination="${REGISTRY}/${IMAGE_NAME}-spa:main-latest" \
             --build-arg="BUILD_COMMIT=${{ steps.sha.outputs.short }}" \
             --snapshot-mode=redo
 
@@ -130,16 +151,18 @@ jobs:
           path: hillco2-gitops
           persist-credentials: true
 
-      - name: Update image tag in gitops
+      - name: Update both image tags in gitops
         working-directory: hillco2-gitops/overlays/onprem
         env:
           NEW_TAG: ${{ steps.sha.outputs.short }}
         run: |
-          # Quote the value so all-digit short SHAs don't parse as YAML
-          # integers — kustomize rejects Image.newTag if it isn't a string.
-          sed -i "/name: ${REGISTRY}\/${IMAGE_NAME}/,/newTag:/ s|newTag: .*|newTag: \"${NEW_TAG}\"|" kustomization.yaml
+          # End-of-line anchor on the first sed so `/hillco2` doesn't also
+          # match `/hillco2-spa`. Quote newTag so all-digit short SHAs
+          # don't parse as YAML ints.
+          sed -i "/name: ${REGISTRY}\/${IMAGE_NAME}\$/,/newTag:/ s|newTag: .*|newTag: \"${NEW_TAG}\"|" kustomization.yaml
+          sed -i "/name: ${REGISTRY}\/${IMAGE_NAME}-spa\$/,/newTag:/ s|newTag: .*|newTag: \"${NEW_TAG}\"|" kustomization.yaml
           echo "Updated kustomization.yaml:"
-          grep -A2 "name: ${REGISTRY}/${IMAGE_NAME}" kustomization.yaml || true
+          grep -A1 "name: ${REGISTRY}/${IMAGE_NAME}" kustomization.yaml || true
 
       - name: Commit and push to hillco2-gitops
         working-directory: hillco2-gitops
@@ -156,6 +179,6 @@ jobs:
           if git diff --staged --quiet; then
             echo "No image tag changes to commit"
           else
-            git commit -m "deploy: hillco2 ${NEW_TAG}"
+            git commit -m "deploy: hillco2 + spa ${NEW_TAG}"
             git push origin main
           fi

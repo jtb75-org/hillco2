@@ -1,0 +1,65 @@
+import { Box, Button, CircularProgress, Stack, Typography } from "@mui/material";
+import { Route, Routes } from "react-router-dom";
+
+import { AppShell } from "./layout/AppShell";
+import { AuthProvider, redirectToLogin, useAuth } from "./auth";
+import { Home } from "./pages/Home";
+
+function AuthGate({ children }: { children: React.ReactNode }) {
+  const { user, isLoading } = useAuth();
+  if (isLoading) {
+    return (
+      <Box display="flex" alignItems="center" justifyContent="center" minHeight="100vh">
+        <CircularProgress />
+      </Box>
+    );
+  }
+  if (!user) {
+    return (
+      <Box
+        display="flex"
+        alignItems="center"
+        justifyContent="center"
+        minHeight="100vh"
+      >
+        <Stack spacing={2} alignItems="center">
+          <Typography variant="h5">HillCo Portal</Typography>
+          <Typography variant="body2" color="text.secondary">
+            Sign in to continue.
+          </Typography>
+          <Button variant="contained" onClick={redirectToLogin}>
+            Sign in with Google
+          </Button>
+        </Stack>
+      </Box>
+    );
+  }
+  return <>{children}</>;
+}
+
+export function App() {
+  return (
+    <AuthProvider>
+      <AuthGate>
+        <Routes>
+          <Route element={<AppShell />}>
+            <Route path="/" element={<Home />} />
+            <Route path="*" element={<NotFound />} />
+          </Route>
+        </Routes>
+      </AuthGate>
+    </AuthProvider>
+  );
+}
+
+function NotFound() {
+  return (
+    <Box p={4}>
+      <Typography variant="h6">Not found</Typography>
+      <Typography variant="body2" color="text.secondary">
+        That page isn't here yet. The skeleton only ships the home route — the
+        domain pages get added as the SPA fills out.
+      </Typography>
+    </Box>
+  );
+}
