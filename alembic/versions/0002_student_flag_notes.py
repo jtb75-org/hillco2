@@ -11,7 +11,6 @@ Create Date: 2026-05-10
 """
 from alembic import op
 
-
 revision: str = "0002_student_flag_notes"
 down_revision = "0001_baseline"
 branch_labels = None
