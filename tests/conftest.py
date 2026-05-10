@@ -1,7 +1,7 @@
 """Test fixtures for hillco2.
 
 The strategy is integration-shaped: spin up the real FastAPI app against a
-real Postgres (TEST_DATABASE_URL), apply schema.sql + seed_catalog.sql
+real Postgres (TEST_DATABASE_URL), apply alembic migrations + seed_catalog.sql
 once per session, and exercise endpoints over httpx's ASGI transport.
 Tests create their own data with uuid4-named records so they don't need
 per-test transaction rollback for isolation.
@@ -14,6 +14,7 @@ The DB pointed at by TEST_DATABASE_URL gets its `public` schema
 DROPPED and re-created at session start. Don't aim it at anything you
 care about.
 """
+import asyncio
 import base64
 import json
 import os
@@ -25,6 +26,9 @@ import httpx
 import itsdangerous
 import pytest
 import pytest_asyncio
+from alembic.config import Config
+
+from alembic import command
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -41,19 +45,44 @@ os.environ.setdefault("GOOGLE_CLIENT_SECRET", "test-client-secret")
 os.environ.setdefault("ALLOWED_EMAILS", "test@example.com")
 
 
+def _alembic_config() -> Config:
+    """Build an Alembic Config that env.py can find. env.py reads
+    DATABASE_URL from os.environ, which we've already set above."""
+    cfg = Config(str(REPO_ROOT / "alembic.ini"))
+    # script_location is relative to alembic.ini in the file, but alembic
+    # resolves it relative to the ini's directory only if the file has
+    # been loaded — explicit override here is robust against test cwd
+    # quirks.
+    cfg.set_main_option("script_location", str(REPO_ROOT / "alembic"))
+    return cfg
+
+
 @pytest_asyncio.fixture(scope="session")
 async def applied_schema():
-    """Drop+recreate public schema, apply schema.sql + seed_catalog.sql.
-    Yields the database URL the app modules will reuse."""
+    """Drop+recreate public schema, run `alembic upgrade head`, then
+    apply seed_catalog.sql. Yields the database URL the app modules
+    will reuse."""
     test_url = os.environ["DATABASE_URL"]
 
     conn = await asyncpg.connect(test_url)
     try:
         await conn.execute("DROP SCHEMA public CASCADE; CREATE SCHEMA public;")
-        await conn.execute((REPO_ROOT / "schema.sql").read_text())
+    finally:
+        await conn.close()
+
+    # Alembic is sync; run it on a worker thread so we don't block the
+    # event loop. env.py reads DATABASE_URL from os.environ.
+    cfg = _alembic_config()
+    await asyncio.to_thread(command.upgrade, cfg, "head")
+
+    # seed_catalog.sql stays as a separate idempotent step (per the
+    # alembic plan: schema and seed have different update semantics).
+    conn = await asyncpg.connect(test_url)
+    try:
         await conn.execute((REPO_ROOT / "seed_catalog.sql").read_text())
     finally:
         await conn.close()
+
     yield test_url
 
 

@@ -5,3 +5,10 @@ itsdangerous>=2.2
 pydantic-settings>=2.6
 weasyprint>=60
 boto3>=1.35
+
+# Migrations: alembic + psycopg v3. The app uses asyncpg for queries;
+# alembic uses psycopg because async alembic adds complexity for no
+# real benefit (migrations run once per deploy, not per request).
+alembic>=1.14
+psycopg[binary]>=3.2
+sqlalchemy>=2.0
