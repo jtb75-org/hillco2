@@ -3,11 +3,14 @@ import {
   Alert,
   Box,
   Breadcrumbs,
+  Button,
   Chip,
   CircularProgress,
+  Grid,
   Link as MuiLink,
   MenuItem,
   Paper,
+  Popover,
   Select,
   Stack,
   TextField,
@@ -50,35 +53,6 @@ interface StudentDetail {
     phone: string | null;
   } | null;
 }
-
-// Flag rows on the At-A-Glance card. The shape lets the renderer
-// decide whether a conditional input shows under the chip, and which
-// column on the student record it binds to.
-type FlagKey =
-  | "has_504"
-  | "has_iep"
-  | "has_learning_disability"
-  | "has_adhd"
-  | "has_intellectual_disability"
-  | "has_health_impairment"
-  | "has_emotional_disturbance";
-
-interface FlagRow {
-  key: FlagKey;
-  label: string;
-  notesKey?: keyof StudentDetail; // null = no conditional notes
-}
-
-const FLAGS: FlagRow[] = [
-  { key: "has_504", label: "504 Plan" },
-  { key: "has_iep", label: "IEP" },
-  { key: "has_learning_disability", label: "Learning disability", notesKey: "learning_disability_notes" },
-  // Autism handled separately — it carries an integer level, not text.
-  { key: "has_adhd", label: "ADHD / ADD" },
-  { key: "has_intellectual_disability", label: "Intellectual disability", notesKey: "intellectual_disability_notes" },
-  { key: "has_health_impairment", label: "Health impairment", notesKey: "health_impairment_notes" },
-  { key: "has_emotional_disturbance", label: "Emotional disturbance", notesKey: "emotional_disturbance_notes" },
-];
 
 export function StudentDetail() {
   const { id } = useParams<{ id: string }>();
@@ -207,6 +181,10 @@ function HeaderStrip({ student }: { student: StudentDetail }) {
   );
 }
 
+// Width every chip ends up at. Tuned to fit the longest label
+// ("Emotional disturbance") plus a little breathing room.
+const CHIP_WIDTH = 200;
+
 function AtAGlanceCard({
   student,
   onPatch,
@@ -219,183 +197,393 @@ function AtAGlanceCard({
       <Typography variant="overline" color="text.secondary" sx={{ display: "block", mb: 1.5 }}>
         At a glance
       </Typography>
-      <Stack spacing={1.5}>
-        {/* The plain flags come first, autism is interleaved at its
-            original PDF position (after learning disability). */}
-        <FlagControl
-          flag={FLAGS[0]}
-          on={student.has_504}
-          notes={null}
-          onToggle={(v) => onPatch({ has_504: v })}
-          onNotes={() => {}}
-        />
-        <FlagControl
-          flag={FLAGS[1]}
-          on={student.has_iep}
-          notes={null}
-          onToggle={(v) => onPatch({ has_iep: v })}
-          onNotes={() => {}}
-        />
-        <FlagControl
-          flag={FLAGS[2]}
-          on={student.has_learning_disability}
-          notes={student.learning_disability_notes}
-          onToggle={(v) => onPatch({ has_learning_disability: v })}
-          onNotes={(v) => onPatch({ learning_disability_notes: v })}
-        />
-        <AutismControl
-          on={student.autism_level != null}
-          level={student.autism_level}
-          onToggle={(v) =>
-            onPatch(v ? { autism_level: 1 } : { autism_level: null })
-          }
-          onLevel={(lvl) => onPatch({ autism_level: lvl })}
-        />
-        <FlagControl
-          flag={FLAGS[3]}
-          on={student.has_adhd}
-          notes={null}
-          onToggle={(v) => onPatch({ has_adhd: v })}
-          onNotes={() => {}}
-        />
-        <FlagControl
-          flag={FLAGS[4]}
-          on={student.has_intellectual_disability}
-          notes={student.intellectual_disability_notes}
-          onToggle={(v) => onPatch({ has_intellectual_disability: v })}
-          onNotes={(v) => onPatch({ intellectual_disability_notes: v })}
-        />
-        <FlagControl
-          flag={FLAGS[5]}
-          on={student.has_health_impairment}
-          notes={student.health_impairment_notes}
-          onToggle={(v) => onPatch({ has_health_impairment: v })}
-          onNotes={(v) => onPatch({ health_impairment_notes: v })}
-        />
-        <FlagControl
-          flag={FLAGS[6]}
-          on={student.has_emotional_disturbance}
-          notes={student.emotional_disturbance_notes}
-          onToggle={(v) => onPatch({ has_emotional_disturbance: v })}
-          onNotes={(v) => onPatch({ emotional_disturbance_notes: v })}
-        />
-        <OtherControl
-          on={!!student.diagnosis_other}
-          notes={student.diagnosis_other}
-          onToggle={(v) =>
-            onPatch(v ? { diagnosis_other: "(describe)" } : { diagnosis_other: null })
-          }
-          onNotes={(v) => onPatch({ diagnosis_other: v })}
-        />
-      </Stack>
+      <Grid container columnSpacing={3} rowSpacing={1.25}>
+        <FlagCell>
+          <FlagRow
+            label="504 Plan"
+            on={student.has_504}
+            onToggle={(v) => onPatch({ has_504: v })}
+          />
+        </FlagCell>
+        <FlagCell>
+          <FlagRow
+            label="ADHD / ADD"
+            on={student.has_adhd}
+            onToggle={(v) => onPatch({ has_adhd: v })}
+          />
+        </FlagCell>
+        <FlagCell>
+          <FlagRow
+            label="IEP"
+            on={student.has_iep}
+            onToggle={(v) => onPatch({ has_iep: v })}
+          />
+        </FlagCell>
+        <FlagCell>
+          <FlagRow
+            label="Intellectual disability"
+            on={student.has_intellectual_disability}
+            onToggle={(v) => onPatch({ has_intellectual_disability: v })}
+            notes={student.intellectual_disability_notes}
+            onNotes={(v) => onPatch({ intellectual_disability_notes: v })}
+          />
+        </FlagCell>
+        <FlagCell>
+          <FlagRow
+            label="Learning disability"
+            on={student.has_learning_disability}
+            onToggle={(v) => onPatch({ has_learning_disability: v })}
+            notes={student.learning_disability_notes}
+            onNotes={(v) => onPatch({ learning_disability_notes: v })}
+          />
+        </FlagCell>
+        <FlagCell>
+          <FlagRow
+            label="Health impairment"
+            on={student.has_health_impairment}
+            onToggle={(v) => onPatch({ has_health_impairment: v })}
+            notes={student.health_impairment_notes}
+            onNotes={(v) => onPatch({ health_impairment_notes: v })}
+          />
+        </FlagCell>
+        <FlagCell>
+          <AutismRow
+            level={student.autism_level}
+            onSet={(lvl) => onPatch({ autism_level: lvl })}
+          />
+        </FlagCell>
+        <FlagCell>
+          <FlagRow
+            label="Emotional disturbance"
+            on={student.has_emotional_disturbance}
+            onToggle={(v) => onPatch({ has_emotional_disturbance: v })}
+            notes={student.emotional_disturbance_notes}
+            onNotes={(v) => onPatch({ emotional_disturbance_notes: v })}
+          />
+        </FlagCell>
+        <FlagCell>
+          <OtherRow
+            text={student.diagnosis_other}
+            onSet={(v) => onPatch({ diagnosis_other: v })}
+          />
+        </FlagCell>
+      </Grid>
     </Paper>
   );
 }
 
-function FlagControl({
-  flag,
-  on,
-  notes,
-  onToggle,
-  onNotes,
-}: {
-  flag: FlagRow;
-  on: boolean;
-  notes: string | null;
-  onToggle: (v: boolean) => void;
-  onNotes: (v: string | null) => void;
-}) {
+// One column of the At-A-Glance grid: full width on narrow viewports,
+// two-up on sm and above. Keeps chip widths consistent because every
+// cell renders the same shape.
+function FlagCell({ children }: { children: React.ReactNode }) {
   return (
-    <Box>
-      <Chip
-        label={flag.label}
-        clickable
-        onClick={() => onToggle(!on)}
-        color={on ? "primary" : "default"}
-        variant={on ? "filled" : "outlined"}
-        sx={{ fontWeight: 500 }}
-      />
-      {on && flag.notesKey && (
-        <Box sx={{ mt: 0.75, ml: 2 }}>
-          <DebouncedTextField
-            initial={notes ?? ""}
-            placeholder="Brief description, evaluator's note, etc."
-            onCommit={(v) => onNotes(v || null)}
-          />
-        </Box>
-      )}
-    </Box>
+    <Grid item xs={12} sm={6}>
+      {children}
+    </Grid>
   );
 }
 
-function AutismControl({
+/**
+ * The common row: fixed-width Chip on the left toggles the boolean
+ * flag; when on AND the flag has associated notes, a truncated snippet
+ * appears to the right and opens an edit Popover on click.
+ */
+function FlagRow({
+  label,
   on,
-  level,
   onToggle,
-  onLevel,
+  notes,
+  onNotes,
 }: {
+  label: string;
   on: boolean;
-  level: 1 | 2 | 3 | null;
   onToggle: (v: boolean) => void;
-  onLevel: (lvl: 1 | 2 | 3) => void;
+  // Notes-bearing flags pass these; plain-toggle flags omit them.
+  notes?: string | null;
+  onNotes?: (v: string | null) => void;
 }) {
   return (
-    <Stack direction="row" spacing={1.5} alignItems="center">
+    <Stack direction="row" spacing={1} alignItems="center" sx={{ minHeight: 36 }}>
       <Chip
-        label="Autism"
+        label={label}
         clickable
         onClick={() => onToggle(!on)}
         color={on ? "primary" : "default"}
         variant={on ? "filled" : "outlined"}
-        sx={{ fontWeight: 500 }}
+        sx={{
+          width: CHIP_WIDTH,
+          justifyContent: "flex-start",
+          // Right-align some "breathing room" for the toggle hint.
+          "& .MuiChip-label": { width: "100%" },
+        }}
       />
-      {on && (
-        <Select
-          size="small"
-          value={level ?? 1}
-          onChange={(e) => onLevel(Number(e.target.value) as 1 | 2 | 3)}
-          sx={{ minWidth: 110 }}
-        >
-          <MenuItem value={1}>Level 1</MenuItem>
-          <MenuItem value={2}>Level 2</MenuItem>
-          <MenuItem value={3}>Level 3</MenuItem>
-        </Select>
+      {on && onNotes && (
+        <NotesSnippet
+          label={label}
+          value={notes ?? ""}
+          onSave={(v) => onNotes(v || null)}
+        />
       )}
     </Stack>
   );
 }
 
-function OtherControl({
-  on,
-  notes,
-  onToggle,
-  onNotes,
+/**
+ * Autism is a special case — no boolean column, just `autism_level`
+ * (1/2/3 or NULL). Chip click cycles into level 1 if currently null;
+ * the snippet shows "Level N" and opens a Popover with a level Select.
+ */
+function AutismRow({
+  level,
+  onSet,
 }: {
-  on: boolean;
-  notes: string | null;
-  onToggle: (v: boolean) => void;
-  onNotes: (v: string | null) => void;
+  level: 1 | 2 | 3 | null;
+  onSet: (lvl: 1 | 2 | 3 | null) => void;
 }) {
+  const on = level != null;
   return (
-    <Box>
+    <Stack direction="row" spacing={1} alignItems="center" sx={{ minHeight: 36 }}>
+      <Chip
+        label="Autism"
+        clickable
+        onClick={() => onSet(on ? null : 1)}
+        color={on ? "primary" : "default"}
+        variant={on ? "filled" : "outlined"}
+        sx={{
+          width: CHIP_WIDTH,
+          justifyContent: "flex-start",
+          "& .MuiChip-label": { width: "100%" },
+        }}
+      />
+      {on && (
+        <LevelSnippet
+          level={level!}
+          onSet={(lvl) => onSet(lvl)}
+        />
+      )}
+    </Stack>
+  );
+}
+
+/**
+ * "Other" has no boolean column either — its on-ness is derived from
+ * whether `diagnosis_other` has text. Click the chip → popover opens
+ * for entry. Saving empty text turns the chip off.
+ */
+function OtherRow({
+  text,
+  onSet,
+}: {
+  text: string | null;
+  onSet: (v: string | null) => void;
+}) {
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const on = !!text;
+  return (
+    <Stack direction="row" spacing={1} alignItems="center" sx={{ minHeight: 36 }}>
       <Chip
         label="Other"
         clickable
-        onClick={() => onToggle(!on)}
+        onClick={(e) => setAnchor(e.currentTarget)}
         color={on ? "primary" : "default"}
         variant={on ? "filled" : "outlined"}
-        sx={{ fontWeight: 500 }}
+        sx={{
+          width: CHIP_WIDTH,
+          justifyContent: "flex-start",
+          "& .MuiChip-label": { width: "100%" },
+        }}
       />
       {on && (
-        <Box sx={{ mt: 0.75, ml: 2 }}>
-          <DebouncedTextField
-            initial={notes ?? ""}
-            placeholder="Describe the diagnosis."
-            onCommit={(v) => onNotes(v || null)}
-          />
-        </Box>
+        <SnippetButton
+          text={text!}
+          onClick={(e) => setAnchor(e.currentTarget)}
+        />
       )}
+      <NotesPopover
+        anchor={anchor}
+        title="Other diagnosis"
+        initial={text ?? ""}
+        placeholder="Describe the diagnosis."
+        onClose={() => setAnchor(null)}
+        onSave={(v) => {
+          onSet(v.trim() || null);
+          setAnchor(null);
+        }}
+      />
+    </Stack>
+  );
+}
+
+/** Notes-flag snippet + popover trigger. */
+function NotesSnippet({
+  label,
+  value,
+  onSave,
+}: {
+  label: string;
+  value: string;
+  onSave: (v: string) => void;
+}) {
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  return (
+    <>
+      <SnippetButton
+        text={value || "Add note…"}
+        muted={!value}
+        onClick={(e) => setAnchor(e.currentTarget)}
+      />
+      <NotesPopover
+        anchor={anchor}
+        title={label}
+        initial={value}
+        placeholder="Brief description, evaluator's note, etc."
+        onClose={() => setAnchor(null)}
+        onSave={(v) => {
+          onSave(v);
+          setAnchor(null);
+        }}
+      />
+    </>
+  );
+}
+
+/** Autism-level snippet + popover trigger. */
+function LevelSnippet({
+  level,
+  onSet,
+}: {
+  level: 1 | 2 | 3;
+  onSet: (lvl: 1 | 2 | 3) => void;
+}) {
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  return (
+    <>
+      <SnippetButton
+        text={`Level ${level}`}
+        onClick={(e) => setAnchor(e.currentTarget)}
+      />
+      <Popover
+        open={!!anchor}
+        anchorEl={anchor}
+        onClose={() => setAnchor(null)}
+        anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+      >
+        <Box sx={{ p: 2, minWidth: 180 }}>
+          <Typography variant="overline" color="text.secondary" sx={{ display: "block", mb: 1 }}>
+            Autism level
+          </Typography>
+          <Select
+            size="small"
+            fullWidth
+            value={level}
+            onChange={(e) => {
+              onSet(Number(e.target.value) as 1 | 2 | 3);
+              setAnchor(null);
+            }}
+          >
+            <MenuItem value={1}>Level 1 — requiring support</MenuItem>
+            <MenuItem value={2}>Level 2 — substantial support</MenuItem>
+            <MenuItem value={3}>Level 3 — very substantial support</MenuItem>
+          </Select>
+        </Box>
+      </Popover>
+    </>
+  );
+}
+
+/** Shared truncated-text button used as the snippet affordance. */
+function SnippetButton({
+  text,
+  muted,
+  onClick,
+}: {
+  text: string;
+  muted?: boolean;
+  onClick: (e: React.MouseEvent<HTMLElement>) => void;
+}) {
+  return (
+    <Box
+      component="button"
+      type="button"
+      onClick={onClick}
+      sx={{
+        all: "unset",
+        flex: 1,
+        minWidth: 0,
+        cursor: "pointer",
+        fontSize: 13,
+        color: muted ? "text.disabled" : "text.secondary",
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        px: 1,
+        py: 0.25,
+        borderRadius: 1,
+        "&:hover": { bgcolor: "action.hover", color: "text.primary" },
+        fontStyle: muted ? "italic" : "normal",
+      }}
+    >
+      {text}
     </Box>
+  );
+}
+
+/** Notes-editing popover for the notes-bearing flags. */
+function NotesPopover({
+  anchor,
+  title,
+  initial,
+  placeholder,
+  onClose,
+  onSave,
+}: {
+  anchor: HTMLElement | null;
+  title: string;
+  initial: string;
+  placeholder: string;
+  onClose: () => void;
+  onSave: (v: string) => void;
+}) {
+  const [value, setValue] = useState(initial);
+  useEffect(() => {
+    if (anchor) setValue(initial);
+  }, [anchor, initial]);
+  return (
+    <Popover
+      open={!!anchor}
+      anchorEl={anchor}
+      onClose={() => {
+        // Auto-save on click-away so people don't lose typed notes
+        // by missing the Save button.
+        if (value !== initial) onSave(value);
+        else onClose();
+      }}
+      anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+    >
+      <Box sx={{ p: 2, width: 360 }}>
+        <Typography variant="overline" color="text.secondary" sx={{ display: "block", mb: 1 }}>
+          {title}
+        </Typography>
+        <TextField
+          autoFocus
+          fullWidth
+          multiline
+          minRows={3}
+          maxRows={8}
+          placeholder={placeholder}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+        />
+        <Stack direction="row" spacing={1} justifyContent="flex-end" sx={{ mt: 1.5 }}>
+          <Button size="small" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button size="small" variant="contained" onClick={() => onSave(value)}>
+            Save
+          </Button>
+        </Stack>
+      </Box>
+    </Popover>
   );
 }
 
