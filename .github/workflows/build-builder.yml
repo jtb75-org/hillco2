@@ -4,13 +4,13 @@ name: Build builder image
 # this workflow) changes. Other workflows pin the resulting image by
 # digest, so app-only changes never trigger a rebuild here.
 #
-# Bootstrap note: this is the one workflow that can't run inside
-# hillco2/builder, since it's the workflow that produces it. It runs
-# in atlas/builder:latest — the same image we're trying to retire from
-# the rest of CI. Confining the dependency to this single workflow is
-# the trade-off we accept for not building from scratch on every run;
-# once we have a hillco2/builder digest we can pin to, this image can
-# be swapped for hillco2/builder@<previous-digest> in a follow-up.
+# Bootstrap: this workflow runs in atlas/builder because it needs
+# kaniko to build hillco2-builder, and hillco2-builder itself does
+# not bake kaniko in. (It's the single-stage convention from
+# build-and-push.yml: kaniko's multi-stage push handling deletes the
+# in-progress filesystem between stages, which wipes any docker auth
+# config we'd staged before invoking the executor — a sibling PR
+# learned that the hard way.)
 #
 # kaniko/executor:debug would have been the "right" base, but it's
 # busybox/distroless and actions/checkout@v4 needs a glibc node20.
@@ -44,7 +44,7 @@ env:
 
 jobs:
   build:
-    name: Kaniko build
+    name: Build builder image
     runs-on: jtb75-arc
     container:
       image: zot.lan.ng20.org/atlas/builder:latest
@@ -66,7 +66,12 @@ jobs:
         run: |
           AUTH=$(printf '%s:%s' "${ZOT_USERNAME}" "${ZOT_PASSWORD}" | base64 | tr -d '\n')
           CONFIG=$(printf '{"auths":{"%s":{"auth":"%s"}}}' "${REGISTRY}" "${AUTH}")
-          mkdir -p /opt/kaniko/.docker /root/.docker "${HOME:-/root}/.docker"
+          mkdir -p /kaniko/.docker /opt/kaniko/.docker /root/.docker "${HOME:-/root}/.docker"
+          # /kaniko/.docker is kaniko's canonical preserved location;
+          # /opt/kaniko/.docker matches atlas/builder's pre-existing
+          # convention; the others cover whatever path the executor
+          # process happens to consult.
+          printf '%s\n' "${CONFIG}" > /kaniko/.docker/config.json
           printf '%s\n' "${CONFIG}" > /opt/kaniko/.docker/config.json
           printf '%s\n' "${CONFIG}" > /root/.docker/config.json
           printf '%s\n' "${CONFIG}" > "${HOME:-/root}/.docker/config.json"
