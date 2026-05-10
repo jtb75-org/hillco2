@@ -127,7 +127,12 @@ async def add_visit(
     valid_attendee_ids: list[UUID] = []
     if body.attendee_ids:
         active = await conn.fetch(
-            "SELECT id FROM contacts WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL",
+            """
+            SELECT id FROM people
+            WHERE id = ANY($1::uuid[])
+              AND deleted_at IS NULL
+              AND kind IN ('school_worker'::person_kind, 'other'::person_kind)
+            """,
             body.attendee_ids,
         )
         valid_attendee_ids = [r["id"] for r in active]
@@ -208,7 +213,11 @@ async def add_attendee(
 ):
     await _visit_or_404(conn, visit_id)
     if not await conn.fetchval(
-        "SELECT 1 FROM contacts WHERE id = $1 AND deleted_at IS NULL",
+        """
+        SELECT 1 FROM people
+        WHERE id = $1 AND deleted_at IS NULL
+          AND kind IN ('school_worker'::person_kind, 'other'::person_kind)
+        """,
         contact_id,
     ):
         raise HTTPException(status_code=400, detail="contact_id does not match an active contact")

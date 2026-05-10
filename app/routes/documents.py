@@ -37,7 +37,10 @@ _OWNER_TABLES: dict[str, tuple[str, bool]] = {
     "engagement": ("engagements", True),
     "school": ("schools", True),
     "note": ("notes", False),
-    "contact": ("contacts", True),
+    # Contacts (school_worker + other-kind people) live in `people`
+    # after the spine flip. The validation here only checks existence,
+    # not kind — adequate since the route layer already filters.
+    "contact": ("people", True),
     "agreement": ("agreements", False),
     "learning_support": ("learning_supports", False),
 }
@@ -115,7 +118,12 @@ async def list_documents(
                                                   THEN ' ' || last_name ELSE '' END)
                                      FROM people WHERE id = d.owner_id AND kind = 'student')
             WHEN 'school'     THEN (SELECT name           FROM schools   WHERE id = d.owner_id)
-            WHEN 'contact'    THEN (SELECT name           FROM contacts  WHERE id = d.owner_id)
+            WHEN 'contact'    THEN (SELECT TRIM(BOTH ' ' FROM
+                                          COALESCE(first_name,'')
+                                          || CASE WHEN last_name IS NOT NULL AND last_name <> ''
+                                                  THEN ' ' || last_name ELSE '' END)
+                                     FROM people WHERE id = d.owner_id
+                                       AND kind IN ('school_worker'::person_kind, 'other'::person_kind))
             WHEN 'engagement' THEN (SELECT f.household_name FROM engagements e
                                      JOIN families f ON f.id = e.family_id
                                      WHERE e.id = d.owner_id)

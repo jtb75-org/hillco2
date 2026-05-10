@@ -90,8 +90,11 @@ async def list_schools(
                    s.created_at, s.updated_at,
                    (SELECT COUNT(*) FROM school_visits v
                       WHERE v.school_id = s.id) AS visit_count,
-                   (SELECT COUNT(*) FROM contacts c
-                      WHERE c.school_id = s.id AND c.deleted_at IS NULL) AS contact_count
+                   (SELECT COUNT(*) FROM school_worker_details swd
+                      JOIN people p ON p.id = swd.person_id
+                                   AND p.deleted_at IS NULL
+                                   AND p.kind = 'school_worker'
+                      WHERE swd.school_id = s.id) AS contact_count
             FROM schools s
             WHERE s.deleted_at IS NULL
               AND (s.name ILIKE $1 OR COALESCE(s.location,'') ILIKE $1)
@@ -107,8 +110,11 @@ async def list_schools(
                    s.created_at, s.updated_at,
                    (SELECT COUNT(*) FROM school_visits v
                       WHERE v.school_id = s.id) AS visit_count,
-                   (SELECT COUNT(*) FROM contacts c
-                      WHERE c.school_id = s.id AND c.deleted_at IS NULL) AS contact_count
+                   (SELECT COUNT(*) FROM school_worker_details swd
+                      JOIN people p ON p.id = swd.person_id
+                                   AND p.deleted_at IS NULL
+                                   AND p.kind = 'school_worker'
+                      WHERE swd.school_id = s.id) AS contact_count
             FROM schools s
             WHERE s.deleted_at IS NULL
             ORDER BY s.name
@@ -183,10 +189,21 @@ async def school_detail(
 
     staff = await conn.fetch(
         """
-        SELECT id, name, role, email, phone
-        FROM contacts
-        WHERE school_id = $1 AND deleted_at IS NULL
-        ORDER BY name
+        SELECT
+          p.id,
+          TRIM(BOTH ' ' FROM
+            COALESCE(p.first_name, '') ||
+            CASE WHEN p.last_name IS NOT NULL AND p.last_name <> ''
+                 THEN ' ' || p.last_name ELSE '' END
+          )                AS name,
+          swd.role,
+          p.email, p.phone
+        FROM school_worker_details swd
+        JOIN people p ON p.id = swd.person_id
+                     AND p.deleted_at IS NULL
+                     AND p.kind = 'school_worker'
+        WHERE swd.school_id = $1
+        ORDER BY p.last_name NULLS LAST, p.first_name
         """,
         school_id,
     )
