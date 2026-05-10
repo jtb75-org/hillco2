@@ -71,6 +71,31 @@ jobs:
           printf '%s\n' "${CONFIG}" > /root/.docker/config.json
           printf '%s\n' "${CONFIG}" > "${HOME:-/root}/.docker/config.json"
 
+      - name: DEBUG — verify auth roundtrip
+        env:
+          ZOT_USERNAME: ${{ secrets.ZOT_USERNAME }}
+          ZOT_PASSWORD: ${{ secrets.ZOT_PASSWORD }}
+        run: |
+          echo "ZOT_USERNAME length: ${#ZOT_USERNAME}"
+          echo "ZOT_PASSWORD length: ${#ZOT_PASSWORD}"
+          echo "First char of username: $(printf '%c' "$ZOT_USERNAME")"
+          echo "Curl test against /v2/_catalog (should return 200):"
+          curl -sI -u "${ZOT_USERNAME}:${ZOT_PASSWORD}" \
+            "https://${REGISTRY}/v2/_catalog" | head -3
+          echo "Curl test push initiate against hillco2-builder (should be 202):"
+          curl -sI -X POST -u "${ZOT_USERNAME}:${ZOT_PASSWORD}" \
+            "https://${REGISTRY}/v2/hillco2-builder/blobs/uploads/" | head -3
+          echo ""
+          echo "Effective HOME: ${HOME:-(unset)}"
+          echo "Docker config files written:"
+          for f in /opt/kaniko/.docker/config.json /root/.docker/config.json "${HOME:-/root}/.docker/config.json"; do
+            if [ -f "$f" ]; then
+              echo "  $f: $(wc -c < "$f") bytes"
+            else
+              echo "  $f: (missing)"
+            fi
+          done
+
       - name: Build (PR — no push)
         if: github.event_name == 'pull_request'
         run: |
