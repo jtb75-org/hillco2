@@ -29,7 +29,7 @@ import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import SearchIcon from "@mui/icons-material/Search";
 import UnarchiveOutlinedIcon from "@mui/icons-material/UnarchiveOutlined";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Link as RouterLink } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
 import { api } from "../../api/client";
 import { DataTableContainer } from "../../components/DataTableContainer";
@@ -57,6 +57,7 @@ interface FamilyRow {
 type EngagementFilter = "all" | "active" | "inactive";
 
 export function FamiliesList() {
+  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<EngagementFilter>("all");
   const [showArchived, setShowArchived] = useState(false);
@@ -239,9 +240,10 @@ export function FamiliesList() {
                     // Visually deprioritize archived rows.
                     opacity: f.is_archived ? 0.6 : 1,
                   }}
-                  component={RouterLink}
-                  to={`/families/${f.id}`}
-                  style={{ textDecoration: "none" }}
+                  // Navigate via onClick rather than wrapping the row
+                  // in a RouterLink — <a> inside <tbody> + <td> inside
+                  // <a> is invalid HTML and React 18 warns about it.
+                  onClick={() => navigate(`/families/${f.id}`)}
                 >
                   <TableCell sx={{ fontWeight: 500 }}>
                     {f.household_name}
