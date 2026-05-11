@@ -18,7 +18,16 @@ createRoot(document.getElementById("root")!).render(
       <LocalizationProvider dateAdapter={AdapterDayjs}>
         <QueryClientProvider client={queryClient}>
           <SnackbarProvider>
-            <BrowserRouter>
+            {/* Opt into the v7 behaviors now — wraps state updates in
+                React.startTransition and aligns relative-splat path
+                resolution. Silences the warning console emits and
+                makes the eventual v7 upgrade a no-op. */}
+            <BrowserRouter
+              future={{
+                v7_startTransition: true,
+                v7_relativeSplatPath: true,
+              }}
+            >
               <App />
             </BrowserRouter>
           </SnackbarProvider>
