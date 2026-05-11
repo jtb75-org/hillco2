@@ -6,22 +6,11 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from ..auth import require_user
 from ..db import get_conn
+from ..validators import EMAIL_PATTERN, US_ZIP_PATTERN
 
 router = APIRouter(prefix="/api", tags=["families"])
 
 ParentRole = Literal["mom", "dad", "guardian", "other"]
-
-# Permissive RFC-shaped email check. Pydantic's EmailStr (via
-# email-validator) blocks reserved TLDs like `.test` and `.example`,
-# which breaks every fixture in the suite, so we keep this loose-but-
-# typo-catching pattern instead. Local-part: 1+ non-space/@; domain:
-# 1+ non-space/@ + dot + 1+ non-space/@.
-_EMAIL_PATTERN = r"^[^\s@]+@[^\s@]+\.[^\s@]+$"
-
-# US ZIP — five digits, optionally followed by -NNNN. Field label says
-# "ZIP / postal" but the validator is US-only by intent; revisit when
-# international clients show up.
-_US_ZIP_PATTERN = r"^\d{5}(-\d{4})?$"
 
 
 # ---- I/O models ------------------------------------------------------------
@@ -44,7 +33,7 @@ class ParentCreate(BaseModel):
     person_id: UUID | None = None
     first_name: str | None = Field(default=None, min_length=1)
     last_name: str | None = Field(default=None, min_length=1)
-    email: str | None = Field(default=None, pattern=_EMAIL_PATTERN)
+    email: str | None = Field(default=None, pattern=EMAIL_PATTERN)
     phone: str | None = None
     # Mailing address — structured. Each field maps 1:1 to people.
     # Empty/whitespace strings normalize to NULL.
@@ -52,7 +41,7 @@ class ParentCreate(BaseModel):
     street2: str | None = None
     city: str | None = None
     state: str | None = None
-    postal_code: str | None = Field(default=None, pattern=_US_ZIP_PATTERN)
+    postal_code: str | None = Field(default=None, pattern=US_ZIP_PATTERN)
     country: str | None = None
     role: ParentRole = "other"
     is_primary_contact: bool = False
@@ -64,7 +53,7 @@ class ParentCreate(BaseModel):
     billing_street2: str | None = None
     billing_city: str | None = None
     billing_state: str | None = None
-    billing_postal_code: str | None = Field(default=None, pattern=_US_ZIP_PATTERN)
+    billing_postal_code: str | None = Field(default=None, pattern=US_ZIP_PATTERN)
     billing_country: str | None = None
     billing_attention_to: str | None = None
 
@@ -115,13 +104,13 @@ class ParentCreate(BaseModel):
 class ParentUpdate(BaseModel):
     first_name: str | None = Field(default=None, min_length=1)
     last_name: str | None = None
-    email: str | None = Field(default=None, pattern=_EMAIL_PATTERN)
+    email: str | None = Field(default=None, pattern=EMAIL_PATTERN)
     phone: str | None = None
     street1: str | None = None
     street2: str | None = None
     city: str | None = None
     state: str | None = None
-    postal_code: str | None = Field(default=None, pattern=_US_ZIP_PATTERN)
+    postal_code: str | None = Field(default=None, pattern=US_ZIP_PATTERN)
     country: str | None = None
     role: ParentRole | None = None
     is_primary_contact: bool | None = None
@@ -130,7 +119,7 @@ class ParentUpdate(BaseModel):
     billing_street2: str | None = None
     billing_city: str | None = None
     billing_state: str | None = None
-    billing_postal_code: str | None = Field(default=None, pattern=_US_ZIP_PATTERN)
+    billing_postal_code: str | None = Field(default=None, pattern=US_ZIP_PATTERN)
     billing_country: str | None = None
     billing_attention_to: str | None = None
 

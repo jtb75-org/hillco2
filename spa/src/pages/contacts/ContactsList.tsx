@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import {
   Alert,
   Box,
+  Button,
   InputAdornment,
   MenuItem,
   Stack,
@@ -13,15 +14,18 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
+import AddIcon from "@mui/icons-material/Add";
 import SearchIcon from "@mui/icons-material/Search";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "../../api/client";
 import { DataTableContainer } from "../../components/DataTableContainer";
 import { DataToolbar } from "../../components/DataToolbar";
 import { PageHeader } from "../../components/PageHeader";
+import { useSnackbar } from "../../components/Snackbar";
 import { StatusChip } from "../../components/StatusChip";
 
+import { AddContactDialog } from "./AddContactDialog";
 import { ContactDrawer } from "./ContactDrawer";
 
 // /api/people returns a plain dict in the route — its OpenAPI response
@@ -60,9 +64,12 @@ const KIND_TONE: Record<PersonRow["kind"], "info" | "success" | "warning" | "neu
 };
 
 export function ContactsList() {
+  const qc = useQueryClient();
+  const snackbar = useSnackbar();
   const [search, setSearch] = useState("");
   const [kind, setKind] = useState<KindFilter>("all");
   const [openId, setOpenId] = useState<string | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
 
   const { data, isPending, error } = useQuery<PersonRow[], Error>({
     queryKey: ["contacts", "list", kind, search.trim()],
@@ -93,6 +100,15 @@ export function ContactsList() {
       <PageHeader
         title="Contacts"
         subtitle="Everyone in the address book: guardians, students, school workers, and ad-hoc others."
+        actions={
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => setAddOpen(true)}
+          >
+            Add contact
+          </Button>
+        }
       />
 
       <DataToolbar>
@@ -163,6 +179,15 @@ export function ContactsList() {
       )}
 
       <ContactDrawer personId={openId} onClose={() => setOpenId(null)} />
+      <AddContactDialog
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        onCreated={(id) => {
+          snackbar.show("Contact added");
+          qc.invalidateQueries({ queryKey: ["contacts", "list"] });
+          setOpenId(id);
+        }}
+      />
     </Stack>
   );
 }
