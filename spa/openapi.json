@@ -5722,7 +5722,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PersonListRow"
+                  "$ref": "#/components/schemas/PersonDetail"
                 }
               }
             }
@@ -8700,6 +8700,195 @@
         },
         "type": "object",
         "title": "ParentUpdate"
+      },
+      "PersonDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "first_name": {
+            "type": "string",
+            "title": "First Name"
+          },
+          "last_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Name"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "family_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Family Id"
+          },
+          "family_household_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Family Household Name"
+          },
+          "family_is_archived": {
+            "type": "boolean",
+            "title": "Family Is Archived"
+          },
+          "school_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "School Id"
+          },
+          "school_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "School Name"
+          },
+          "current_grade": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Grade"
+          },
+          "memberships": {
+            "items": {
+              "$ref": "#/components/schemas/PersonFamilyMembership"
+            },
+            "type": "array",
+            "title": "Memberships"
+          },
+          "mailing_address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mailing Address"
+          },
+          "billing_address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Address"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "first_name",
+          "last_name",
+          "email",
+          "phone",
+          "family_id",
+          "family_household_name",
+          "family_is_archived",
+          "school_id",
+          "school_name",
+          "current_grade",
+          "memberships",
+          "mailing_address",
+          "billing_address"
+        ],
+        "title": "PersonDetail",
+        "description": "Single-person detail with all family memberships and composed\naddress blobs. Drives the Contacts page's slide-in drawer; a\nperson can be a guardian on multiple families (split households),\nso memberships is plural even though list-row collapses to one."
+      },
+      "PersonFamilyMembership": {
+        "properties": {
+          "family_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Family Id"
+          },
+          "household_name": {
+            "type": "string",
+            "title": "Household Name"
+          },
+          "is_archived": {
+            "type": "boolean",
+            "title": "Is Archived"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          }
+        },
+        "type": "object",
+        "required": [
+          "family_id",
+          "household_name",
+          "is_archived",
+          "role"
+        ],
+        "title": "PersonFamilyMembership"
       },
       "PersonListRow": {
         "properties": {

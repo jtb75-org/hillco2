@@ -44,6 +44,24 @@ class PersonListRow(BaseModel):
     current_grade: str | None
 
 
+class PersonFamilyMembership(BaseModel):
+    family_id: UUID
+    household_name: str
+    is_archived: bool
+    # "guardian:mom" | "guardian:dad" | "guardian:other" | "student"
+    role: str
+
+
+class PersonDetail(PersonListRow):
+    """Single-person detail with all family memberships and composed
+    address blobs. Drives the Contacts page's slide-in drawer; a
+    person can be a guardian on multiple families (split households),
+    so memberships is plural even though list-row collapses to one."""
+    memberships: list[PersonFamilyMembership]
+    mailing_address: str | None
+    billing_address: str | None
+
+
 # ---- Routes ---------------------------------------------------------------
 
 @router.get("/people", response_model=list[PersonListRow])
@@ -126,29 +144,55 @@ async def list_people(
     return out
 
 
-@router.get("/people/{person_id}", response_model=PersonListRow)
+@router.get("/people/{person_id}", response_model=PersonDetail)
 async def person_detail(
     person_id: UUID,
     _user=Depends(require_user),
     conn=Depends(get_conn),
 ):
-    rows = await conn.fetch(
+    person = await conn.fetchrow(
         """
         SELECT
           p.id, p.kind::text AS kind,
           p.first_name, p.last_name, p.email, p.phone,
-          fg.family_id   AS guardian_family_id,
-          fs.family_id   AS student_family_id,
-          f.household_name AS family_household_name,
-          (f.deleted_at IS NOT NULL) AS family_is_archived,
+          NULLIF(
+            TRIM(BOTH E'\n' FROM
+              CONCAT_WS(E'\n',
+                NULLIF(p.street1, ''),
+                NULLIF(p.street2, ''),
+                CASE WHEN COALESCE(p.city, '') <> ''
+                       OR COALESCE(p.state, '') <> ''
+                       OR COALESCE(p.postal_code, '') <> ''
+                     THEN CONCAT_WS(' ',
+                            NULLIF(p.city, ''),
+                            NULLIF(p.state, ''),
+                            NULLIF(p.postal_code, ''))
+                END,
+                NULLIF(p.country, '')
+              )
+            ), ''
+          )                                         AS mailing_address,
+          NULLIF(
+            TRIM(BOTH E'\n' FROM
+              CONCAT_WS(E'\n',
+                NULLIF(p.billing_street1, ''),
+                NULLIF(p.billing_street2, ''),
+                CASE WHEN COALESCE(p.billing_city, '') <> ''
+                       OR COALESCE(p.billing_state, '') <> ''
+                       OR COALESCE(p.billing_postal_code, '') <> ''
+                     THEN CONCAT_WS(' ',
+                            NULLIF(p.billing_city, ''),
+                            NULLIF(p.billing_state, ''),
+                            NULLIF(p.billing_postal_code, ''))
+                END,
+                NULLIF(p.billing_country, '')
+              )
+            ), ''
+          )                                         AS billing_address,
           swd.school_id,
           sch.name      AS school_name,
           sd.current_grade
         FROM people p
-        LEFT JOIN family_guardians fg     ON fg.person_id = p.id
-        LEFT JOIN family_students  fs     ON fs.person_id = p.id
-        LEFT JOIN families f
-               ON f.id = COALESCE(fg.family_id, fs.family_id)
         LEFT JOIN school_worker_details swd ON swd.person_id = p.id
         LEFT JOIN schools sch ON sch.id = swd.school_id AND sch.deleted_at IS NULL
         LEFT JOIN student_details sd      ON sd.person_id = p.id
@@ -156,20 +200,64 @@ async def person_detail(
         """,
         person_id,
     )
-    if not rows:
+    if not person:
         raise HTTPException(status_code=404, detail="Person not found")
-    r = rows[0]
+
+    # All family memberships — a person can be a guardian on multiple
+    # families (split households) or, less commonly, the student in two.
+    memberships = await conn.fetch(
+        """
+        SELECT
+          f.id AS family_id,
+          f.household_name,
+          (f.deleted_at IS NOT NULL) AS is_archived,
+          CASE WHEN fg.person_id IS NOT NULL
+               THEN 'guardian:' || fg.relationship::text
+               ELSE 'student'
+          END AS role
+        FROM families f
+        LEFT JOIN family_guardians fg
+               ON fg.family_id = f.id AND fg.person_id = $1
+        LEFT JOIN family_students fs
+               ON fs.family_id = f.id AND fs.person_id = $1
+        WHERE fg.person_id IS NOT NULL OR fs.person_id IS NOT NULL
+        ORDER BY f.deleted_at NULLS FIRST, f.household_name
+        """,
+        person_id,
+    )
+
+    # Surface the "primary" family on the list-row shape — first active,
+    # else first archived. Lets the SPA keep its existing list rendering.
+    primary_membership = next(
+        (m for m in memberships if not m["is_archived"]),
+        memberships[0] if memberships else None,
+    )
+
     return {
-        "id": r["id"],
-        "kind": r["kind"],
-        "first_name": r["first_name"],
-        "last_name": r["last_name"],
-        "email": r["email"],
-        "phone": r["phone"],
-        "family_id": r["guardian_family_id"] or r["student_family_id"],
-        "family_household_name": r["family_household_name"],
-        "family_is_archived": bool(r["family_is_archived"]),
-        "school_id": r["school_id"],
-        "school_name": r["school_name"],
-        "current_grade": r["current_grade"],
+        "id": person["id"],
+        "kind": person["kind"],
+        "first_name": person["first_name"],
+        "last_name": person["last_name"],
+        "email": person["email"],
+        "phone": person["phone"],
+        "family_id": primary_membership["family_id"] if primary_membership else None,
+        "family_household_name": (
+            primary_membership["household_name"] if primary_membership else None
+        ),
+        "family_is_archived": bool(
+            primary_membership["is_archived"]) if primary_membership else False,
+        "school_id": person["school_id"],
+        "school_name": person["school_name"],
+        "current_grade": person["current_grade"],
+        "mailing_address": person["mailing_address"],
+        "billing_address": person["billing_address"],
+        "memberships": [
+            {
+                "family_id": m["family_id"],
+                "household_name": m["household_name"],
+                "is_archived": bool(m["is_archived"]),
+                "role": m["role"],
+            }
+            for m in memberships
+        ],
     }
