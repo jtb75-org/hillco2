@@ -1,21 +1,27 @@
+import { useEffect, useState } from "react";
 import {
   Alert,
   Box,
+  Button,
   CircularProgress,
   Divider,
   Drawer,
   IconButton,
   Link as MuiLink,
   Stack,
+  TextField,
   Toolbar,
   Typography,
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
-import { useQuery } from "@tanstack/react-query";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link as RouterLink } from "react-router-dom";
 
 import { api } from "../../api/client";
 import type { components } from "../../api/schema";
+import { LabeledField } from "../../components/LabeledField";
+import { useSnackbar } from "../../components/Snackbar";
 import { StatusChip } from "../../components/StatusChip";
 
 type PersonDetail = components["schemas"]["PersonDetail"];
@@ -28,11 +34,12 @@ const KIND_LABEL: Record<string, string> = {
 };
 
 /**
- * Right-side detail panel for a contact. Read-only by design — the
- * editable surfaces live on the family detail drawer (for guardians)
- * and the student page (for students). This drawer is the "see what
- * we know about this person" view, plus a way to navigate to whatever
- * family/families they're part of.
+ * Right-side detail panel for a contact. Editable in place: each
+ * field PATCHes on blur (the student page's pattern). A danger-zone
+ * Remove button at the footer soft-deletes via DELETE /api/people/{id}.
+ *
+ * Family memberships are display-only — adding/removing a family link
+ * happens via the family detail page's Add parent / Add student flows.
  */
 export function ContactDrawer({
   personId,
@@ -41,6 +48,8 @@ export function ContactDrawer({
   personId: string | null;
   onClose: () => void;
 }) {
+  const qc = useQueryClient();
+  const snackbar = useSnackbar();
   const { data, isPending, error } = useQuery<PersonDetail, Error>({
     queryKey: ["contacts", "detail", personId],
     enabled: !!personId,
@@ -53,12 +62,50 @@ export function ContactDrawer({
     },
   });
 
+  const patch = useMutation({
+    mutationFn: async (body: Record<string, unknown>) => {
+      if (!personId) throw new Error("no contact");
+      const { error: respError } = await api.PATCH("/api/people/{person_id}", {
+        params: { path: { person_id: personId } },
+        body: body as never,
+      });
+      if (respError) {
+        const msg = (respError as { detail?: string }).detail ?? "Save failed.";
+        throw new Error(msg);
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["contacts", "detail", personId] });
+      qc.invalidateQueries({ queryKey: ["contacts", "list"] });
+    },
+    onError: (e: Error) => snackbar.show(e.message, "error"),
+  });
+
+  const remove = useMutation({
+    mutationFn: async () => {
+      if (!personId) throw new Error("no contact");
+      const { error: respError } = await api.DELETE("/api/people/{person_id}", {
+        params: { path: { person_id: personId } },
+      });
+      if (respError) {
+        const msg = (respError as { detail?: string }).detail ?? "Delete failed.";
+        throw new Error(msg);
+      }
+    },
+    onSuccess: () => {
+      snackbar.show(`${data ? [data.first_name, data.last_name].filter(Boolean).join(" ") : "Contact"} removed`);
+      qc.invalidateQueries({ queryKey: ["contacts", "list"] });
+      onClose();
+    },
+    onError: (e: Error) => snackbar.show(e.message, "error"),
+  });
+
   return (
     <Drawer
       anchor="right"
       open={!!personId}
-      onClose={onClose}
-      PaperProps={{ sx: { width: { xs: "100%", sm: 480 } } }}
+      onClose={() => !patch.isPending && !remove.isPending && onClose()}
+      PaperProps={{ sx: { width: { xs: "100%", sm: 500 } } }}
     >
       <Toolbar />
       <Box sx={{ p: 3, flex: 1, display: "flex", flexDirection: "column", overflow: "auto" }}>
@@ -79,9 +126,14 @@ export function ContactDrawer({
         ) : data ? (
           <Stack spacing={3}>
             <HeaderBlock person={data} />
-            <ContactInfo person={data} />
+            <EditableContactInfo person={data} onPatch={patch.mutate} />
             <FamilySection person={data} />
             {data.school_name && <SchoolSection person={data} />}
+            <DangerZone
+              displayName={[data.first_name, data.last_name].filter(Boolean).join(" ")}
+              onConfirm={remove.mutate}
+              pending={remove.isPending}
+            />
           </Stack>
         ) : null}
       </Box>
@@ -113,44 +165,116 @@ function HeaderBlock({ person }: { person: PersonDetail }) {
   );
 }
 
-function ContactInfo({ person }: { person: PersonDetail }) {
-  const hasContact = person.email || person.phone || person.mailing_address;
-  if (!hasContact) {
-    return (
-      <Section title="Contact">
-        <Typography variant="body2" color="text.disabled">
-          No email, phone, or address on file.
-        </Typography>
-      </Section>
-    );
-  }
+function EditableContactInfo({
+  person,
+  onPatch,
+}: {
+  person: PersonDetail;
+  onPatch: (body: Record<string, unknown>) => void;
+}) {
   return (
     <Section title="Contact">
-      <Stack spacing={1}>
-        {person.email && (
-          <DefRow label="Email">
-            <MuiLink href={`mailto:${person.email}`} underline="hover">
-              {person.email}
-            </MuiLink>
-          </DefRow>
-        )}
-        {person.phone && <DefRow label="Phone">{person.phone}</DefRow>}
-        {person.mailing_address && (
-          <DefRow label="Address">
-            <Box component="span" sx={{ whiteSpace: "pre-line" }}>
-              {person.mailing_address}
-            </Box>
-          </DefRow>
-        )}
-        {person.billing_address && person.billing_address !== person.mailing_address && (
-          <DefRow label="Billing">
-            <Box component="span" sx={{ whiteSpace: "pre-line", fontStyle: "italic" }}>
-              {person.billing_address}
-            </Box>
-          </DefRow>
-        )}
+      <Stack spacing={2}>
+        <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+          <DebouncedField
+            label="First name"
+            required
+            initial={person.first_name}
+            onCommit={(v) => v.trim() && onPatch({ first_name: v.trim() })}
+          />
+          <DebouncedField
+            label="Last name"
+            required
+            initial={person.last_name ?? ""}
+            onCommit={(v) => v.trim() && onPatch({ last_name: v.trim() })}
+          />
+        </Stack>
+        <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+          <DebouncedField
+            label="Email"
+            type="email"
+            initial={person.email ?? ""}
+            onCommit={(v) => onPatch({ email: v.trim() || null })}
+            invalidPattern={/^[^\s@]+@[^\s@]+\.[^\s@]+$/}
+            invalidHelper="Invalid email."
+          />
+          <DebouncedField
+            label="Phone"
+            initial={person.phone ?? ""}
+            onCommit={(v) => onPatch({ phone: v.trim() || null })}
+          />
+        </Stack>
+        <AddressBlock person={person} onPatch={onPatch} />
       </Stack>
     </Section>
+  );
+}
+
+function AddressBlock({
+  person,
+  onPatch,
+}: {
+  person: PersonDetail;
+  onPatch: (body: Record<string, unknown>) => void;
+}) {
+  // The detail response composes mailing_address as a multi-line string
+  // for display, but for editing we want the structured columns. They
+  // aren't on PersonDetail today — fall back to splitting the composed
+  // blob heuristically. The save path writes the new structured value
+  // and the next refetch supplies the composed echo.
+  const composed = person.mailing_address ?? "";
+  // Try a best-effort split: first line is street1; second line might be
+  // the city/state/zip combo. We don't try to be clever — the operator
+  // can just retype in the right fields.
+  const lines = composed.split("\n");
+  const initialStreet1 = lines[0] ?? "";
+  const initialCityStateZip = lines.slice(1).join(" ");
+
+  const [street1, setStreet1] = useState(initialStreet1);
+  const [cityStateZip, setCityStateZip] = useState(initialCityStateZip);
+
+  // Sync when the upstream data changes (refetch after another field's
+  // save) so the operator's edits don't get clobbered mid-stream.
+  useEffect(() => {
+    setStreet1(initialStreet1);
+    setCityStateZip(initialCityStateZip);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [person.mailing_address]);
+
+  return (
+    <Stack spacing={1.5}>
+      <DebouncedField
+        label="Street"
+        initial={street1}
+        onCommit={(v) => {
+          setStreet1(v);
+          onPatch({ street1: v.trim() || null });
+        }}
+      />
+      <DebouncedField
+        label="City / state / ZIP"
+        initial={cityStateZip}
+        onCommit={(v) => {
+          // Parse "City, ST 62701" → set city, state, postal_code.
+          // Falls back to dropping all three to NULL on blank.
+          setCityStateZip(v);
+          const trimmed = v.trim();
+          if (!trimmed) {
+            onPatch({ city: null, state: null, postal_code: null });
+            return;
+          }
+          const m = trimmed.match(/^(.+?)[,\s]+([A-Za-z]{2})\s+(\d{5}(?:-\d{4})?)$/);
+          if (m) {
+            onPatch({ city: m[1].trim(), state: m[2], postal_code: m[3] });
+          } else {
+            // Fallback: dump everything into city; backend will accept
+            // the change but the operator can re-edit.
+            onPatch({ city: trimmed, state: null, postal_code: null });
+          }
+        }}
+        helperText='Format: "City, ST 62701" — fields split on save.'
+      />
+    </Stack>
   );
 }
 
@@ -224,6 +348,54 @@ function SchoolSection({ person }: { person: PersonDetail }) {
   );
 }
 
+function DangerZone({
+  displayName,
+  onConfirm,
+  pending,
+}: {
+  displayName: string;
+  onConfirm: () => void;
+  pending: boolean;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  return (
+    <Box>
+      <Typography variant="overline" color="error.main" sx={{ display: "block", mb: 1 }}>
+        Danger zone
+      </Typography>
+      <Divider sx={{ mb: 1.5 }} />
+      {!confirming ? (
+        <Button
+          color="error"
+          variant="outlined"
+          startIcon={<DeleteOutlineIcon />}
+          onClick={() => setConfirming(true)}
+        >
+          Remove contact
+        </Button>
+      ) : (
+        <Stack spacing={1}>
+          <Typography variant="body2" color="text.secondary">
+            Soft-delete {displayName}? They'll disappear from contacts and family
+            rosters; their data stays in the DB.
+          </Typography>
+          <Stack direction="row" spacing={1}>
+            <Button
+              color="error"
+              variant="contained"
+              onClick={onConfirm}
+              disabled={pending}
+            >
+              Confirm remove
+            </Button>
+            <Button onClick={() => setConfirming(false)}>Cancel</Button>
+          </Stack>
+        </Stack>
+      )}
+    </Box>
+  );
+}
+
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <Box>
@@ -236,22 +408,50 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function DefRow({ label, children }: { label: string; children: React.ReactNode }) {
+/** Text input that holds local state until blur, then commits via
+ *  onCommit. Optional pattern validates inline. */
+function DebouncedField({
+  label,
+  initial,
+  type,
+  required,
+  invalidPattern,
+  invalidHelper,
+  helperText,
+  onCommit,
+}: {
+  label: string;
+  initial: string;
+  type?: string;
+  required?: boolean;
+  invalidPattern?: RegExp;
+  invalidHelper?: string;
+  helperText?: string;
+  onCommit: (v: string) => void;
+}) {
+  const [value, setValue] = useState(initial);
+  useEffect(() => {
+    setValue(initial);
+  }, [initial]);
+  const trimmed = value.trim();
+  const formatInvalid =
+    !!invalidPattern && !!trimmed && !invalidPattern.test(trimmed);
   return (
-    <Box
-      sx={{
-        display: "grid",
-        gridTemplateColumns: "auto 1fr",
-        columnGap: 2,
-        alignItems: "baseline",
-      }}
-    >
-      <Typography variant="caption" color="text.secondary" sx={{ textTransform: "uppercase" }}>
-        {label}
-      </Typography>
-      <Typography variant="body2" component="div">
-        {children}
-      </Typography>
-    </Box>
+    <LabeledField label={label} required={required}>
+      <TextField
+        type={type}
+        required={required}
+        fullWidth
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={() => {
+          if (value === initial) return;
+          if (formatInvalid) return;
+          onCommit(value);
+        }}
+        error={formatInvalid}
+        helperText={formatInvalid ? invalidHelper : helperText}
+      />
+    </LabeledField>
   );
 }
