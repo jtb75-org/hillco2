@@ -3,9 +3,11 @@ import {
   Alert,
   Box,
   Button,
+  Checkbox,
   CircularProgress,
   Divider,
   Drawer,
+  FormControlLabel,
   IconButton,
   Link as MuiLink,
   Stack,
@@ -204,77 +206,169 @@ function EditableContactInfo({
             onCommit={(v) => onPatch({ phone: v.trim() || null })}
           />
         </Stack>
-        <AddressBlock person={person} onPatch={onPatch} />
+        <StructuredAddressBlock
+          street1={person.street1 ?? ""}
+          street2={person.street2 ?? ""}
+          city={person.city ?? ""}
+          state={person.state ?? ""}
+          postalCode={person.postal_code ?? ""}
+          onPatch={onPatch}
+          fieldPrefix=""
+        />
+        <BillingBlock person={person} onPatch={onPatch} />
       </Stack>
     </Section>
   );
 }
 
-function AddressBlock({
+/**
+ * Renders the four structured-address inputs (street, apt, city, state,
+ * ZIP). Used for both mailing and billing; the `fieldPrefix` decides
+ * which underlying column each input writes to.
+ */
+function StructuredAddressBlock({
+  street1,
+  street2,
+  city,
+  state,
+  postalCode,
+  onPatch,
+  fieldPrefix,
+}: {
+  street1: string;
+  street2: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  onPatch: (body: Record<string, unknown>) => void;
+  /** "" for mailing, "billing_" for the override. */
+  fieldPrefix: "" | "billing_";
+}) {
+  const k = (suffix: string) => `${fieldPrefix}${suffix}`;
+  return (
+    <Stack spacing={1.5}>
+      <DebouncedField
+        label="Street address"
+        initial={street1}
+        onCommit={(v) => onPatch({ [k("street1")]: v.trim() || null })}
+      />
+      <DebouncedField
+        label="Apt / suite / unit"
+        initial={street2}
+        onCommit={(v) => onPatch({ [k("street2")]: v.trim() || null })}
+      />
+      <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+        <Box sx={{ flex: 2 }}>
+          <DebouncedField
+            label="City"
+            initial={city}
+            onCommit={(v) => onPatch({ [k("city")]: v.trim() || null })}
+          />
+        </Box>
+        <Box sx={{ flex: 1 }}>
+          <DebouncedField
+            label="State"
+            initial={state}
+            onCommit={(v) => onPatch({ [k("state")]: v.trim() || null })}
+          />
+        </Box>
+        <Box sx={{ flex: 1 }}>
+          <DebouncedField
+            label="ZIP / postal"
+            initial={postalCode}
+            onCommit={(v) => onPatch({ [k("postal_code")]: v.trim() || null })}
+            invalidPattern={/^\d{5}(-\d{4})?$/}
+            invalidHelper="Use 5 digits or ZIP+4."
+          />
+        </Box>
+      </Stack>
+    </Stack>
+  );
+}
+
+/**
+ * "Use a different billing address" checkbox + the structured billing
+ * override fields. Default state derives from whether any billing
+ * column has a value. Unchecking clears every billing column in one
+ * PATCH so invoices fall back to the mailing address.
+ */
+function BillingBlock({
   person,
   onPatch,
 }: {
   person: PersonDetail;
   onPatch: (body: Record<string, unknown>) => void;
 }) {
-  // The detail response composes mailing_address as a multi-line string
-  // for display, but for editing we want the structured columns. They
-  // aren't on PersonDetail today — fall back to splitting the composed
-  // blob heuristically. The save path writes the new structured value
-  // and the next refetch supplies the composed echo.
-  const composed = person.mailing_address ?? "";
-  // Try a best-effort split: first line is street1; second line might be
-  // the city/state/zip combo. We don't try to be clever — the operator
-  // can just retype in the right fields.
-  const lines = composed.split("\n");
-  const initialStreet1 = lines[0] ?? "";
-  const initialCityStateZip = lines.slice(1).join(" ");
+  const hasBillingOverride =
+    !!person.billing_street1 ||
+    !!person.billing_street2 ||
+    !!person.billing_city ||
+    !!person.billing_state ||
+    !!person.billing_postal_code ||
+    !!person.billing_country ||
+    !!person.billing_attention_to;
 
-  const [street1, setStreet1] = useState(initialStreet1);
-  const [cityStateZip, setCityStateZip] = useState(initialCityStateZip);
+  const [enabled, setEnabled] = useState(hasBillingOverride);
 
-  // Sync when the upstream data changes (refetch after another field's
-  // save) so the operator's edits don't get clobbered mid-stream.
+  // Sync if upstream changes (another field's PATCH refetches and
+  // updates `hasBillingOverride`). Don't fight the operator if they
+  // just toggled it locally.
   useEffect(() => {
-    setStreet1(initialStreet1);
-    setCityStateZip(initialCityStateZip);
+    if (hasBillingOverride && !enabled) setEnabled(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [person.mailing_address]);
+  }, [hasBillingOverride]);
+
+  const handleToggle = (checked: boolean) => {
+    setEnabled(checked);
+    if (!checked) {
+      onPatch({
+        billing_street1: null,
+        billing_street2: null,
+        billing_city: null,
+        billing_state: null,
+        billing_postal_code: null,
+        billing_country: null,
+        billing_attention_to: null,
+      });
+    }
+  };
 
   return (
-    <Stack spacing={1.5}>
-      <DebouncedField
-        label="Street"
-        initial={street1}
-        onCommit={(v) => {
-          setStreet1(v);
-          onPatch({ street1: v.trim() || null });
-        }}
+    <Box>
+      <FormControlLabel
+        control={
+          <Checkbox
+            checked={enabled}
+            onChange={(e) => handleToggle(e.target.checked)}
+          />
+        }
+        label={
+          <Typography variant="body2">
+            Use a different billing address
+          </Typography>
+        }
       />
-      <DebouncedField
-        label="City / state / ZIP"
-        initial={cityStateZip}
-        onCommit={(v) => {
-          // Parse "City, ST 62701" → set city, state, postal_code.
-          // Falls back to dropping all three to NULL on blank.
-          setCityStateZip(v);
-          const trimmed = v.trim();
-          if (!trimmed) {
-            onPatch({ city: null, state: null, postal_code: null });
-            return;
-          }
-          const m = trimmed.match(/^(.+?)[,\s]+([A-Za-z]{2})\s+(\d{5}(?:-\d{4})?)$/);
-          if (m) {
-            onPatch({ city: m[1].trim(), state: m[2], postal_code: m[3] });
-          } else {
-            // Fallback: dump everything into city; backend will accept
-            // the change but the operator can re-edit.
-            onPatch({ city: trimmed, state: null, postal_code: null });
-          }
-        }}
-        helperText='Format: "City, ST 62701" — fields split on save.'
-      />
-    </Stack>
+      {enabled && (
+        <Stack spacing={1.5} sx={{ mt: 1, ml: 4 }}>
+          <DebouncedField
+            label="Attention to"
+            initial={person.billing_attention_to ?? ""}
+            onCommit={(v) =>
+              onPatch({ billing_attention_to: v.trim() || null })
+            }
+          />
+          <StructuredAddressBlock
+            street1={person.billing_street1 ?? ""}
+            street2={person.billing_street2 ?? ""}
+            city={person.billing_city ?? ""}
+            state={person.billing_state ?? ""}
+            postalCode={person.billing_postal_code ?? ""}
+            onPatch={onPatch}
+            fieldPrefix="billing_"
+          />
+        </Stack>
+      )}
+    </Box>
   );
 }
 

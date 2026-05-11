@@ -3,6 +3,7 @@ import {
   Alert,
   Box,
   Button,
+  Checkbox,
   Divider,
   Drawer,
   FormControlLabel,
@@ -68,6 +69,13 @@ export function ParentDrawer({
   const [stateCode, setStateCode] = useState("");
   const [postalCode, setPostalCode] = useState("");
   const [role, setRole] = useState<Role>("other");
+  const [useBillingOverride, setUseBillingOverride] = useState(false);
+  const [billingAttn, setBillingAttn] = useState("");
+  const [billingStreet1, setBillingStreet1] = useState("");
+  const [billingStreet2, setBillingStreet2] = useState("");
+  const [billingCity, setBillingCity] = useState("");
+  const [billingState, setBillingState] = useState("");
+  const [billingPostalCode, setBillingPostalCode] = useState("");
   const [confirmingRemove, setConfirmingRemove] = useState(false);
 
   // Hydrate form from the parent whenever a new one is opened.
@@ -84,6 +92,17 @@ export function ParentDrawer({
     setStateCode("");
     setPostalCode("");
     setRole((parent.role as Role) || "other");
+    // Default the billing checkbox on when a billing override already
+    // exists. The structured columns aren't on ParentDrawerTarget today
+    // — operator's edits overwrite, blank fields stay blank (matching
+    // the mailing-field pattern in this drawer).
+    setUseBillingOverride(!!parent.billing_address);
+    setBillingAttn("");
+    setBillingStreet1("");
+    setBillingStreet2("");
+    setBillingCity("");
+    setBillingState("");
+    setBillingPostalCode("");
     setConfirmingRemove(false);
   }, [parent]);
 
@@ -154,6 +173,26 @@ export function ParentDrawer({
     if (city) body.city = city.trim();
     if (stateCode) body.state = stateCode.trim();
     if (postalCode) body.postal_code = postalCode.trim();
+    if (useBillingOverride) {
+      // Operator opted in. Submit each billing column they touched;
+      // leave blank ones alone (existing data persists).
+      if (billingAttn) body.billing_attention_to = billingAttn.trim();
+      if (billingStreet1) body.billing_street1 = billingStreet1.trim();
+      if (billingStreet2) body.billing_street2 = billingStreet2.trim();
+      if (billingCity) body.billing_city = billingCity.trim();
+      if (billingState) body.billing_state = billingState.trim();
+      if (billingPostalCode) body.billing_postal_code = billingPostalCode.trim();
+    } else if (parent?.billing_address) {
+      // Checkbox unchecked and a billing override existed — clear it
+      // so invoices fall back to the mailing address. PATCH the entire
+      // billing-column set to null in one shot.
+      body.billing_attention_to = null;
+      body.billing_street1 = null;
+      body.billing_street2 = null;
+      body.billing_city = null;
+      body.billing_state = null;
+      body.billing_postal_code = null;
+    }
     patch.mutate(body);
   };
 
@@ -328,6 +367,86 @@ export function ParentDrawer({
                 </LabeledField>
               </Box>
             </Stack>
+            <Box>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={useBillingOverride}
+                    onChange={(e) => setUseBillingOverride(e.target.checked)}
+                  />
+                }
+                label={
+                  <Typography variant="body2">
+                    Use a different billing address
+                  </Typography>
+                }
+              />
+              {useBillingOverride && (
+                <Stack spacing={1.5} sx={{ mt: 1, ml: 4 }}>
+                  <LabeledField label="Attention to">
+                    <TextField
+                      placeholder='e.g. "Jane Doe, CPA"'
+                      value={billingAttn}
+                      onChange={(e) => setBillingAttn(e.target.value)}
+                      fullWidth
+                      inputProps={{ maxLength: 200 }}
+                    />
+                  </LabeledField>
+                  <LabeledField label="Street address">
+                    <TextField
+                      value={billingStreet1}
+                      onChange={(e) => setBillingStreet1(e.target.value)}
+                      fullWidth
+                      inputProps={{ maxLength: 200 }}
+                    />
+                  </LabeledField>
+                  <LabeledField label="Apt / suite / unit">
+                    <TextField
+                      value={billingStreet2}
+                      onChange={(e) => setBillingStreet2(e.target.value)}
+                      fullWidth
+                      inputProps={{ maxLength: 100 }}
+                    />
+                  </LabeledField>
+                  <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+                    <Box sx={{ flex: 2 }}>
+                      <LabeledField label="City">
+                        <TextField
+                          value={billingCity}
+                          onChange={(e) => setBillingCity(e.target.value)}
+                          fullWidth
+                          inputProps={{ maxLength: 100 }}
+                        />
+                      </LabeledField>
+                    </Box>
+                    <Box sx={{ flex: 1 }}>
+                      <LabeledField label="State">
+                        <TextField
+                          value={billingState}
+                          onChange={(e) => setBillingState(e.target.value)}
+                          fullWidth
+                          inputProps={{ maxLength: 50 }}
+                        />
+                      </LabeledField>
+                    </Box>
+                    <Box sx={{ flex: 1 }}>
+                      <LabeledField label="ZIP / postal">
+                        <TextField
+                          value={billingPostalCode}
+                          onChange={(e) => setBillingPostalCode(e.target.value)}
+                          fullWidth
+                          inputProps={{ maxLength: 10 }}
+                          error={
+                            !!billingPostalCode.trim() &&
+                            !/^\d{5}(-\d{4})?$/.test(billingPostalCode.trim())
+                          }
+                        />
+                      </LabeledField>
+                    </Box>
+                  </Stack>
+                </Stack>
+              )}
+            </Box>
             <LabeledField label="Relationship">
               <TextField
                 select

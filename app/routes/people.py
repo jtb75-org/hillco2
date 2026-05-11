@@ -58,13 +58,29 @@ class PersonFamilyMembership(BaseModel):
 
 
 class PersonDetail(PersonListRow):
-    """Single-person detail with all family memberships and composed
-    address blobs. Drives the Contacts page's slide-in drawer; a
-    person can be a guardian on multiple families (split households),
-    so memberships is plural even though list-row collapses to one."""
+    """Single-person detail with all family memberships, the composed
+    address blobs (for display), and the structured columns underneath
+    (for editing). The drawer reads the structured fields directly so
+    operators see individual inputs rather than a parsed blob."""
     memberships: list[PersonFamilyMembership]
     mailing_address: str | None
     billing_address: str | None
+    # Structured mailing address columns.
+    street1: str | None
+    street2: str | None
+    city: str | None
+    state: str | None
+    postal_code: str | None
+    country: str | None
+    # Structured billing-override columns. Editable when the drawer's
+    # "Use a different billing address" checkbox is on.
+    billing_street1: str | None
+    billing_street2: str | None
+    billing_city: str | None
+    billing_state: str | None
+    billing_postal_code: str | None
+    billing_country: str | None
+    billing_attention_to: str | None
 
 
 # ---- Request models -------------------------------------------------------
@@ -108,8 +124,17 @@ class PersonUpdate(BaseModel):
     state: str | None = None
     postal_code: str | None = Field(default=None, pattern=US_ZIP_PATTERN)
     country: str | None = None
+    # Billing override — drawer surfaces these behind a "use a
+    # different billing address" checkbox.
+    billing_street1: str | None = None
+    billing_street2: str | None = None
+    billing_city: str | None = None
+    billing_state: str | None = None
+    billing_postal_code: str | None = Field(default=None, pattern=US_ZIP_PATTERN)
+    billing_country: str | None = None
+    billing_attention_to: str | None = None
 
-    @field_validator("email", "postal_code", mode="before")
+    @field_validator("email", "postal_code", "billing_postal_code", mode="before")
     @classmethod
     def _blank_to_none(cls, v):
         if isinstance(v, str) and not v.strip():
@@ -121,6 +146,9 @@ class PersonUpdate(BaseModel):
 _NULLABLE_TEXT_COLS = (
     "last_name", "email", "phone",
     "street1", "street2", "city", "state", "postal_code", "country",
+    "billing_street1", "billing_street2", "billing_city",
+    "billing_state", "billing_postal_code", "billing_country",
+    "billing_attention_to",
 )
 
 
@@ -251,6 +279,12 @@ async def person_detail(
               )
             ), ''
           )                                         AS billing_address,
+          -- Structured columns for the drawer's individual inputs.
+          p.street1, p.street2, p.city, p.state,
+          p.postal_code, p.country,
+          p.billing_street1, p.billing_street2, p.billing_city,
+          p.billing_state, p.billing_postal_code, p.billing_country,
+          p.billing_attention_to,
           swd.school_id,
           sch.name      AS school_name,
           sd.current_grade
@@ -313,6 +347,19 @@ async def person_detail(
         "current_grade": person["current_grade"],
         "mailing_address": person["mailing_address"],
         "billing_address": person["billing_address"],
+        "street1": person["street1"],
+        "street2": person["street2"],
+        "city": person["city"],
+        "state": person["state"],
+        "postal_code": person["postal_code"],
+        "country": person["country"],
+        "billing_street1": person["billing_street1"],
+        "billing_street2": person["billing_street2"],
+        "billing_city": person["billing_city"],
+        "billing_state": person["billing_state"],
+        "billing_postal_code": person["billing_postal_code"],
+        "billing_country": person["billing_country"],
+        "billing_attention_to": person["billing_attention_to"],
         "memberships": [
             {
                 "family_id": m["family_id"],

@@ -9086,6 +9086,149 @@
               }
             ],
             "title": "Billing Address"
+          },
+          "street1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Street1"
+          },
+          "street2": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Street2"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
+          "postal_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Postal Code"
+          },
+          "country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country"
+          },
+          "billing_street1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Street1"
+          },
+          "billing_street2": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Street2"
+          },
+          "billing_city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing City"
+          },
+          "billing_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing State"
+          },
+          "billing_postal_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Postal Code"
+          },
+          "billing_country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Country"
+          },
+          "billing_attention_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Attention To"
           }
         },
         "type": "object",
@@ -9104,10 +9247,23 @@
           "current_grade",
           "memberships",
           "mailing_address",
-          "billing_address"
+          "billing_address",
+          "street1",
+          "street2",
+          "city",
+          "state",
+          "postal_code",
+          "country",
+          "billing_street1",
+          "billing_street2",
+          "billing_city",
+          "billing_state",
+          "billing_postal_code",
+          "billing_country",
+          "billing_attention_to"
         ],
         "title": "PersonDetail",
-        "description": "Single-person detail with all family memberships and composed\naddress blobs. Drives the Contacts page's slide-in drawer; a\nperson can be a guardian on multiple families (split households),\nso memberships is plural even though list-row collapses to one."
+        "description": "Single-person detail with all family memberships, the composed\naddress blobs (for display), and the structured columns underneath\n(for editing). The drawer reads the structured fields directly so\noperators see individual inputs rather than a parsed blob."
       },
       "PersonFamilyMembership": {
         "properties": {
@@ -9380,6 +9536,84 @@
               }
             ],
             "title": "Country"
+          },
+          "billing_street1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Street1"
+          },
+          "billing_street2": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Street2"
+          },
+          "billing_city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing City"
+          },
+          "billing_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing State"
+          },
+          "billing_postal_code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^\\d{5}(-\\d{4})?$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Postal Code"
+          },
+          "billing_country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Country"
+          },
+          "billing_attention_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Attention To"
           }
         },
         "type": "object",
