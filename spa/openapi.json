@@ -5083,19 +5083,41 @@
           "admin"
         ],
         "summary": "List Users",
-        "description": "All users (auth-provisioned people), sorted by active first then\nname. Anyone authenticated can read this for now; if the role\nsurface grows we'll gate this on an admin role.",
+        "description": "All users (auth-provisioned people), sorted by active first then\nname. Anyone authenticated can read this for now.\n\nDeactivation soft-deletes the underlying people row, so by default\nthose rows are filtered out. Admins can pass `include_inactive=true`\nto see deactivated accounts (so they can re-activate them).",
         "operationId": "list_users_api_admin_users_get",
+        "parameters": [
+          {
+            "name": "include_inactive",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include Inactive"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
+                  "type": "array",
                   "items": {
                     "$ref": "#/components/schemas/AdminUser"
                   },
-                  "type": "array",
                   "title": "Response List Users Api Admin Users Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -5110,14 +5132,14 @@
         "description": "Pre-authorize a new user. Creates a person + auth row + a Google\nauth_identity keyed on the email. The user's first successful\nGoogle sign-in finds the identity and flips last_login_at.",
         "operationId": "create_user_api_admin_users_post",
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/CreateUserRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "201": {
