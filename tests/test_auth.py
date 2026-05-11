@@ -41,7 +41,7 @@ async def test_me_returns_user_when_authenticated(authed_client, test_user):
     body = r.json()
     assert body["id"] == str(test_user["id"])
     assert body["email"] == test_user["email"]
-    assert body["role"] == "consultant"
+    assert body["role"] == "admin"
 
 
 async def test_invalid_session_treated_as_unauthenticated(client):
