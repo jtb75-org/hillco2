@@ -308,7 +308,7 @@ function AddUserDialog({
                 inputProps={{ maxLength: 200 }}
               />
             </LabeledField>
-            <LabeledField label="Role" required>
+            <LabeledField label="Role" required info={<RoleInfoTooltip />}>
               <TextField
                 required
                 select
@@ -326,5 +326,44 @@ function AddUserDialog({
             )}
           </Stack>
       </FormDialog>
+  );
+}
+
+// Tooltip body describing what each role does. Today the backend
+// doesn't gate any endpoints on role — every authenticated user can
+// hit every route — so these labels describe intent rather than
+// hard-enforced permissions. If/when permission gating arrives the
+// tooltip text wants updating alongside it.
+function RoleInfoTooltip() {
+  return (
+    <Stack spacing={1} sx={{ p: 0.5, maxWidth: 280 }}>
+      <Box>
+        <Typography variant="caption" sx={{ fontWeight: 600 }}>
+          Admin
+        </Typography>
+        <Typography variant="caption" component="div">
+          Manages other users (add / deactivate / reactivate) and the system
+          settings. Intended for the owner-operator.
+        </Typography>
+      </Box>
+      <Box>
+        <Typography variant="caption" sx={{ fontWeight: 600 }}>
+          Consultant
+        </Typography>
+        <Typography variant="caption" component="div">
+          Standard role for staff doing the day-to-day consulting work —
+          families, students, engagements, notes, invoices.
+        </Typography>
+      </Box>
+      <Box>
+        <Typography variant="caption" sx={{ fontWeight: 600 }}>
+          Assistant
+        </Typography>
+        <Typography variant="caption" component="div">
+          Junior / support role. Reserved for narrower permissions in the
+          future; same access as Consultant today.
+        </Typography>
+      </Box>
+    </Stack>
   );
 }
