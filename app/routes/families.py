@@ -408,12 +408,182 @@ async def delete_family(
 ):
     """Soft-delete (sets deleted_at). Engagements still reference the family
     via ON DELETE RESTRICT, so the row stays — the deleted_at filter just
-    hides it from listings."""
+    hides it from listings. This endpoint backs the "Archive" action; the
+    permanent / cascading variant is `/families/{id}/hard-delete`."""
     await _family_or_404(conn, family_id)
     await conn.execute(
         "UPDATE families SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL",
         family_id,
     )
+    return None
+
+
+# ---- Hard delete ---------------------------------------------------------
+
+
+class DeletionImpactGuardian(BaseModel):
+    id: UUID
+    name: str
+    email: str | None
+
+
+class DeletionImpactStudent(BaseModel):
+    id: UUID
+    name: str
+    current_grade: str | None
+
+
+class DeletionImpact(BaseModel):
+    family_id: UUID
+    household_name: str
+    guardians: list[DeletionImpactGuardian]
+    students: list[DeletionImpactStudent]
+    # Hard-delete is blocked while any engagements reference the family
+    # (engagements.family_id is ON DELETE RESTRICT). Surface the count so
+    # the SPA can render a "delete or archive these engagements first"
+    # explainer.
+    active_engagement_count: int
+    deleted_engagement_count: int
+
+
+class HardDeleteRequest(BaseModel):
+    # Guardian / student person_ids the operator wants to KEEP in the
+    # address book (lose their family link but stay as people). Anything
+    # not listed gets soft-deleted (people.deleted_at). Empty lists =
+    # delete everyone attached.
+    preserve_guardian_ids: list[UUID] = Field(default_factory=list)
+    preserve_student_ids: list[UUID] = Field(default_factory=list)
+
+
+@router.get("/families/{family_id}/deletion-impact", response_model=DeletionImpact)
+async def get_family_deletion_impact(
+    family_id: UUID,
+    _user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    """Returns what `POST /families/{id}/hard-delete` would touch. Drives
+    the SPA's per-row checkbox confirmation. Includes soft-deleted
+    guardians/students too (they'll still get hard-cleared on family
+    delete via the junction's CASCADE) so the operator sees everything."""
+    family = await _family_or_404(conn, family_id)
+    guardian_rows = await conn.fetch(
+        """
+        SELECT p.id,
+               TRIM(BOTH ' ' FROM
+                 COALESCE(p.first_name, '') ||
+                 CASE WHEN p.last_name IS NOT NULL AND p.last_name <> ''
+                      THEN ' ' || p.last_name ELSE '' END
+               ) AS name,
+               p.email::text AS email
+        FROM family_guardians fg
+        JOIN people p ON p.id = fg.person_id
+        WHERE fg.family_id = $1
+        ORDER BY fg.is_primary_contact DESC, p.last_name NULLS LAST, p.first_name
+        """,
+        family_id,
+    )
+    student_rows = await conn.fetch(
+        """
+        SELECT p.id,
+               TRIM(BOTH ' ' FROM
+                 COALESCE(p.first_name, '') ||
+                 CASE WHEN p.last_name IS NOT NULL AND p.last_name <> ''
+                      THEN ' ' || p.last_name ELSE '' END
+               ) AS name,
+               sd.current_grade
+        FROM family_students fs
+        JOIN people p ON p.id = fs.person_id
+        LEFT JOIN student_details sd ON sd.person_id = p.id
+        WHERE fs.family_id = $1
+        ORDER BY p.last_name NULLS LAST, p.first_name
+        """,
+        family_id,
+    )
+    engagement_counts = await conn.fetchrow(
+        """
+        SELECT
+          COUNT(*) FILTER (WHERE deleted_at IS NULL) AS active,
+          COUNT(*) FILTER (WHERE deleted_at IS NOT NULL) AS deleted
+        FROM engagements WHERE family_id = $1
+        """,
+        family_id,
+    )
+    return {
+        "family_id": family_id,
+        "household_name": family["household_name"],
+        "guardians": [dict(r) for r in guardian_rows],
+        "students": [dict(r) for r in student_rows],
+        "active_engagement_count": engagement_counts["active"] or 0,
+        "deleted_engagement_count": engagement_counts["deleted"] or 0,
+    }
+
+
+@router.post("/families/{family_id}/hard-delete", status_code=204)
+async def hard_delete_family(
+    family_id: UUID,
+    body: HardDeleteRequest,
+    _user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    """Hard-delete the family. Cascade rules:
+
+      * family_guardians + family_students rows go via the FK's
+        ON DELETE CASCADE — those junction rows always vanish.
+      * Guardians / students whose person_ids aren't in the preserve
+        lists get `people.deleted_at = NOW()` (soft delete). Listed
+        people stay in the address book; they just lose their family
+        link.
+      * Engagements ON DELETE RESTRICT — if any engagement references
+        the family (active OR soft-deleted) we 409. The operator has
+        to detach / hard-delete those first.
+    """
+    family = await _family_or_404(conn, family_id)
+
+    # Block if any engagements still reference the family.
+    eng_count = await conn.fetchval(
+        "SELECT COUNT(*) FROM engagements WHERE family_id = $1",
+        family_id,
+    )
+    if eng_count:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"{eng_count} engagement(s) still reference this family — "
+                "remove or detach them before hard-deleting."
+            ),
+        )
+
+    preserve_g = set(str(u) for u in body.preserve_guardian_ids)
+    preserve_s = set(str(u) for u in body.preserve_student_ids)
+
+    async with conn.transaction():
+        # Identify which guardians / students are linked to this family.
+        attached_g = await conn.fetch(
+            "SELECT person_id FROM family_guardians WHERE family_id = $1",
+            family_id,
+        )
+        attached_s = await conn.fetch(
+            "SELECT person_id FROM family_students WHERE family_id = $1",
+            family_id,
+        )
+        to_soft_delete = [
+            r["person_id"] for r in attached_g if str(r["person_id"]) not in preserve_g
+        ] + [
+            r["person_id"] for r in attached_s if str(r["person_id"]) not in preserve_s
+        ]
+        if to_soft_delete:
+            await conn.execute(
+                "UPDATE people SET deleted_at = NOW() "
+                "WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL",
+                to_soft_delete,
+            )
+        # Hard delete the family — junction rows cascade automatically.
+        await conn.execute(
+            "DELETE FROM families WHERE id = $1",
+            family_id,
+        )
+    # family is referenced just for the household_name; ignore once gone
+    _ = family
     return None
 
 
