@@ -2,10 +2,6 @@ import { useState } from "react";
 import {
   Alert,
   Button,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   Stack,
   TextField,
   Typography,
@@ -15,6 +11,7 @@ import { useNavigate } from "react-router-dom";
 
 import { api } from "../../api/client";
 import type { components } from "../../api/schema";
+import { FormDialog } from "../../components/FormDialog";
 import { LabeledField } from "../../components/LabeledField";
 
 type FamilyCreate = components["schemas"]["FamilyCreate"];
@@ -70,8 +67,12 @@ export function AddFamilyDialog({
   };
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
-      <form
+      <FormDialog
+        open={open}
+        onClose={handleClose}
+        title="Add family"
+        subtitle="Create the household first, then add parents and students from the detail page."
+        maxWidth="sm"
         onSubmit={(e) => {
           e.preventDefault();
           create.mutate({
@@ -79,9 +80,19 @@ export function AddFamilyDialog({
             notes: notes.trim() || null,
           });
         }}
+        actions={
+          <>
+            <Button onClick={handleClose} disabled={create.isPending}>Cancel</Button>
+            <Button
+              type="submit"
+              variant="contained"
+              disabled={create.isPending || !householdName.trim()}
+            >
+              {create.isPending ? "Adding..." : "Add"}
+            </Button>
+          </>
+        }
       >
-        <DialogTitle>Add family</DialogTitle>
-        <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <LabeledField label="Household name" required>
               <TextField
@@ -111,18 +122,6 @@ export function AddFamilyDialog({
               <Alert severity="error">{create.error.message}</Alert>
             )}
           </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleClose} disabled={create.isPending}>Cancel</Button>
-          <Button
-            type="submit"
-            variant="contained"
-            disabled={create.isPending || !householdName.trim()}
-          >
-            Add
-          </Button>
-        </DialogActions>
-      </form>
-    </Dialog>
+      </FormDialog>
   );
 }

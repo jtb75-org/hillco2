@@ -1,5 +1,7 @@
-import { Box, Tab, Tabs, Typography } from "@mui/material";
+import { Box, Tab, Tabs } from "@mui/material";
 import { Link, Outlet, useLocation } from "react-router-dom";
+
+import { PageHeader } from "../../components/PageHeader";
 
 // URL-per-tab so each section is bookmarkable and the back button
 // behaves like a normal navigation. The `value` is derived from the
@@ -22,9 +24,10 @@ export function AdminLayout() {
 
   return (
     <Box>
-      <Typography variant="h4" gutterBottom>
-        Admin
-      </Typography>
+      <PageHeader
+        title="Admin"
+        subtitle="Manage access, inspect audit history, and verify the deployed build."
+      />
       <Tabs value={current} sx={{ borderBottom: 1, borderColor: "divider", mb: 3 }}>
         {TABS.map((t) => (
           <Tab

@@ -1,9 +1,6 @@
 import {
   Alert,
   Box,
-  Card,
-  CardContent,
-  Chip,
   Grid,
   Skeleton,
   Stack,
@@ -13,6 +10,9 @@ import { useQuery } from "@tanstack/react-query";
 
 import { api } from "../../api/client";
 import type { components } from "../../api/schema";
+import { MetricCard } from "../../components/MetricCard";
+import { SectionPanel } from "../../components/SectionPanel";
+import { StatusChip } from "../../components/StatusChip";
 
 type AboutInfo = components["schemas"]["AboutInfo"];
 
@@ -42,11 +42,8 @@ export function AdminAbout() {
 
   return (
     <Stack spacing={3}>
-      <Card variant="outlined">
-        <CardContent>
-          <Typography variant="overline" color="text.secondary">
-            Build
-          </Typography>
+      <SectionPanel title="Build">
+        <Box sx={{ p: 2 }}>
           {isPending || !data ? (
             <Skeleton width={140} height={32} />
           ) : (
@@ -60,24 +57,23 @@ export function AdminAbout() {
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
             {isPending ? <Skeleton width={200} /> : data?.api_title}
           </Typography>
-        </CardContent>
-      </Card>
+        </Box>
+      </SectionPanel>
 
-      <Card variant="outlined">
-        <CardContent>
-          <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
-            <Typography variant="overline" color="text.secondary">
-              Schema migration
-            </Typography>
-            {!isPending && data && (
-              <Chip
-                size="small"
-                label={data.migration_in_sync ? "in sync" : "drift"}
-                color={data.migration_in_sync ? "success" : "warning"}
-                variant={data.migration_in_sync ? "outlined" : "filled"}
-              />
-            )}
-          </Stack>
+      <SectionPanel
+        title="Schema migration"
+        actions={
+          !isPending && data ? (
+            <StatusChip
+              size="small"
+              label={data.migration_in_sync ? "in sync" : "drift"}
+              tone={data.migration_in_sync ? "success" : "warning"}
+              variant={data.migration_in_sync ? "outlined" : "filled"}
+            />
+          ) : undefined
+        }
+      >
+        <Box sx={{ p: 2 }}>
           {isPending || !data ? (
             <Skeleton width={240} height={48} />
           ) : (
@@ -99,8 +95,8 @@ export function AdminAbout() {
               check the schema-bootstrap Job logs.
             </Alert>
           )}
-        </CardContent>
-      </Card>
+        </Box>
+      </SectionPanel>
 
       <Stack spacing={1}>
         <Typography variant="overline" color="text.secondary">
@@ -112,20 +108,16 @@ export function AdminAbout() {
             : Object.keys(data.counts)
           ).map((key) => (
             <Grid key={key} item xs={6} sm={4} md={3}>
-              <Card variant="outlined">
-                <CardContent>
-                  <Typography variant="body2" color="text.secondary">
-                    {COUNT_LABELS[key] ?? key}
-                  </Typography>
-                  {isPending || !data ? (
+              <MetricCard
+                label={COUNT_LABELS[key] ?? key}
+                value={
+                  isPending || !data ? (
                     <Skeleton width={80} />
                   ) : (
-                    <Typography variant="h5" sx={{ fontWeight: 600 }}>
-                      {data.counts[key].toLocaleString()}
-                    </Typography>
-                  )}
-                </CardContent>
-              </Card>
+                    data.counts[key].toLocaleString()
+                  )
+                }
+              />
             </Grid>
           ))}
         </Grid>
