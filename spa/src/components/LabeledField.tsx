@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { Box, Typography } from "@mui/material";
+import { Box, Tooltip, Typography } from "@mui/material";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 
 /**
  * Replacement for MUI's outlined-floating-label pattern. The label sits
@@ -20,11 +21,16 @@ export function LabeledField({
   label,
   required = false,
   helperText,
+  info,
   children,
 }: {
   label: string;
   required?: boolean;
   helperText?: ReactNode;
+  /** Optional explainer attached to a small "i" icon next to the
+   *  label. Rich content allowed — Stack / Typography render fine
+   *  inside an MUI Tooltip. */
+  info?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -33,7 +39,8 @@ export function LabeledField({
         component="label"
         variant="body2"
         sx={{
-          display: "block",
+          display: "inline-flex",
+          alignItems: "center",
           mb: 0.5,
           color: "text.secondary",
           fontWeight: 500,
@@ -48,6 +55,22 @@ export function LabeledField({
           >
             *
           </Box>
+        )}
+        {info && (
+          <Tooltip title={info} arrow placement="top">
+            <Box
+              component="span"
+              sx={{
+                ml: 0.75,
+                display: "inline-flex",
+                cursor: "help",
+                color: "text.disabled",
+                "&:hover": { color: "text.secondary" },
+              }}
+            >
+              <InfoOutlinedIcon sx={{ fontSize: 16 }} />
+            </Box>
+          </Tooltip>
         )}
       </Typography>
       {children}
