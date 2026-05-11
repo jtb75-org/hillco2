@@ -107,13 +107,21 @@ _ADMIN_USER_SELECT = """
 
 
 @router.get("/users", response_model=list[AdminUser])
-async def list_users(_user=Depends(require_user), conn=Depends(get_conn)):
+async def list_users(
+    include_inactive: bool = False,
+    _user=Depends(require_user),
+    conn=Depends(get_conn),
+):
     """All users (auth-provisioned people), sorted by active first then
-    name. Anyone authenticated can read this for now; if the role
-    surface grows we'll gate this on an admin role."""
+    name. Anyone authenticated can read this for now.
+
+    Deactivation soft-deletes the underlying people row, so by default
+    those rows are filtered out. Admins can pass `include_inactive=true`
+    to see deactivated accounts (so they can re-activate them)."""
+    where = "" if include_inactive else "WHERE p.deleted_at IS NULL"
     rows = await conn.fetch(
         _ADMIN_USER_SELECT
-        + " WHERE p.deleted_at IS NULL ORDER BY (a.status='active') DESC, p.last_name NULLS LAST, p.first_name"
+        + f" {where} ORDER BY (a.status='active') DESC, p.last_name NULLS LAST, p.first_name"
     )
     return [dict(r) for r in rows]
 

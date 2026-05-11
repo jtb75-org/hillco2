@@ -3,9 +3,11 @@ import {
   Alert,
   Box,
   Button,
+  FormControlLabel,
   IconButton,
   MenuItem,
   Stack,
+  Switch,
   Table,
   TableBody,
   TableCell,
@@ -45,11 +47,14 @@ const ROLE_OPTIONS: Array<CreateUserRequest["role"]> = [
 export function AdminUsers() {
   const { user: me } = useAuth();
   const qc = useQueryClient();
+  const [showInactive, setShowInactive] = useState(false);
 
   const { data, isPending, error } = useQuery<AdminUser[], Error>({
-    queryKey: ["admin", "users"],
+    queryKey: ["admin", "users", showInactive],
     queryFn: async () => {
-      const { data, error: respError } = await api.GET("/api/admin/users");
+      const { data, error: respError } = await api.GET("/api/admin/users", {
+        params: { query: { include_inactive: showInactive } },
+      });
       if (respError || !data) throw new Error("users fetch failed");
       return data;
     },
@@ -108,6 +113,18 @@ export function AdminUsers() {
           Everyone with a session in the cluster. Listed sorted by active-status,
           then name.{isAdmin && " Adding a user pre-authorizes that email; they can sign in via Google as soon as the row exists."}
         </Typography>
+        {isAdmin && (
+          <FormControlLabel
+            control={
+              <Switch
+                size="small"
+                checked={showInactive}
+                onChange={(e) => setShowInactive(e.target.checked)}
+              />
+            }
+            label={<Typography variant="body2">Show inactive</Typography>}
+          />
+        )}
         {isAdmin && (
           <Button
             variant="contained"
