@@ -14,6 +14,19 @@ async def test_catalog_seed_counts(db_pool):
     assert item_count == 28, f"expected 28 service_items from seed_catalog.sql, got {item_count}"
 
 
+async def test_schools_seed_count(db_pool):
+    """Migration 0003 seeds 34 schools from the hillco-portal snapshot.
+    None are soft-deleted at seed time; if this drifts the migration
+    was edited or someone removed rows by mistake."""
+    async with db_pool.acquire() as conn:
+        total = await conn.fetchval("SELECT COUNT(*) FROM schools")
+        active = await conn.fetchval(
+            "SELECT COUNT(*) FROM schools WHERE deleted_at IS NULL"
+        )
+    assert total == 34, f"expected 34 seeded schools, got {total}"
+    assert active == 34, f"expected 34 active schools, got {active}"
+
+
 async def test_phase_scopes(db_pool):
     """7 assessment phases + 4 placement phases."""
     async with db_pool.acquire() as conn:
