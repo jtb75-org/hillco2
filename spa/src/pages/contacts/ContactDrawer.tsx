@@ -155,7 +155,12 @@ function ContactInfo({ person }: { person: PersonDetail }) {
 }
 
 function FamilySection({ person }: { person: PersonDetail }) {
-  if (person.memberships.length === 0) {
+  // Defensive: the live API may still be serving the pre-PR-#54
+  // response shape while ArgoCD rolls out the new image. Default to
+  // an empty list so the drawer renders the "not mapped" state rather
+  // than crashing on undefined.
+  const memberships = person.memberships ?? [];
+  if (memberships.length === 0) {
     return (
       <Section title="Family">
         <Typography variant="body2" color="text.disabled">
@@ -165,9 +170,9 @@ function FamilySection({ person }: { person: PersonDetail }) {
     );
   }
   return (
-    <Section title={person.memberships.length === 1 ? "Family" : "Families"}>
+    <Section title={memberships.length === 1 ? "Family" : "Families"}>
       <Stack spacing={1}>
-        {person.memberships.map((m) => {
+        {memberships.map((m) => {
           const roleLabel = m.role.startsWith("guardian:")
             ? m.role.slice("guardian:".length)
             : m.role;
