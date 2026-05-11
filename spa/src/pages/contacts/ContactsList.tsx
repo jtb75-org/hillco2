@@ -15,13 +15,14 @@ import {
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import { useQuery } from "@tanstack/react-query";
-import { Link as RouterLink } from "react-router-dom";
 
 import { api } from "../../api/client";
 import { DataTableContainer } from "../../components/DataTableContainer";
 import { DataToolbar } from "../../components/DataToolbar";
 import { PageHeader } from "../../components/PageHeader";
 import { StatusChip } from "../../components/StatusChip";
+
+import { ContactDrawer } from "./ContactDrawer";
 
 // /api/people returns a plain dict in the route — its OpenAPI response
 // schema is empty. Hand-typed to the shape the route emits; if that
@@ -61,6 +62,7 @@ const KIND_TONE: Record<PersonRow["kind"], "info" | "success" | "warning" | "neu
 export function ContactsList() {
   const [search, setSearch] = useState("");
   const [kind, setKind] = useState<KindFilter>("all");
+  const [openId, setOpenId] = useState<string | null>(null);
 
   const { data, isPending, error } = useQuery<PersonRow[], Error>({
     queryKey: ["contacts", "list", kind, search.trim()],
@@ -144,8 +146,12 @@ export function ContactsList() {
           </TableHead>
           <TableBody>
             {rows.map((p) => (
-                <ContactRow key={p.id} person={p} />
-              ))}
+              <ContactRow
+                key={p.id}
+                person={p}
+                onOpen={() => setOpenId(p.id)}
+              />
+            ))}
           </TableBody>
         </Table>
       </DataTableContainer>
@@ -155,20 +161,19 @@ export function ContactsList() {
           Showing the first 500 — narrow with search or type filter.
         </Typography>
       )}
+
+      <ContactDrawer personId={openId} onClose={() => setOpenId(null)} />
     </Stack>
   );
 }
 
-function ContactRow({ person: p }: { person: PersonRow }) {
-  // Each kind links to its appropriate detail page; school_worker has
-  // no detail page yet, so it stays a non-link until the schools work
-  // adds /schools/{id}/contacts/{id}.
-  const linkTo =
-    p.kind === "guardian" || p.kind === "student"
-      ? p.family_id
-        ? `/families/${p.family_id}`
-        : null
-      : null;
+function ContactRow({
+  person: p,
+  onOpen,
+}: {
+  person: PersonRow;
+  onOpen: () => void;
+}) {
   const fullName = [p.first_name, p.last_name].filter(Boolean).join(" ");
   const archivedTag = p.family_is_archived ? " (archived)" : "";
   const context = (() => {
@@ -179,8 +184,8 @@ function ContactRow({ person: p }: { person: PersonRow }) {
     if (p.school_name) return p.school_name;
     return null;
   })();
-  const cellContent = (
-    <>
+  return (
+    <TableRow hover sx={{ cursor: "pointer" }} onClick={onOpen}>
       <TableCell sx={{ fontWeight: 500 }}>{fullName}</TableCell>
       <TableCell>
         <StatusChip
@@ -201,19 +206,6 @@ function ContactRow({ person: p }: { person: PersonRow }) {
           <Box component="span" sx={{ color: "text.disabled" }}>—</Box>
         )}
       </TableCell>
-    </>
-  );
-  return linkTo ? (
-    <TableRow
-      hover
-      sx={{ cursor: "pointer" }}
-      component={RouterLink}
-      to={linkTo}
-      style={{ textDecoration: "none" }}
-    >
-      {cellContent}
     </TableRow>
-  ) : (
-    <TableRow>{cellContent}</TableRow>
   );
 }
