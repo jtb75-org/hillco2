@@ -27,7 +27,6 @@ from pathlib import Path
 
 import asyncpg
 
-
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SEED_FILE = REPO_ROOT / "seed_schools.sql"
 
