@@ -184,3 +184,56 @@ async def test_deactivate_writes_audit_log(authed_client, db_pool, test_user):
     update_entries = [e for e in entries if e["action"] == "UPDATE"]
     assert update_entries, "expected an UPDATE audit entry for the auth status flip"
     assert update_entries[0]["user_id"] == test_user["id"]
+
+
+# ---- require_admin gating -------------------------------------------------
+
+
+async def test_create_user_requires_admin_role(authed_client, db_pool, test_user):
+    """A consultant-role caller can't reach POST /api/admin/users.
+    Downgrade the fixture user inline, hit the endpoint, expect 403."""
+    async with db_pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE auth SET app_role = 'consultant' WHERE person_id = $1",
+            test_user["id"],
+        )
+    r = await authed_client.post("/api/admin/users", json={
+        "email": f"gate-{uuid4()}@example.com",
+        "name": "Gate Test",
+        "role": "consultant",
+    })
+    assert r.status_code == 403
+    assert "admin" in r.text.lower()
+
+
+async def test_deactivate_user_requires_admin_role(authed_client, db_pool, test_user):
+    async with db_pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE auth SET app_role = 'consultant' WHERE person_id = $1",
+            test_user["id"],
+        )
+    r = await authed_client.delete(f"/api/admin/users/{uuid4()}")
+    assert r.status_code == 403
+
+
+async def test_reactivate_user_requires_admin_role(authed_client, db_pool, test_user):
+    async with db_pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE auth SET app_role = 'consultant' WHERE person_id = $1",
+            test_user["id"],
+        )
+    r = await authed_client.post(f"/api/admin/users/{uuid4()}/reactivate")
+    assert r.status_code == 403
+
+
+async def test_list_users_is_not_admin_gated(authed_client, db_pool, test_user):
+    """The list endpoint stays open — read access for the page itself
+    so a consultant can still view the users page (the SPA hides the
+    write buttons)."""
+    async with db_pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE auth SET app_role = 'consultant' WHERE person_id = $1",
+            test_user["id"],
+        )
+    r = await authed_client.get("/api/admin/users")
+    assert r.status_code == 200

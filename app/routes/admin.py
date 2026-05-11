@@ -8,7 +8,7 @@ import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 
-from ..auth import require_user
+from ..auth import require_admin, require_user
 from ..db import get_conn
 from ..migrations import db_alembic_revision, image_alembic_head
 
@@ -121,7 +121,7 @@ async def list_users(_user=Depends(require_user), conn=Depends(get_conn)):
 @router.post("/users", response_model=AdminUser, status_code=201)
 async def create_user(
     body: CreateUserRequest,
-    _user=Depends(require_user),
+    _user=Depends(require_admin),
     conn=Depends(get_conn),
 ):
     """Pre-authorize a new user. Creates a person + auth row + a Google
@@ -183,7 +183,7 @@ async def create_user(
 @router.delete("/users/{user_id}", response_model=AdminUser)
 async def deactivate_user(
     user_id: UUID,
-    user=Depends(require_user),
+    user=Depends(require_admin),
     conn=Depends(get_conn),
 ):
     """Soft-delete: flip auth.status to 'suspended' so the user can no
@@ -212,7 +212,7 @@ async def deactivate_user(
 @router.post("/users/{user_id}/reactivate", response_model=AdminUser)
 async def reactivate_user(
     user_id: UUID,
-    _user=Depends(require_user),
+    _user=Depends(require_admin),
     conn=Depends(get_conn),
 ):
     """Reverse of deactivate_user. Idempotent: reactivating an already-

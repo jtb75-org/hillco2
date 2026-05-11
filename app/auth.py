@@ -27,3 +27,16 @@ async def require_user(user=Depends(current_user)):
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
     return user
+
+
+async def require_admin(user=Depends(require_user)):
+    """Gate for endpoints that only the admin role should reach. The
+    SPA hides the corresponding UI for non-admins, but this layer
+    blocks anyone who hits the endpoint directly (curl, intent-driven
+    URL typing, etc.). Returns 403 with a clear message."""
+    if user.get("role") != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin role required.",
+        )
+    return user
