@@ -96,21 +96,27 @@ export function AdminUsers() {
     return <Alert severity="error">Failed to load users: {error.message}</Alert>;
   }
 
+  // Admin-only actions (Add / Deactivate / Reactivate) are hidden for
+  // non-admins. Backend gates the underlying endpoints too — this just
+  // declutters the page for the consultant/assistant audience.
+  const isAdmin = me?.role === "admin";
+
   return (
     <Stack spacing={2}>
       <Stack direction="row" alignItems="center" spacing={2}>
         <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
           Everyone with a session in the cluster. Listed sorted by active-status,
-          then name. Adding a user pre-authorizes that email; they can sign in
-          via Google as soon as the row exists.
+          then name.{isAdmin && " Adding a user pre-authorizes that email; they can sign in via Google as soon as the row exists."}
         </Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => setAddOpen(true)}
-        >
-          Add user
-        </Button>
+        {isAdmin && (
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => setAddOpen(true)}
+          >
+            Add user
+          </Button>
+        )}
       </Stack>
 
       {(deactivate.error || reactivate.error) && (
@@ -121,7 +127,7 @@ export function AdminUsers() {
 
       <DataTableContainer
         loading={isPending}
-        loadingColumns={7}
+        loadingColumns={isAdmin ? 7 : 6}
         loadingRows={3}
         empty={!isPending && (data?.length ?? 0) === 0}
         emptyTitle="No users yet"
@@ -135,7 +141,7 @@ export function AdminUsers() {
               <TableCell>Status</TableCell>
               <TableCell>Last login</TableCell>
               <TableCell>Joined</TableCell>
-              <TableCell align="right">Actions</TableCell>
+              {isAdmin && <TableCell align="right">Actions</TableCell>}
             </TableRow>
           </TableHead>
           <TableBody>
@@ -165,31 +171,33 @@ export function AdminUsers() {
                       {u.last_login_at ? dayjs(u.last_login_at).fromNow() : "—"}
                     </TableCell>
                     <TableCell>{dayjs(u.created_at).format("MMM D, YYYY")}</TableCell>
-                    <TableCell align="right">
-                      {u.is_active ? (
-                        <Tooltip title={isMe ? "You can't deactivate yourself" : "Deactivate"}>
-                          <span>
+                    {isAdmin && (
+                      <TableCell align="right">
+                        {u.is_active ? (
+                          <Tooltip title={isMe ? "You can't deactivate yourself" : "Deactivate"}>
+                            <span>
+                              <IconButton
+                                size="small"
+                                disabled={isMe}
+                                onClick={() => setConfirmDeactivate(u)}
+                              >
+                                <PersonOffIcon fontSize="small" />
+                              </IconButton>
+                            </span>
+                          </Tooltip>
+                        ) : (
+                          <Tooltip title="Reactivate">
                             <IconButton
                               size="small"
-                              disabled={isMe}
-                              onClick={() => setConfirmDeactivate(u)}
+                              onClick={() => reactivate.mutate(u.id)}
+                              disabled={reactivate.isPending}
                             >
-                              <PersonOffIcon fontSize="small" />
+                              <HowToRegIcon fontSize="small" />
                             </IconButton>
-                          </span>
-                        </Tooltip>
-                      ) : (
-                        <Tooltip title="Reactivate">
-                          <IconButton
-                            size="small"
-                            onClick={() => reactivate.mutate(u.id)}
-                            disabled={reactivate.isPending}
-                          >
-                            <HowToRegIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                      )}
-                    </TableCell>
+                          </Tooltip>
+                        )}
+                      </TableCell>
+                    )}
                   </TableRow>
                 );
               })}

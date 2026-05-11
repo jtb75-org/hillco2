@@ -121,7 +121,11 @@ async def test_user(db_pool):
             email,
         )
         await conn.execute(
-            "INSERT INTO auth (person_id, status, app_role) VALUES ($1, 'active', 'consultant')",
+            # Fixture user is 'admin' so admin-route tests
+            # (create/deactivate/reactivate) can exercise the
+            # require_admin gate. Test cases that want a non-admin
+            # caller can downgrade the role inline.
+            "INSERT INTO auth (person_id, status, app_role) VALUES ($1, 'active', 'admin')",
             person_id,
         )
         await conn.execute(
