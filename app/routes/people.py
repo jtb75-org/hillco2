@@ -168,6 +168,7 @@ async def person_detail(
         "phone": r["phone"],
         "family_id": r["guardian_family_id"] or r["student_family_id"],
         "family_household_name": r["family_household_name"],
+        "family_is_archived": bool(r["family_is_archived"]),
         "school_id": r["school_id"],
         "school_name": r["school_name"],
         "current_grade": r["current_grade"],
