@@ -91,13 +91,36 @@
           "families"
         ],
         "summary": "List Families",
+        "description": "Default lists only live families. Pass `include_archived=true` to\npick up soft-deleted (archived) ones too \u2014 the SPA needs them when\nthe \"Show archived\" toggle is on.",
         "operationId": "list_families_api_families_get",
+        "parameters": [
+          {
+            "name": "include_archived",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include Archived"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
               }
             }
           }
@@ -110,14 +133,14 @@
         "summary": "Create Family",
         "operationId": "create_family_api_families_post",
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/FamilyCreate"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "201": {
@@ -235,8 +258,55 @@
           "families"
         ],
         "summary": "Delete Family",
-        "description": "Soft-delete (sets deleted_at). Engagements still reference the family\nvia ON DELETE RESTRICT, so the row stays \u2014 the deleted_at filter just\nhides it from listings. This endpoint backs the \"Archive\" action; the\npermanent / cascading variant is `/families/{id}/hard-delete`.",
+        "description": "Soft-delete (sets deleted_at). Engagements still reference the family\nvia ON DELETE RESTRICT, so the row stays \u2014 the deleted_at filter just\nhides it from listings.\n\nWith `?cascade_engagements=true`, also soft-deletes every engagement\nattached to this family in the same transaction. Useful when the\noperator is closing out an entire family relationship.\n\nThis endpoint backs the \"Archive\" action; the permanent / cascading\nvariant is `/families/{id}/hard-delete`.",
         "operationId": "delete_family_api_families__family_id__delete",
+        "parameters": [
+          {
+            "name": "family_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Family Id"
+            }
+          },
+          {
+            "name": "cascade_engagements",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Cascade Engagements"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/families/{family_id}/unarchive": {
+      "post": {
+        "tags": [
+          "families"
+        ],
+        "summary": "Unarchive Family",
+        "description": "Reverse of soft-delete. Clears families.deleted_at; does NOT\ntouch engagements (those have to be unarchived individually if the\noperator wants them back too).",
+        "operationId": "unarchive_family_api_families__family_id__unarchive_post",
         "parameters": [
           {
             "name": "family_id",
@@ -8702,6 +8772,10 @@
             ],
             "title": "Family Household Name"
           },
+          "family_is_archived": {
+            "type": "boolean",
+            "title": "Family Is Archived"
+          },
           "school_id": {
             "anyOf": [
               {
@@ -8747,6 +8821,7 @@
           "phone",
           "family_id",
           "family_household_name",
+          "family_is_archived",
           "school_id",
           "school_name",
           "current_grade"

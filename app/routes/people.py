@@ -38,6 +38,7 @@ class PersonListRow(BaseModel):
     # Saves the SPA from an N+1 follow-up fetch per row.
     family_id: UUID | None
     family_household_name: str | None
+    family_is_archived: bool
     school_id: UUID | None
     school_name: str | None
     current_grade: str | None
@@ -85,6 +86,7 @@ async def list_people(
           fg.family_id   AS guardian_family_id,
           fs.family_id   AS student_family_id,
           f.household_name AS family_household_name,
+          (f.deleted_at IS NOT NULL) AS family_is_archived,
           swd.school_id,
           sch.name      AS school_name,
           sd.current_grade
@@ -93,7 +95,6 @@ async def list_people(
         LEFT JOIN family_students  fs     ON fs.person_id = p.id
         LEFT JOIN families f
                ON f.id = COALESCE(fg.family_id, fs.family_id)
-              AND f.deleted_at IS NULL
         LEFT JOIN school_worker_details swd ON swd.person_id = p.id
         LEFT JOIN schools sch ON sch.id = swd.school_id AND sch.deleted_at IS NULL
         LEFT JOIN student_details sd      ON sd.person_id = p.id
@@ -117,6 +118,7 @@ async def list_people(
             # is in exactly one of these (or neither).
             "family_id": r["guardian_family_id"] or r["student_family_id"],
             "family_household_name": r["family_household_name"],
+            "family_is_archived": bool(r["family_is_archived"]),
             "school_id": r["school_id"],
             "school_name": r["school_name"],
             "current_grade": r["current_grade"],
@@ -138,6 +140,7 @@ async def person_detail(
           fg.family_id   AS guardian_family_id,
           fs.family_id   AS student_family_id,
           f.household_name AS family_household_name,
+          (f.deleted_at IS NOT NULL) AS family_is_archived,
           swd.school_id,
           sch.name      AS school_name,
           sd.current_grade
@@ -146,7 +149,6 @@ async def person_detail(
         LEFT JOIN family_students  fs     ON fs.person_id = p.id
         LEFT JOIN families f
                ON f.id = COALESCE(fg.family_id, fs.family_id)
-              AND f.deleted_at IS NULL
         LEFT JOIN school_worker_details swd ON swd.person_id = p.id
         LEFT JOIN schools sch ON sch.id = swd.school_id AND sch.deleted_at IS NULL
         LEFT JOIN student_details sd      ON sd.person_id = p.id
@@ -166,6 +168,7 @@ async def person_detail(
         "phone": r["phone"],
         "family_id": r["guardian_family_id"] or r["student_family_id"],
         "family_household_name": r["family_household_name"],
+        "family_is_archived": bool(r["family_is_archived"]),
         "school_id": r["school_id"],
         "school_name": r["school_name"],
         "current_grade": r["current_grade"],

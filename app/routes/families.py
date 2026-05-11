@@ -252,11 +252,21 @@ async def _parent_or_404(conn, parent_id: UUID):
 # ---- Family routes ---------------------------------------------------------
 
 @router.get("/families")
-async def list_families(_user=Depends(require_user), conn=Depends(get_conn)):
+async def list_families(
+    include_archived: bool = False,
+    _user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    """Default lists only live families. Pass `include_archived=true` to
+    pick up soft-deleted (archived) ones too — the SPA needs them when
+    the "Show archived" toggle is on."""
+    where_clause = "" if include_archived else "WHERE f.deleted_at IS NULL"
     rows = await conn.fetch(
-        """
+        f"""
         SELECT
           f.id, f.household_name, f.notes, f.created_at, f.updated_at,
+          f.deleted_at,
+          (f.deleted_at IS NOT NULL) AS is_archived,
           pp.id   AS primary_parent_id,
           TRIM(BOTH ' ' FROM
             COALESCE(pp.first_name, '') ||
@@ -282,7 +292,7 @@ async def list_families(_user=Depends(require_user), conn=Depends(get_conn)):
                ON fg.family_id = f.id AND fg.is_primary_contact
         LEFT JOIN people pp
                ON pp.id = fg.person_id AND pp.deleted_at IS NULL
-        WHERE f.deleted_at IS NULL
+        {where_clause}
         ORDER BY f.household_name
         """
     )
@@ -403,16 +413,54 @@ async def update_family(
 @router.delete("/families/{family_id}", status_code=204)
 async def delete_family(
     family_id: UUID,
+    cascade_engagements: bool = False,
     _user=Depends(require_user),
     conn=Depends(get_conn),
 ):
     """Soft-delete (sets deleted_at). Engagements still reference the family
     via ON DELETE RESTRICT, so the row stays — the deleted_at filter just
-    hides it from listings. This endpoint backs the "Archive" action; the
-    permanent / cascading variant is `/families/{id}/hard-delete`."""
+    hides it from listings.
+
+    With `?cascade_engagements=true`, also soft-deletes every engagement
+    attached to this family in the same transaction. Useful when the
+    operator is closing out an entire family relationship.
+
+    This endpoint backs the "Archive" action; the permanent / cascading
+    variant is `/families/{id}/hard-delete`.
+    """
     await _family_or_404(conn, family_id)
+    async with conn.transaction():
+        await conn.execute(
+            "UPDATE families SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL",
+            family_id,
+        )
+        if cascade_engagements:
+            await conn.execute(
+                "UPDATE engagements SET deleted_at = NOW() "
+                "WHERE family_id = $1 AND deleted_at IS NULL",
+                family_id,
+            )
+    return None
+
+
+@router.post("/families/{family_id}/unarchive", status_code=204)
+async def unarchive_family(
+    family_id: UUID,
+    _user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    """Reverse of soft-delete. Clears families.deleted_at; does NOT
+    touch engagements (those have to be unarchived individually if the
+    operator wants them back too)."""
+    # Direct lookup — _family_or_404 filters to live rows, which is
+    # the opposite of what we need here.
+    exists = await conn.fetchval(
+        "SELECT 1 FROM families WHERE id = $1", family_id,
+    )
+    if not exists:
+        raise HTTPException(status_code=404, detail="Family not found")
     await conn.execute(
-        "UPDATE families SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL",
+        "UPDATE families SET deleted_at = NULL WHERE id = $1",
         family_id,
     )
     return None
