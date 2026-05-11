@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Alert,
   Box,
@@ -18,13 +18,14 @@ import {
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 
 import { api } from "../../api/client";
 import type { components } from "../../api/schema";
 import { LabeledField } from "../../components/LabeledField";
 
 type ParentUpdate = components["schemas"]["ParentUpdate"];
+type PersonDetail = components["schemas"]["PersonDetail"];
 type Role = NonNullable<ParentUpdate["role"]>;
 
 const ROLE_OPTIONS: Role[] = ["mom", "dad", "guardian", "other"];
@@ -78,33 +79,66 @@ export function ParentDrawer({
   const [billingPostalCode, setBillingPostalCode] = useState("");
   const [confirmingRemove, setConfirmingRemove] = useState(false);
 
-  // Hydrate form from the parent whenever a new one is opened.
+  // Fetch the structured mailing + billing columns for pre-fill.
+  // ParentDrawerTarget only has the composed blobs (mailing_address,
+  // billing_address) which can't drive individual inputs, so we pull
+  // the structured columns from /api/people/{id} on open.
+  const person = useQuery<PersonDetail, Error>({
+    queryKey: ["contacts", "detail", parent?.id],
+    enabled: !!parent?.id,
+    queryFn: async () => {
+      const { data, error } = await api.GET("/api/people/{person_id}", {
+        params: { path: { person_id: parent!.id } },
+      });
+      if (error || !data) throw new Error("Failed to load person.");
+      return data;
+    },
+  });
+
+  // Hydrate form when the drawer opens on a new parent OR when the
+  // structured data lands. Track the id+data fingerprint so editing
+  // a field doesn't immediately get clobbered by a refetch.
+  const hydratedFor = useRef<string | null>(null);
   useEffect(() => {
     if (!parent) return;
+    const fingerprint = `${parent.id}:${person.data?.id ?? ""}`;
+    if (hydratedFor.current === fingerprint) return;
+    hydratedFor.current = fingerprint;
+
     const parts = (parent.name || "").split(/\s+/);
     setFirstName(parts[0] ?? "");
     setLastName(parts.slice(1).join(" "));
     setEmail(parent.email ?? "");
     setPhone(parent.phone ?? "");
-    setStreet1("");
-    setStreet2("");
-    setCity("");
-    setStateCode("");
-    setPostalCode("");
     setRole((parent.role as Role) || "other");
-    // Default the billing checkbox on when a billing override already
-    // exists. The structured columns aren't on ParentDrawerTarget today
-    // — operator's edits overwrite, blank fields stay blank (matching
-    // the mailing-field pattern in this drawer).
-    setUseBillingOverride(!!parent.billing_address);
-    setBillingAttn("");
-    setBillingStreet1("");
-    setBillingStreet2("");
-    setBillingCity("");
-    setBillingState("");
-    setBillingPostalCode("");
     setConfirmingRemove(false);
-  }, [parent]);
+
+    const p = person.data;
+    setStreet1(p?.street1 ?? "");
+    setStreet2(p?.street2 ?? "");
+    setCity(p?.city ?? "");
+    setStateCode(p?.state ?? "");
+    setPostalCode(p?.postal_code ?? "");
+    // Billing checkbox state derived from any billing column having
+    // a value. Falls back to the composed flag on ParentDrawerTarget
+    // until the fetch lands.
+    const hasBillingOverride = p
+      ? !!p.billing_street1 ||
+        !!p.billing_street2 ||
+        !!p.billing_city ||
+        !!p.billing_state ||
+        !!p.billing_postal_code ||
+        !!p.billing_country ||
+        !!p.billing_attention_to
+      : !!parent.billing_address;
+    setUseBillingOverride(hasBillingOverride);
+    setBillingAttn(p?.billing_attention_to ?? "");
+    setBillingStreet1(p?.billing_street1 ?? "");
+    setBillingStreet2(p?.billing_street2 ?? "");
+    setBillingCity(p?.billing_city ?? "");
+    setBillingState(p?.billing_state ?? "");
+    setBillingPostalCode(p?.billing_postal_code ?? "");
+  }, [parent, person.data]);
 
   const patch = useMutation({
     mutationFn: async (body: ParentUpdate) => {
@@ -161,31 +195,31 @@ export function ParentDrawer({
     (isBilling && !emailTrimmed);
 
   const handleSave = () => {
+    // Form fields are pre-filled from /api/people/{id} now, so the
+    // submitted values reflect the operator's intent regardless of
+    // whether they edited anything. Blank → null for nullable columns.
     const body: ParentUpdate = {
       first_name: firstName.trim(),
       last_name: lastName.trim(),
       email: email.trim() || null,
       phone: phone.trim() || null,
       role,
+      street1: street1.trim() || null,
+      street2: street2.trim() || null,
+      city: city.trim() || null,
+      state: stateCode.trim() || null,
+      postal_code: postalCode.trim() || null,
     };
-    if (street1) body.street1 = street1.trim();
-    if (street2) body.street2 = street2.trim();
-    if (city) body.city = city.trim();
-    if (stateCode) body.state = stateCode.trim();
-    if (postalCode) body.postal_code = postalCode.trim();
     if (useBillingOverride) {
-      // Operator opted in. Submit each billing column they touched;
-      // leave blank ones alone (existing data persists).
-      if (billingAttn) body.billing_attention_to = billingAttn.trim();
-      if (billingStreet1) body.billing_street1 = billingStreet1.trim();
-      if (billingStreet2) body.billing_street2 = billingStreet2.trim();
-      if (billingCity) body.billing_city = billingCity.trim();
-      if (billingState) body.billing_state = billingState.trim();
-      if (billingPostalCode) body.billing_postal_code = billingPostalCode.trim();
-    } else if (parent?.billing_address) {
-      // Checkbox unchecked and a billing override existed — clear it
-      // so invoices fall back to the mailing address. PATCH the entire
-      // billing-column set to null in one shot.
+      body.billing_attention_to = billingAttn.trim() || null;
+      body.billing_street1 = billingStreet1.trim() || null;
+      body.billing_street2 = billingStreet2.trim() || null;
+      body.billing_city = billingCity.trim() || null;
+      body.billing_state = billingState.trim() || null;
+      body.billing_postal_code = billingPostalCode.trim() || null;
+    } else {
+      // Checkbox unchecked — null every billing column so invoices fall
+      // back to the mailing address.
       body.billing_attention_to = null;
       body.billing_street1 = null;
       body.billing_street2 = null;
