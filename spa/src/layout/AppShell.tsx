@@ -18,12 +18,9 @@ import {
 } from "@mui/material";
 import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
 import ContactsIcon from "@mui/icons-material/Contacts";
-import EventNoteIcon from "@mui/icons-material/EventNote";
 import GroupsIcon from "@mui/icons-material/Groups";
 import HomeIcon from "@mui/icons-material/Home";
 import LogoutIcon from "@mui/icons-material/Logout";
-import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
-import SchoolIcon from "@mui/icons-material/School";
 import { Link, Outlet, useLocation } from "react-router-dom";
 
 import { signOut, useAuth } from "../auth";
@@ -34,9 +31,6 @@ const NAV_ITEMS: ReadonlyArray<{ to: string; label: string; icon: JSX.Element }>
   { to: "/", label: "Home", icon: <HomeIcon /> },
   { to: "/families", label: "Families", icon: <GroupsIcon /> },
   { to: "/contacts", label: "Contacts", icon: <ContactsIcon /> },
-  { to: "/engagements", label: "Engagements", icon: <EventNoteIcon /> },
-  { to: "/schools", label: "Schools", icon: <SchoolIcon /> },
-  { to: "/invoices", label: "Invoices", icon: <ReceiptLongIcon /> },
   { to: "/admin", label: "Admin", icon: <AdminPanelSettingsIcon /> },
 ];
 
@@ -45,14 +39,21 @@ export function AppShell() {
   const { pathname } = useLocation();
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   return (
-    <Box sx={{ display: "flex", minHeight: "100vh" }}>
+    <Box sx={{ display: "flex", minHeight: "100vh", bgcolor: "background.default" }}>
       <AppBar
         position="fixed"
-        sx={{ zIndex: (t) => t.zIndex.drawer + 1 }}
-        elevation={1}
+        color="inherit"
+        sx={{
+          zIndex: (t) => t.zIndex.drawer + 1,
+          bgcolor: "background.paper",
+          color: "text.primary",
+          borderBottom: 1,
+          borderColor: "divider",
+        }}
+        elevation={0}
       >
         <Toolbar sx={{ gap: 2 }}>
-          <Typography variant="h6" sx={{ flexGrow: 1, fontWeight: 600 }}>
+          <Typography variant="h6" sx={{ flexGrow: 1 }}>
             HillCo Portal
           </Typography>
           {user && (
@@ -104,8 +105,8 @@ export function AppShell() {
         }}
       >
         <Toolbar />
-        <Box sx={{ overflow: "auto" }}>
-          <List>
+        <Box sx={{ overflow: "auto", px: 1.25, py: 1.5 }}>
+          <List sx={{ display: "grid", gap: 0.25 }}>
             {NAV_ITEMS.map((item) => {
               const selected =
                 item.to === "/"
@@ -113,9 +114,34 @@ export function AppShell() {
                   : pathname.startsWith(item.to);
               return (
                 <ListItem key={item.to} disablePadding>
-                  <ListItemButton component={Link} to={item.to} selected={selected}>
-                    <ListItemIcon>{item.icon}</ListItemIcon>
-                    <ListItemText primary={item.label} />
+                  <ListItemButton
+                    component={Link}
+                    to={item.to}
+                    selected={selected}
+                    sx={{
+                      borderRadius: 1,
+                      minHeight: 42,
+                      "&.Mui-selected": {
+                        bgcolor: "#eff6ff",
+                        color: "primary.dark",
+                      },
+                      "&.Mui-selected:hover": {
+                        bgcolor: "#eff6ff",
+                      },
+                    }}
+                  >
+                    <ListItemIcon
+                      sx={{
+                        minWidth: 36,
+                        color: selected ? "primary.dark" : "text.secondary",
+                      }}
+                    >
+                      {item.icon}
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={item.label}
+                      primaryTypographyProps={{ fontSize: 14, fontWeight: selected ? 650 : 500 }}
+                    />
                   </ListItemButton>
                 </ListItem>
               );
@@ -128,7 +154,9 @@ export function AppShell() {
           match. */}
       <Box component="main" sx={{ flexGrow: 1, py: 3, px: { xs: 3, md: 5, lg: 6 } }}>
         <Toolbar />
-        <Outlet />
+        <Box sx={{ maxWidth: 1440, mx: "auto" }}>
+          <Outlet />
+        </Box>
       </Box>
     </Box>
   );

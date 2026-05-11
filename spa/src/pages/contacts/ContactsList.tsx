@@ -2,16 +2,12 @@ import { useMemo, useState } from "react";
 import {
   Alert,
   Box,
-  Chip,
   InputAdornment,
   MenuItem,
-  Paper,
-  Skeleton,
   Stack,
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   TextField,
@@ -22,6 +18,10 @@ import { useQuery } from "@tanstack/react-query";
 import { Link as RouterLink } from "react-router-dom";
 
 import { api } from "../../api/client";
+import { DataTableContainer } from "../../components/DataTableContainer";
+import { DataToolbar } from "../../components/DataToolbar";
+import { PageHeader } from "../../components/PageHeader";
+import { StatusChip } from "../../components/StatusChip";
 
 // /api/people returns a plain dict in the route — its OpenAPI response
 // schema is empty. Hand-typed to the shape the route emits; if that
@@ -50,11 +50,11 @@ const KIND_LABEL: Record<PersonRow["kind"], string> = {
   other: "Other",
 };
 
-const KIND_COLOR: Record<PersonRow["kind"], "primary" | "success" | "warning" | "default"> = {
-  guardian: "primary",
+const KIND_TONE: Record<PersonRow["kind"], "info" | "success" | "warning" | "neutral"> = {
+  guardian: "info",
   student: "success",
   school_worker: "warning",
-  other: "default",
+  other: "neutral",
 };
 
 export function ContactsList() {
@@ -87,14 +87,12 @@ export function ContactsList() {
 
   return (
     <Stack spacing={2}>
-      <Typography variant="h4">Contacts</Typography>
-      <Typography variant="body2" color="text.secondary">
-        Everyone in the address book — guardians from families, students,
-        school workers, and ad-hoc others. Click into a row to jump to
-        the relevant detail page.
-      </Typography>
+      <PageHeader
+        title="Contacts"
+        subtitle="Everyone in the address book: guardians, students, school workers, and ad-hoc others."
+      />
 
-      <Stack direction="row" spacing={2} alignItems="center">
+      <DataToolbar>
         <TextField
           size="small"
           placeholder="Search name or email"
@@ -123,10 +121,17 @@ export function ContactsList() {
           <MenuItem value="school_worker">School workers</MenuItem>
           <MenuItem value="other">Other</MenuItem>
         </TextField>
-      </Stack>
+      </DataToolbar>
 
-      <TableContainer component={Paper} variant="outlined">
-        <Table size="small">
+      <DataTableContainer
+        loading={isPending}
+        loadingColumns={5}
+        loadingRows={6}
+        empty={!isPending && rows.length === 0}
+        emptyTitle="No matching contacts"
+        emptyDescription="Adjust the search or type filter to broaden the list."
+      >
+        <Table size="small" stickyHeader>
           <TableHead>
             <TableRow>
               <TableCell>Name</TableCell>
@@ -137,34 +142,12 @@ export function ContactsList() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {isPending ? (
-              Array.from({ length: 6 }).map((_, i) => (
-                <TableRow key={i}>
-                  {Array.from({ length: 5 }).map((_, j) => (
-                    <TableCell key={j}>
-                      <Skeleton width="80%" />
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
-            ) : rows.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={5}>
-                  <Box sx={{ py: 6, textAlign: "center" }}>
-                    <Typography color="text.secondary">
-                      No contacts match the current filters.
-                    </Typography>
-                  </Box>
-                </TableCell>
-              </TableRow>
-            ) : (
-              rows.map((p) => (
+            {rows.map((p) => (
                 <ContactRow key={p.id} person={p} />
-              ))
-            )}
+              ))}
           </TableBody>
         </Table>
-      </TableContainer>
+      </DataTableContainer>
 
       {!isPending && rows.length === 500 && (
         <Typography variant="caption" color="text.secondary" sx={{ alignSelf: "flex-end" }}>
@@ -198,10 +181,10 @@ function ContactRow({ person: p }: { person: PersonRow }) {
     <>
       <TableCell sx={{ fontWeight: 500 }}>{fullName}</TableCell>
       <TableCell>
-        <Chip
+        <StatusChip
           size="small"
           label={KIND_LABEL[p.kind]}
-          color={KIND_COLOR[p.kind]}
+          tone={KIND_TONE[p.kind]}
           variant="outlined"
         />
       </TableCell>

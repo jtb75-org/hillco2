@@ -2,18 +2,12 @@ import {
   Alert,
   Box,
   Button,
-  Card,
-  CardContent,
-  Chip,
-  Divider,
   Grid,
   List,
   ListItem,
   ListItemText,
-  Paper,
   Skeleton,
   Stack,
-  Typography,
 } from "@mui/material";
 import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutline";
 import dayjs from "dayjs";
@@ -24,6 +18,10 @@ import { Link as RouterLink } from "react-router-dom";
 import { api } from "../api/client";
 import type { components } from "../api/schema";
 import { useAuth } from "../auth";
+import { MetricCard } from "../components/MetricCard";
+import { PageHeader } from "../components/PageHeader";
+import { SectionPanel } from "../components/SectionPanel";
+import { StatusChip } from "../components/StatusChip";
 
 dayjs.extend(relativeTime);
 
@@ -44,79 +42,6 @@ function formatDueDate(d: string, today: string): { label: string; overdue: bool
   if (due.isSame(todayD, "day")) return { label: "today", overdue: false };
   if (due.diff(todayD, "day") < 7) return { label: due.format("ddd"), overdue };
   return { label: due.format("MMM D"), overdue };
-}
-
-// ---- Stat card -------------------------------------------------------------
-
-function StatCard({
-  label,
-  value,
-  emphasis,
-}: {
-  label: string;
-  value: string;
-  emphasis?: "alert" | "muted" | "default";
-}) {
-  return (
-    <Card variant="outlined">
-      <CardContent>
-        <Typography
-          variant="body2"
-          color="text.secondary"
-          sx={{ textTransform: "uppercase", letterSpacing: 0.5, fontSize: 11, mb: 0.5 }}
-        >
-          {label}
-        </Typography>
-        <Typography
-          variant="h4"
-          sx={{
-            fontWeight: 600,
-            color:
-              emphasis === "alert"
-                ? "error.main"
-                : emphasis === "muted"
-                ? "text.disabled"
-                : "text.primary",
-          }}
-        >
-          {value}
-        </Typography>
-      </CardContent>
-    </Card>
-  );
-}
-
-// ---- Section card ----------------------------------------------------------
-
-function SectionCard({
-  title,
-  count,
-  empty,
-  children,
-}: {
-  title: string;
-  count?: number;
-  empty?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <Paper variant="outlined">
-      <Box sx={{ px: 2, pt: 1.5, pb: 1, display: "flex", alignItems: "center", gap: 1 }}>
-        <Typography variant="subtitle1" sx={{ fontWeight: 600, flexGrow: 1 }}>
-          {title}
-        </Typography>
-        {count !== undefined && (
-          <Chip size="small" label={count} variant="outlined" />
-        )}
-      </Box>
-      <Divider />
-      {empty ? (
-        <Box sx={{ p: 3, color: "text.disabled", fontSize: 13 }}>Nothing here.</Box>
-      ) : (
-        children
-      )}
-    </Paper>
-  );
 }
 
 // ---- Page ------------------------------------------------------------------
@@ -141,25 +66,21 @@ export function Dashboard() {
 
   return (
     <Stack spacing={3}>
-      <Stack direction="row" alignItems="flex-start" sx={{ gap: 2 }}>
-        <Box sx={{ flex: 1 }}>
-          <Typography variant="h4" gutterBottom>
-            Welcome{user ? `, ${user.name.split(" ")[0]}` : ""}.
-          </Typography>
-          <Typography color="text.secondary" variant="body2">
-            {dayjs().format("dddd, MMMM D, YYYY")}
-          </Typography>
-        </Box>
-        <Button
-          component={RouterLink}
-          to="/intake"
-          variant="contained"
-          startIcon={<AddCircleOutlineIcon />}
-          sx={{ flexShrink: 0 }}
-        >
-          Start an intake
-        </Button>
-      </Stack>
+      <PageHeader
+        title={`Welcome${user ? `, ${user.name.split(" ")[0]}` : ""}.`}
+        subtitle={dayjs().format("dddd, MMMM D, YYYY")}
+        actions={
+          <Button
+            component={RouterLink}
+            to="/intake"
+            variant="contained"
+            startIcon={<AddCircleOutlineIcon />}
+            sx={{ flexShrink: 0 }}
+          >
+            Start an intake
+          </Button>
+        }
+      />
 
       {/* Stats row */}
       <Grid container spacing={2}>
@@ -172,39 +93,39 @@ export function Dashboard() {
         ) : (
           <>
             <Grid item xs={12} sm={6} md={4} lg={2}>
-              <StatCard
+              <MetricCard
                 label="My Followups"
                 value={String(stats.my_open_followups)}
               />
             </Grid>
             <Grid item xs={12} sm={6} md={4} lg={2}>
-              <StatCard
+              <MetricCard
                 label="Overdue Followups"
                 value={String(stats.my_overdue_followups)}
                 emphasis={stats.my_overdue_followups > 0 ? "alert" : "muted"}
               />
             </Grid>
             <Grid item xs={12} sm={6} md={4} lg={2}>
-              <StatCard
+              <MetricCard
                 label="Active Engagements"
                 value={String(stats.active_engagements)}
               />
             </Grid>
             <Grid item xs={12} sm={6} md={4} lg={2}>
-              <StatCard
+              <MetricCard
                 label="Outstanding"
                 value={usd.format(Number(stats.outstanding_total))}
               />
             </Grid>
             <Grid item xs={12} sm={6} md={4} lg={2}>
-              <StatCard
+              <MetricCard
                 label="Overdue Invoices"
                 value={String(stats.overdue_invoice_count)}
                 emphasis={stats.overdue_invoice_count > 0 ? "alert" : "muted"}
               />
             </Grid>
             <Grid item xs={12} sm={6} md={4} lg={2}>
-              <StatCard
+              <MetricCard
                 label="Uninvoiced"
                 value={usd.format(Number(stats.uninvoiced_total))}
               />
@@ -217,10 +138,11 @@ export function Dashboard() {
       <Grid container spacing={2}>
         <Grid item xs={12} md={6}>
           <Stack spacing={2}>
-            <SectionCard
+            <SectionPanel
               title="My open followups"
               count={data?.my_followups.length}
               empty={data?.my_followups.length === 0}
+              emptyTitle="No open followups"
             >
               <List dense disablePadding>
                 {data?.my_followups.map((f) => {
@@ -231,22 +153,23 @@ export function Dashboard() {
                         primary={f.title}
                         secondary={f.household_name}
                       />
-                      <Chip
+                      <StatusChip
                         size="small"
                         label={due.label}
-                        color={due.overdue ? "error" : "default"}
+                        tone={due.overdue ? "danger" : "neutral"}
                         variant={due.overdue ? "filled" : "outlined"}
                       />
                     </ListItem>
                   );
                 })}
               </List>
-            </SectionCard>
+            </SectionPanel>
 
-            <SectionCard
+            <SectionPanel
               title="Recent notes"
               count={data?.recent_notes.length}
               empty={data?.recent_notes.length === 0}
+              emptyTitle="No recent notes"
             >
               <List dense disablePadding>
                 {data?.recent_notes.map((n) => (
@@ -265,16 +188,17 @@ export function Dashboard() {
                   </ListItem>
                 ))}
               </List>
-            </SectionCard>
+            </SectionPanel>
           </Stack>
         </Grid>
 
         <Grid item xs={12} md={6}>
           <Stack spacing={2}>
-            <SectionCard
+            <SectionPanel
               title="Outstanding invoices"
               count={data?.outstanding_invoices.length}
               empty={data?.outstanding_invoices.length === 0}
+              emptyTitle="No outstanding invoices"
             >
               <List dense disablePadding>
                 {data?.outstanding_invoices.map((inv) => {
@@ -296,13 +220,13 @@ export function Dashboard() {
                         secondary={inv.household_name}
                       />
                       {due && (
-                        <Chip
+                        <StatusChip
                           size="small"
                           label={due.label}
-                          color={
+                          tone={
                             inv.status === "overdue" || due.overdue
-                              ? "error"
-                              : "default"
+                              ? "danger"
+                              : "neutral"
                           }
                           variant={inv.status === "overdue" ? "filled" : "outlined"}
                         />
@@ -311,11 +235,12 @@ export function Dashboard() {
                   );
                 })}
               </List>
-            </SectionCard>
+            </SectionPanel>
 
-            <SectionCard
+            <SectionPanel
               title="Recent activity"
               empty={data?.audit.length === 0}
+              emptyTitle="No recent activity"
             >
               <List dense disablePadding>
                 {data?.audit.map((a, i) => (
@@ -348,7 +273,7 @@ export function Dashboard() {
                   </ListItem>
                 ))}
               </List>
-            </SectionCard>
+            </SectionPanel>
           </Stack>
         </Grid>
       </Grid>

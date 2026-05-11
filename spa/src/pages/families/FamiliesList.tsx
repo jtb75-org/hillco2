@@ -3,20 +3,15 @@ import {
   Alert,
   Box,
   Button,
-  Chip,
   InputAdornment,
   MenuItem,
-  Paper,
-  Skeleton,
   Stack,
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   TextField,
-  Typography,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import SearchIcon from "@mui/icons-material/Search";
@@ -24,6 +19,10 @@ import { useQuery } from "@tanstack/react-query";
 import { Link as RouterLink } from "react-router-dom";
 
 import { api } from "../../api/client";
+import { DataTableContainer } from "../../components/DataTableContainer";
+import { DataToolbar } from "../../components/DataToolbar";
+import { PageHeader } from "../../components/PageHeader";
+import { StatusChip } from "../../components/StatusChip";
 
 import { AddFamilyDialog } from "./AddFamilyDialog";
 
@@ -78,18 +77,21 @@ export function FamiliesList() {
 
   return (
     <Stack spacing={2}>
-      <Stack direction="row" alignItems="center" spacing={2}>
-        <Typography variant="h4" sx={{ flex: 1 }}>Families</Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => setAddOpen(true)}
-        >
-          Add family
-        </Button>
-      </Stack>
+      <PageHeader
+        title="Families"
+        subtitle="Households, guardians, students, and active engagements."
+        actions={
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => setAddOpen(true)}
+          >
+            Add family
+          </Button>
+        }
+      />
 
-      <Stack direction="row" spacing={2} alignItems="center">
+      <DataToolbar>
         <TextField
           size="small"
           placeholder="Search by household or primary contact"
@@ -116,10 +118,32 @@ export function FamiliesList() {
           <MenuItem value="active">With active</MenuItem>
           <MenuItem value="inactive">Without active</MenuItem>
         </TextField>
-      </Stack>
+      </DataToolbar>
 
-      <TableContainer component={Paper} variant="outlined">
-        <Table size="small">
+      <DataTableContainer
+        loading={isPending}
+        loadingColumns={4}
+        loadingRows={5}
+        empty={!isPending && filtered.length === 0}
+        emptyTitle={data && data.length === 0 ? "No families yet" : "No matching families"}
+        emptyDescription={
+          data && data.length === 0
+            ? "Add the first household to start building contacts and students."
+            : "Adjust the search or engagement filter to broaden the list."
+        }
+        emptyAction={
+          data && data.length === 0 ? (
+            <Button
+              variant="text"
+              startIcon={<AddIcon />}
+              onClick={() => setAddOpen(true)}
+            >
+              Add the first family
+            </Button>
+          ) : undefined
+        }
+      >
+        <Table size="small" stickyHeader>
           <TableHead>
             <TableRow>
               <TableCell>Household</TableCell>
@@ -129,39 +153,7 @@ export function FamiliesList() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {isPending ? (
-              Array.from({ length: 5 }).map((_, i) => (
-                <TableRow key={i}>
-                  {Array.from({ length: 4 }).map((_, j) => (
-                    <TableCell key={j}>
-                      <Skeleton width="80%" />
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
-            ) : filtered.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={4}>
-                  <Box sx={{ py: 6, textAlign: "center" }}>
-                    <Typography color="text.secondary" sx={{ mb: 1 }}>
-                      {data && data.length === 0
-                        ? "No families yet."
-                        : "No matches for the current filters."}
-                    </Typography>
-                    {data && data.length === 0 && (
-                      <Button
-                        variant="text"
-                        startIcon={<AddIcon />}
-                        onClick={() => setAddOpen(true)}
-                      >
-                        Add the first family
-                      </Button>
-                    )}
-                  </Box>
-                </TableCell>
-              </TableRow>
-            ) : (
-              filtered.map((f) => (
+            {filtered.map((f) => (
                 <TableRow
                   key={f.id}
                   hover
@@ -181,10 +173,10 @@ export function FamiliesList() {
                   <TableCell align="right">{f.student_count}</TableCell>
                   <TableCell align="right">
                     {f.active_engagements > 0 ? (
-                      <Chip
+                      <StatusChip
                         size="small"
                         label={f.active_engagements}
-                        color="primary"
+                        tone="info"
                         variant="outlined"
                       />
                     ) : (
@@ -192,11 +184,10 @@ export function FamiliesList() {
                     )}
                   </TableCell>
                 </TableRow>
-              ))
-            )}
+              ))}
           </TableBody>
         </Table>
-      </TableContainer>
+      </DataTableContainer>
 
       <AddFamilyDialog
         open={addOpen}

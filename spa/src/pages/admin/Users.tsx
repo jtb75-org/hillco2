@@ -3,21 +3,12 @@ import {
   Alert,
   Box,
   Button,
-  Chip,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogContentText,
-  DialogTitle,
   IconButton,
   MenuItem,
-  Paper,
-  Skeleton,
   Stack,
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   TextField,
@@ -34,7 +25,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../api/client";
 import type { components } from "../../api/schema";
 import { useAuth } from "../../auth";
+import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { DataTableContainer } from "../../components/DataTableContainer";
+import { FormDialog } from "../../components/FormDialog";
 import { LabeledField } from "../../components/LabeledField";
+import { StatusChip } from "../../components/StatusChip";
 
 dayjs.extend(relativeTime);
 
@@ -124,8 +119,14 @@ export function AdminUsers() {
         </Alert>
       )}
 
-      <TableContainer component={Paper} variant="outlined">
-        <Table size="small">
+      <DataTableContainer
+        loading={isPending}
+        loadingColumns={7}
+        loadingRows={3}
+        empty={!isPending && (data?.length ?? 0) === 0}
+        emptyTitle="No users yet"
+      >
+        <Table size="small" stickyHeader>
           <TableHead>
             <TableRow>
               <TableCell>Name</TableCell>
@@ -138,18 +139,7 @@ export function AdminUsers() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {isPending ? (
-              Array.from({ length: 3 }).map((_, i) => (
-                <TableRow key={i}>
-                  {Array.from({ length: 7 }).map((_, j) => (
-                    <TableCell key={j}>
-                      <Skeleton width="80%" />
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
-            ) : (
-              data?.map((u) => {
+            {data?.map((u) => {
                 const isMe = me?.id === u.id;
                 return (
                   <TableRow key={u.id} hover>
@@ -164,10 +154,10 @@ export function AdminUsers() {
                     <TableCell>{u.email}</TableCell>
                     <TableCell>{u.role}</TableCell>
                     <TableCell>
-                      <Chip
+                      <StatusChip
                         size="small"
                         label={u.is_active ? "active" : "inactive"}
-                        color={u.is_active ? "success" : "default"}
+                        tone={u.is_active ? "success" : "neutral"}
                         variant={u.is_active ? "filled" : "outlined"}
                       />
                     </TableCell>
@@ -202,11 +192,10 @@ export function AdminUsers() {
                     </TableCell>
                   </TableRow>
                 );
-              })
-            )}
+              })}
           </TableBody>
         </Table>
-      </TableContainer>
+      </DataTableContainer>
 
       <AddUserDialog
         open={addOpen}
@@ -214,31 +203,16 @@ export function AdminUsers() {
         onCreated={invalidate}
       />
 
-      <Dialog
+      <ConfirmDialog
         open={!!confirmDeactivate}
+        title={`Deactivate ${confirmDeactivate?.name ?? "user"}?`}
+        description="They'll lose access immediately. Their audit-log entries stay so the history is preserved, and you can reactivate them later."
+        confirmLabel="Deactivate"
+        confirmColor="error"
+        pending={deactivate.isPending}
         onClose={() => setConfirmDeactivate(null)}
-        maxWidth="xs"
-        fullWidth
-      >
-        <DialogTitle>Deactivate {confirmDeactivate?.name}?</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            They'll lose access immediately. Their audit-log entries stay so the
-            history is preserved, and you can reactivate them later.
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setConfirmDeactivate(null)}>Cancel</Button>
-          <Button
-            color="error"
-            variant="contained"
-            disabled={deactivate.isPending}
-            onClick={() => confirmDeactivate && deactivate.mutate(confirmDeactivate.id)}
-          >
-            Deactivate
-          </Button>
-        </DialogActions>
-      </Dialog>
+        onConfirm={() => confirmDeactivate && deactivate.mutate(confirmDeactivate.id)}
+      />
     </Stack>
   );
 }
@@ -290,15 +264,29 @@ function AddUserDialog({
   };
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="xs" fullWidth>
-      <form
+      <FormDialog
+        open={open}
+        onClose={handleClose}
+        title="Add user"
+        subtitle="Pre-authorize an email address for Google sign-in."
+        maxWidth="xs"
         onSubmit={(e) => {
           e.preventDefault();
           create.mutate({ email: email.trim(), name: name.trim(), role });
         }}
+        actions={
+          <>
+            <Button onClick={handleClose} disabled={create.isPending}>Cancel</Button>
+            <Button
+              type="submit"
+              variant="contained"
+              disabled={create.isPending || !email.trim() || !name.trim()}
+            >
+              {create.isPending ? "Adding..." : "Add"}
+            </Button>
+          </>
+        }
       >
-        <DialogTitle>Add user</DialogTitle>
-        <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <LabeledField label="Email" required>
               <TextField
@@ -337,18 +325,6 @@ function AddUserDialog({
               <Alert severity="error">{create.error.message}</Alert>
             )}
           </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleClose} disabled={create.isPending}>Cancel</Button>
-          <Button
-            type="submit"
-            variant="contained"
-            disabled={create.isPending || !email.trim() || !name.trim()}
-          >
-            Add
-          </Button>
-        </DialogActions>
-      </form>
-    </Dialog>
+      </FormDialog>
   );
 }

@@ -2,17 +2,10 @@ import { useState } from "react";
 import {
   Alert,
   Box,
-  Breadcrumbs,
-  Button,
   Card,
   CardActionArea,
   CardContent,
   Chip,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogContentText,
-  DialogTitle,
   Divider,
   Grid,
   Link as MuiLink,
@@ -29,6 +22,9 @@ import { Link as RouterLink, useParams } from "react-router-dom";
 
 import { api } from "../../api/client";
 import { CardActionsMenu } from "../../components/CardActionsMenu";
+import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { PageHeader } from "../../components/PageHeader";
+import { SectionPanel } from "../../components/SectionPanel";
 
 import { AddParentDialog } from "./AddParentDialog";
 import { AddStudentDialog } from "./AddStudentDialog";
@@ -109,25 +105,20 @@ export function FamilyDetail() {
 
   return (
     <Stack spacing={3}>
-      <Breadcrumbs>
-        <MuiLink component={RouterLink} to="/families" color="inherit" underline="hover">
-          Families
-        </MuiLink>
-        <Typography color="text.primary">
-          {isPending ? <Skeleton width={140} /> : data?.household_name}
-        </Typography>
-      </Breadcrumbs>
-
-      <Box>
-        <Typography variant="h4">
-          {isPending ? <Skeleton width={280} /> : data?.household_name}
-        </Typography>
-        {!isPending && data?.notes && (
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-            {data.notes}
-          </Typography>
-        )}
-      </Box>
+      <PageHeader
+        title={isPending ? <Skeleton width={280} /> : data?.household_name}
+        subtitle={!isPending && data?.notes ? data.notes : undefined}
+        breadcrumbs={
+          <>
+            <MuiLink component={RouterLink} to="/families" color="inherit" underline="hover">
+              Families
+            </MuiLink>
+            <Typography color="text.primary">
+              {isPending ? <Skeleton width={140} /> : data?.household_name}
+            </Typography>
+          </>
+        }
+      />
 
       <Grid container spacing={3}>
         <Grid item xs={12}>
@@ -185,10 +176,8 @@ function ParentsCard({
       : drawerParent;
 
   return (
-    <Box>
-      <Typography variant="overline" color="text.secondary" sx={{ display: "block", mb: 1 }}>
-        Parents / guardians
-      </Typography>
+    <SectionPanel title="Parents / guardians">
+      <Box sx={{ p: 2 }}>
       <Grid container spacing={2}>
         {loading
           ? [0, 1].map((i) => (
@@ -201,11 +190,11 @@ function ParentsCard({
               return (
                 <Grid key={p.id} item xs={12} sm={6} md={4}>
                   <Card
+                    variant="outlined"
                     sx={{
                       height: "100%",
-                      boxShadow: 1,
-                      transition: (t) => t.transitions.create("box-shadow"),
-                      "&:hover": { boxShadow: 3 },
+                      transition: (t) => t.transitions.create(["border-color", "background-color"]),
+                      "&:hover": { borderColor: "primary.light", bgcolor: "action.hover" },
                     }}
                   >
                     <CardActionArea
@@ -305,7 +294,8 @@ function ParentsCard({
         onChanged={onChanged}
         onRemoved={onChanged}
       />
-    </Box>
+      </Box>
+    </SectionPanel>
   );
 }
 
@@ -344,10 +334,8 @@ function StudentsCard({
   });
 
   return (
-    <Box>
-      <Typography variant="overline" color="text.secondary" sx={{ display: "block", mb: 1 }}>
-        Students
-      </Typography>
+    <SectionPanel title="Students">
+      <Box sx={{ p: 2 }}>
       <Grid container spacing={2}>
         {loading ? (
           <Grid item xs={12} sm={6} md={4}>
@@ -357,12 +345,12 @@ function StudentsCard({
           (students ?? []).map((s) => (
             <Grid key={s.id} item xs={12} sm={6} md={4}>
               <Card
+                variant="outlined"
                 sx={{
                   height: "100%",
                   position: "relative",
-                  boxShadow: 1,
-                  transition: (t) => t.transitions.create("box-shadow"),
-                  "&:hover": { boxShadow: 3 },
+                  transition: (t) => t.transitions.create(["border-color", "background-color"]),
+                  "&:hover": { borderColor: "primary.light", bgcolor: "action.hover" },
                 }}
               >
                 <CardActionArea
@@ -419,33 +407,18 @@ function StudentsCard({
         onClose={() => setEditing(null)}
         onSaved={onChanged}
       />
-      <Dialog
+      <ConfirmDialog
         open={!!confirmDelete}
+        title={`Remove ${confirmDelete?.name ?? "student"}?`}
+        description="They'll be soft-deleted from the system. Engagements stay intact with their student id reference."
+        confirmLabel="Remove"
+        confirmColor="error"
+        pending={remove.isPending}
         onClose={() => setConfirmDelete(null)}
-        maxWidth="xs"
-        fullWidth
-      >
-        <DialogTitle>Remove {confirmDelete?.name}?</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            They'll be soft-deleted from the system. Engagements stay intact
-            with their student id reference; you can reach out if you need a
-            hard reset.
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setConfirmDelete(null)}>Cancel</Button>
-          <Button
-            color="error"
-            variant="contained"
-            disabled={remove.isPending}
-            onClick={() => confirmDelete && remove.mutate(confirmDelete.id)}
-          >
-            Remove
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </Box>
+        onConfirm={() => confirmDelete && remove.mutate(confirmDelete.id)}
+      />
+      </Box>
+    </SectionPanel>
   );
 }
 
@@ -495,11 +468,8 @@ function EngagementsCard({
   loading: boolean;
 }) {
   return (
-    <Card variant="outlined">
-      <CardContent>
-        <Typography variant="overline" color="text.secondary">
-          Engagements
-        </Typography>
+    <SectionPanel title="Engagements">
+      <Box sx={{ p: 2 }}>
         {loading ? (
           <Skeleton width="60%" sx={{ mt: 1 }} />
         ) : !engagements || engagements.length === 0 ? (
@@ -537,8 +507,8 @@ function EngagementsCard({
             ))}
           </Stack>
         )}
-      </CardContent>
-    </Card>
+      </Box>
+    </SectionPanel>
   );
 }
 
