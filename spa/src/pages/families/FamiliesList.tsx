@@ -3,10 +3,18 @@ import {
   Alert,
   Box,
   Button,
+  Checkbox,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
+  FormControlLabel,
   IconButton,
   InputAdornment,
   MenuItem,
   Stack,
+  Switch,
   Table,
   TableBody,
   TableCell,
@@ -19,11 +27,11 @@ import AddIcon from "@mui/icons-material/Add";
 import ArchiveOutlinedIcon from "@mui/icons-material/ArchiveOutlined";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import SearchIcon from "@mui/icons-material/Search";
+import UnarchiveOutlinedIcon from "@mui/icons-material/UnarchiveOutlined";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link as RouterLink } from "react-router-dom";
 
 import { api } from "../../api/client";
-import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { DataTableContainer } from "../../components/DataTableContainer";
 import { DataToolbar } from "../../components/DataToolbar";
 import { PageHeader } from "../../components/PageHeader";
@@ -43,6 +51,7 @@ interface FamilyRow {
   student_count: number;
   parent_count: number;
   active_engagements: number;
+  is_archived: boolean;
 }
 
 type EngagementFilter = "all" | "active" | "inactive";
@@ -50,24 +59,31 @@ type EngagementFilter = "all" | "active" | "inactive";
 export function FamiliesList() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<EngagementFilter>("all");
+  const [showArchived, setShowArchived] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [archiveTarget, setArchiveTarget] = useState<FamilyRow | null>(null);
+  const [archiveCascade, setArchiveCascade] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<FamilyRow | null>(null);
   const snackbar = useSnackbar();
 
   const { data, isPending, error, refetch } = useQuery<FamilyRow[], Error>({
-    queryKey: ["families", "list"],
+    queryKey: ["families", "list", showArchived],
     queryFn: async () => {
-      const { data, error: respError } = await api.GET("/api/families");
+      const { data, error: respError } = await api.GET("/api/families", {
+        params: { query: { include_archived: showArchived } },
+      });
       if (respError || !data) throw new Error("families fetch failed");
       return data as unknown as FamilyRow[];
     },
   });
 
   const archive = useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async (args: { id: string; cascade: boolean }) => {
       const { error: respError } = await api.DELETE("/api/families/{family_id}", {
-        params: { path: { family_id: id } },
+        params: {
+          path: { family_id: args.id },
+          query: { cascade_engagements: args.cascade },
+        },
       });
       if (respError) {
         const msg = (respError as { detail?: string }).detail ?? "Archive failed.";
@@ -76,8 +92,29 @@ export function FamiliesList() {
     },
     onSuccess: () => {
       const name = archiveTarget?.household_name ?? "Family";
-      snackbar.show(`${name} archived`);
+      const tail = archiveCascade ? " (engagements archived too)" : "";
+      snackbar.show(`${name} archived${tail}`);
       setArchiveTarget(null);
+      setArchiveCascade(false);
+      refetch();
+    },
+    onError: (e: Error) => snackbar.show(e.message, "error"),
+  });
+
+  const unarchive = useMutation({
+    mutationFn: async (row: FamilyRow) => {
+      const { error: respError } = await api.POST(
+        "/api/families/{family_id}/unarchive",
+        { params: { path: { family_id: row.id } } },
+      );
+      if (respError) {
+        const msg = (respError as { detail?: string }).detail ?? "Unarchive failed.";
+        throw new Error(msg);
+      }
+      return row;
+    },
+    onSuccess: (row) => {
+      snackbar.show(`${row.household_name} restored`);
       refetch();
     },
     onError: (e: Error) => snackbar.show(e.message, "error"),
@@ -147,6 +184,16 @@ export function FamiliesList() {
           <MenuItem value="active">With active</MenuItem>
           <MenuItem value="inactive">Without active</MenuItem>
         </TextField>
+        <FormControlLabel
+          control={
+            <Switch
+              size="small"
+              checked={showArchived}
+              onChange={(e) => setShowArchived(e.target.checked)}
+            />
+          }
+          label="Show archived"
+        />
       </DataToolbar>
 
       <DataTableContainer
@@ -187,12 +234,27 @@ export function FamiliesList() {
                 <TableRow
                   key={f.id}
                   hover
-                  sx={{ cursor: "pointer" }}
+                  sx={{
+                    cursor: "pointer",
+                    // Visually deprioritize archived rows.
+                    opacity: f.is_archived ? 0.6 : 1,
+                  }}
                   component={RouterLink}
                   to={`/families/${f.id}`}
                   style={{ textDecoration: "none" }}
                 >
-                  <TableCell sx={{ fontWeight: 500 }}>{f.household_name}</TableCell>
+                  <TableCell sx={{ fontWeight: 500 }}>
+                    {f.household_name}
+                    {f.is_archived && (
+                      <StatusChip
+                        size="small"
+                        label="archived"
+                        tone="warning"
+                        variant="outlined"
+                        sx={{ ml: 1 }}
+                      />
+                    )}
+                  </TableCell>
                   <TableCell>
                     {f.primary_parent_name ?? (
                       <Box component="span" sx={{ color: "text.disabled" }}>
@@ -216,18 +278,34 @@ export function FamiliesList() {
                   <TableCell align="right">
                     {/* Stop both click + keyboard activation from
                         bubbling — the row itself is a RouterLink. */}
-                    <Tooltip title="Archive (soft delete)">
-                      <IconButton
-                        size="small"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setArchiveTarget(f);
-                        }}
-                      >
-                        <ArchiveOutlinedIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
+                    {f.is_archived ? (
+                      <Tooltip title="Restore from archive">
+                        <IconButton
+                          size="small"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            unarchive.mutate(f);
+                          }}
+                          disabled={unarchive.isPending}
+                        >
+                          <UnarchiveOutlinedIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    ) : (
+                      <Tooltip title="Archive (soft delete)">
+                        <IconButton
+                          size="small"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setArchiveTarget(f);
+                          }}
+                        >
+                          <ArchiveOutlinedIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    )}
                     <Tooltip title="Delete permanently">
                       <IconButton
                         size="small"
@@ -253,20 +331,19 @@ export function FamiliesList() {
         onClose={() => setAddOpen(false)}
         onCreated={refetch}
       />
-      <ConfirmDialog
-        open={!!archiveTarget}
-        title={`Archive ${archiveTarget?.household_name ?? "family"}?`}
-        description={
-          <>
-            The {archiveTarget?.household_name} family will be hidden from
-            listings and reports, but every record stays in the database.
-            You can restore it later by clearing its <code>deleted_at</code>.
-          </>
-        }
-        confirmLabel="Archive"
+      <ArchiveFamilyDialog
+        target={archiveTarget}
+        cascade={archiveCascade}
+        onCascadeChange={setArchiveCascade}
         pending={archive.isPending}
-        onClose={() => setArchiveTarget(null)}
-        onConfirm={() => archiveTarget && archive.mutate(archiveTarget.id)}
+        onClose={() => {
+          setArchiveTarget(null);
+          setArchiveCascade(false);
+        }}
+        onConfirm={() =>
+          archiveTarget &&
+          archive.mutate({ id: archiveTarget.id, cascade: archiveCascade })
+        }
       />
       <DeleteFamilyDialog
         target={deleteTarget}
@@ -279,5 +356,121 @@ export function FamiliesList() {
         }}
       />
     </Stack>
+  );
+}
+
+// Inline confirm — like ConfirmDialog but with an extra checkbox for
+// the cascade-engagements option. Surfaces the active-engagement count
+// in the description so the operator knows what they're flipping off.
+function ArchiveFamilyDialog({
+  target,
+  cascade,
+  pending,
+  onCascadeChange,
+  onClose,
+  onConfirm,
+}: {
+  target: FamilyRow | null;
+  cascade: boolean;
+  pending: boolean;
+  onCascadeChange: (v: boolean) => void;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <ArchiveDialogShell
+      open={!!target}
+      household={target?.household_name ?? "family"}
+      activeEngagements={target?.active_engagements ?? 0}
+      cascade={cascade}
+      pending={pending}
+      onCascadeChange={onCascadeChange}
+      onClose={onClose}
+      onConfirm={onConfirm}
+    />
+  );
+}
+
+function ArchiveDialogShell({
+  open,
+  household,
+  activeEngagements,
+  cascade,
+  pending,
+  onCascadeChange,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean;
+  household: string;
+  activeEngagements: number;
+  cascade: boolean;
+  pending: boolean;
+  onCascadeChange: (v: boolean) => void;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <DynamicDialog
+      open={open}
+      title={`Archive ${household}?`}
+      pending={pending}
+      onClose={onClose}
+      onConfirm={onConfirm}
+      confirmLabel="Archive"
+    >
+      <>
+        The {household} family will be hidden from listings and reports,
+        but every record stays in the database. Restore it later with
+        the unarchive action.
+      </>
+      {activeEngagements > 0 && (
+        <FormControlLabel
+          sx={{ mt: 2 }}
+          control={
+            <Checkbox
+              checked={cascade}
+              onChange={(e) => onCascadeChange(e.target.checked)}
+            />
+          }
+          label={`Also archive ${activeEngagements} active engagement${activeEngagements === 1 ? "" : "s"}`}
+        />
+      )}
+    </DynamicDialog>
+  );
+}
+
+/** Small wrapper that keeps the dialog chrome consistent with
+ *  ConfirmDialog's primitive but allows extra body content. */
+function DynamicDialog({
+  open,
+  title,
+  pending,
+  onClose,
+  onConfirm,
+  confirmLabel,
+  children,
+}: {
+  open: boolean;
+  title: string;
+  pending: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  confirmLabel: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
+      <DialogTitle>{title}</DialogTitle>
+      <DialogContent>
+        <DialogContentText component="div">{children}</DialogContentText>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose} disabled={pending}>Cancel</Button>
+        <Button variant="contained" disabled={pending} onClick={onConfirm}>
+          {confirmLabel}
+        </Button>
+      </DialogActions>
+    </Dialog>
   );
 }

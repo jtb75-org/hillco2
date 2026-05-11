@@ -36,6 +36,7 @@ interface PersonRow {
   phone: string | null;
   family_id: string | null;
   family_household_name: string | null;
+  family_is_archived: boolean;
   school_id: string | null;
   school_name: string | null;
   current_grade: string | null;
@@ -169,11 +170,12 @@ function ContactRow({ person: p }: { person: PersonRow }) {
         : null
       : null;
   const fullName = [p.first_name, p.last_name].filter(Boolean).join(" ");
+  const archivedTag = p.family_is_archived ? " (archived)" : "";
   const context = (() => {
     if (p.family_household_name && p.kind === "student" && p.current_grade) {
-      return `${p.family_household_name} · ${p.current_grade}`;
+      return `${p.family_household_name}${archivedTag} · ${p.current_grade}`;
     }
-    if (p.family_household_name) return p.family_household_name;
+    if (p.family_household_name) return `${p.family_household_name}${archivedTag}`;
     if (p.school_name) return p.school_name;
     return null;
   })();
