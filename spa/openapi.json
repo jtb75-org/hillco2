@@ -235,7 +235,7 @@
           "families"
         ],
         "summary": "Delete Family",
-        "description": "Soft-delete (sets deleted_at). Engagements still reference the family\nvia ON DELETE RESTRICT, so the row stays \u2014 the deleted_at filter just\nhides it from listings.",
+        "description": "Soft-delete (sets deleted_at). Engagements still reference the family\nvia ON DELETE RESTRICT, so the row stays \u2014 the deleted_at filter just\nhides it from listings. This endpoint backs the \"Archive\" action; the\npermanent / cascading variant is `/families/{id}/hard-delete`.",
         "operationId": "delete_family_api_families__family_id__delete",
         "parameters": [
           {
@@ -249,6 +249,97 @@
             }
           }
         ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/families/{family_id}/deletion-impact": {
+      "get": {
+        "tags": [
+          "families"
+        ],
+        "summary": "Get Family Deletion Impact",
+        "description": "Returns what `POST /families/{id}/hard-delete` would touch. Drives\nthe SPA's per-row checkbox confirmation. Includes soft-deleted\nguardians/students too (they'll still get hard-cleared on family\ndelete via the junction's CASCADE) so the operator sees everything.",
+        "operationId": "get_family_deletion_impact_api_families__family_id__deletion_impact_get",
+        "parameters": [
+          {
+            "name": "family_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Family Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletionImpact"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/families/{family_id}/hard-delete": {
+      "post": {
+        "tags": [
+          "families"
+        ],
+        "summary": "Hard Delete Family",
+        "description": "Hard-delete the family. Cascade rules:\n\n* family_guardians + family_students rows go via the FK's\n  ON DELETE CASCADE \u2014 those junction rows always vanish.\n* Guardians / students whose person_ids aren't in the preserve\n  lists get `people.deleted_at = NOW()` (soft delete). Listed\n  people stay in the address book; they just lose their family\n  link.\n* Engagements ON DELETE RESTRICT \u2014 if any engagement references\n  the family (active OR soft-deleted) we 409. The operator has\n  to detach / hard-delete those first.",
+        "operationId": "hard_delete_family_api_families__family_id__hard_delete_post",
+        "parameters": [
+          {
+            "name": "family_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Family Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HardDeleteRequest"
+              }
+            }
+          }
+        },
         "responses": {
           "204": {
             "description": "Successful Response"
@@ -6769,6 +6860,113 @@
         ],
         "title": "DashboardStats"
       },
+      "DeletionImpact": {
+        "properties": {
+          "family_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Family Id"
+          },
+          "household_name": {
+            "type": "string",
+            "title": "Household Name"
+          },
+          "guardians": {
+            "items": {
+              "$ref": "#/components/schemas/DeletionImpactGuardian"
+            },
+            "type": "array",
+            "title": "Guardians"
+          },
+          "students": {
+            "items": {
+              "$ref": "#/components/schemas/DeletionImpactStudent"
+            },
+            "type": "array",
+            "title": "Students"
+          },
+          "active_engagement_count": {
+            "type": "integer",
+            "title": "Active Engagement Count"
+          },
+          "deleted_engagement_count": {
+            "type": "integer",
+            "title": "Deleted Engagement Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "family_id",
+          "household_name",
+          "guardians",
+          "students",
+          "active_engagement_count",
+          "deleted_engagement_count"
+        ],
+        "title": "DeletionImpact"
+      },
+      "DeletionImpactGuardian": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "email"
+        ],
+        "title": "DeletionImpactGuardian"
+      },
+      "DeletionImpactStudent": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "current_grade": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Grade"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "current_grade"
+        ],
+        "title": "DeletionImpactStudent"
+      },
       "EngagementCreate": {
         "properties": {
           "student_id": {
@@ -7298,6 +7496,28 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "HardDeleteRequest": {
+        "properties": {
+          "preserve_guardian_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Preserve Guardian Ids"
+          },
+          "preserve_student_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Preserve Student Ids"
+          }
+        },
+        "type": "object",
+        "title": "HardDeleteRequest"
       },
       "InvoiceCreate": {
         "properties": {

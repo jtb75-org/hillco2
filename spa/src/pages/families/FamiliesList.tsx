@@ -3,6 +3,7 @@ import {
   Alert,
   Box,
   Button,
+  IconButton,
   InputAdornment,
   MenuItem,
   Stack,
@@ -12,19 +13,25 @@ import {
   TableHead,
   TableRow,
   TextField,
+  Tooltip,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
+import ArchiveOutlinedIcon from "@mui/icons-material/ArchiveOutlined";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import SearchIcon from "@mui/icons-material/Search";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link as RouterLink } from "react-router-dom";
 
 import { api } from "../../api/client";
+import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { DataTableContainer } from "../../components/DataTableContainer";
 import { DataToolbar } from "../../components/DataToolbar";
 import { PageHeader } from "../../components/PageHeader";
+import { useSnackbar } from "../../components/Snackbar";
 import { StatusChip } from "../../components/StatusChip";
 
 import { AddFamilyDialog } from "./AddFamilyDialog";
+import { DeleteFamilyDialog } from "./DeleteFamilyDialog";
 
 // /api/families returns a plain dict in the route — its OpenAPI schema
 // is empty. Hand-typed here so the table column accesses are safe.
@@ -44,6 +51,9 @@ export function FamiliesList() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<EngagementFilter>("all");
   const [addOpen, setAddOpen] = useState(false);
+  const [archiveTarget, setArchiveTarget] = useState<FamilyRow | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<FamilyRow | null>(null);
+  const snackbar = useSnackbar();
 
   const { data, isPending, error, refetch } = useQuery<FamilyRow[], Error>({
     queryKey: ["families", "list"],
@@ -52,6 +62,25 @@ export function FamiliesList() {
       if (respError || !data) throw new Error("families fetch failed");
       return data as unknown as FamilyRow[];
     },
+  });
+
+  const archive = useMutation({
+    mutationFn: async (id: string) => {
+      const { error: respError } = await api.DELETE("/api/families/{family_id}", {
+        params: { path: { family_id: id } },
+      });
+      if (respError) {
+        const msg = (respError as { detail?: string }).detail ?? "Archive failed.";
+        throw new Error(msg);
+      }
+    },
+    onSuccess: () => {
+      const name = archiveTarget?.household_name ?? "Family";
+      snackbar.show(`${name} archived`);
+      setArchiveTarget(null);
+      refetch();
+    },
+    onError: (e: Error) => snackbar.show(e.message, "error"),
   });
 
   // Lightweight client-side filter — list size is small (homelab scale)
@@ -150,6 +179,7 @@ export function FamiliesList() {
               <TableCell>Primary contact</TableCell>
               <TableCell align="right">Students</TableCell>
               <TableCell align="right">Active engagements</TableCell>
+              <TableCell align="right" sx={{ width: 110 }}>Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -183,6 +213,35 @@ export function FamiliesList() {
                       <Box component="span" sx={{ color: "text.disabled" }}>—</Box>
                     )}
                   </TableCell>
+                  <TableCell align="right">
+                    {/* Stop both click + keyboard activation from
+                        bubbling — the row itself is a RouterLink. */}
+                    <Tooltip title="Archive (soft delete)">
+                      <IconButton
+                        size="small"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setArchiveTarget(f);
+                        }}
+                      >
+                        <ArchiveOutlinedIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Delete permanently">
+                      <IconButton
+                        size="small"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setDeleteTarget(f);
+                        }}
+                        sx={{ color: "error.main" }}
+                      >
+                        <DeleteOutlineIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </TableCell>
                 </TableRow>
               ))}
           </TableBody>
@@ -193,6 +252,31 @@ export function FamiliesList() {
         open={addOpen}
         onClose={() => setAddOpen(false)}
         onCreated={refetch}
+      />
+      <ConfirmDialog
+        open={!!archiveTarget}
+        title={`Archive ${archiveTarget?.household_name ?? "family"}?`}
+        description={
+          <>
+            The {archiveTarget?.household_name} family will be hidden from
+            listings and reports, but every record stays in the database.
+            You can restore it later by clearing its <code>deleted_at</code>.
+          </>
+        }
+        confirmLabel="Archive"
+        pending={archive.isPending}
+        onClose={() => setArchiveTarget(null)}
+        onConfirm={() => archiveTarget && archive.mutate(archiveTarget.id)}
+      />
+      <DeleteFamilyDialog
+        target={deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onDeleted={() => {
+          const name = deleteTarget?.household_name ?? "Family";
+          snackbar.show(`${name} family deleted`);
+          setDeleteTarget(null);
+          refetch();
+        }}
       />
     </Stack>
   );
