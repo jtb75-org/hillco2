@@ -11,6 +11,7 @@ import { AdminAbout } from "./pages/admin/About";
 import { ContactsList } from "./pages/contacts/ContactsList";
 import { FamiliesList } from "./pages/families/FamiliesList";
 import { FamilyDetail } from "./pages/families/FamilyDetail";
+import { EngagementDetail } from "./pages/engagements/EngagementDetail";
 import { IntakeWizard } from "./pages/intake/IntakeWizard";
 import { StudentDetail } from "./pages/students/StudentDetail";
 
@@ -56,6 +57,7 @@ export function App() {
             <Route path="/families" element={<FamiliesList />} />
             <Route path="/families/:id" element={<FamilyDetail />} />
             <Route path="/students/:id" element={<StudentDetail />} />
+            <Route path="/engagements/:id" element={<EngagementDetail />} />
             <Route path="/intake" element={<IntakeWizard />} />
             <Route path="/contacts" element={<ContactsList />} />
             <Route path="/admin" element={<AdminLayout />}>

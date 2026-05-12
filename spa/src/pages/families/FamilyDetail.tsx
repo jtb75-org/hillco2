@@ -2,6 +2,7 @@ import { useState } from "react";
 import {
   Alert,
   Box,
+  Button,
   Card,
   CardActionArea,
   CardContent,
@@ -18,10 +19,12 @@ import EditIcon from "@mui/icons-material/Edit";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import dayjs from "dayjs";
-import { Link as RouterLink, useParams } from "react-router-dom";
+import { Link as RouterLink, useNavigate, useParams } from "react-router-dom";
 
 import { api } from "../../api/client";
 import { CardActionsMenu } from "../../components/CardActionsMenu";
+
+import { NewEngagementDialog } from "./NewEngagementDialog";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { PageHeader } from "../../components/PageHeader";
 import { SectionPanel } from "../../components/SectionPanel";
@@ -140,7 +143,13 @@ export function FamilyDetail() {
           />
         </Grid>
         <Grid item xs={12}>
-          <EngagementsCard engagements={data?.engagements} loading={isPending} />
+          <EngagementsCard
+            familyId={id!}
+            familyName={data?.household_name ?? ""}
+            students={data?.students ?? []}
+            engagements={data?.engagements}
+            loading={isPending}
+          />
         </Grid>
       </Grid>
     </Stack>
@@ -461,20 +470,47 @@ function AddCard({ label, onClick }: { label: string; onClick: () => void }) {
 // ---- Engagements -------------------------------------------------------
 
 function EngagementsCard({
+  familyId,
+  familyName,
+  students,
   engagements,
   loading,
 }: {
+  familyId: string;
+  familyName: string;
+  students: Student[];
   engagements?: Engagement[];
   loading: boolean;
 }) {
+  const navigate = useNavigate();
+  const [newOpen, setNewOpen] = useState(false);
+  const studentChoices = students.map((s) => ({
+    id: s.id,
+    name: s.name,
+    current_grade: s.current_grade,
+  }));
   return (
-    <SectionPanel title="Engagements">
+    <SectionPanel
+      title="Engagements"
+      actions={
+        <Button
+          size="small"
+          startIcon={<AddIcon />}
+          onClick={() => setNewOpen(true)}
+          disabled={loading || students.length === 0}
+        >
+          New engagement
+        </Button>
+      }
+    >
       <Box sx={{ p: 2 }}>
         {loading ? (
           <Skeleton width="60%" sx={{ mt: 1 }} />
         ) : !engagements || engagements.length === 0 ? (
           <Typography variant="body2" color="text.disabled" sx={{ mt: 1 }}>
-            No engagements yet.
+            {students.length === 0
+              ? "Add a student first, then start an engagement."
+              : "No engagements yet. Click New engagement to start one."}
           </Typography>
         ) : (
           <Stack divider={<Divider />} sx={{ mt: 1 }}>
@@ -484,10 +520,8 @@ function EngagementsCard({
                 direction="row"
                 alignItems="center"
                 spacing={2}
-                sx={{ py: 1 }}
-                component={RouterLink}
-                to={`/engagements/${e.id}`}
-                style={{ textDecoration: "none", color: "inherit" }}
+                sx={{ py: 1, cursor: "pointer" }}
+                onClick={() => navigate(`/engagements/${e.id}`)}
               >
                 <Typography variant="body1" sx={{ flex: 1, fontWeight: 500 }}>
                   {e.engagement_type.replace(/_/g, " ")}
@@ -508,6 +542,14 @@ function EngagementsCard({
           </Stack>
         )}
       </Box>
+      <NewEngagementDialog
+        open={newOpen}
+        familyId={familyId}
+        familyName={familyName}
+        students={studentChoices}
+        onClose={() => setNewOpen(false)}
+        onCreated={(id) => navigate(`/engagements/${id}`)}
+      />
     </SectionPanel>
   );
 }
