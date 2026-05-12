@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
+  Autocomplete,
   Box,
   Breadcrumbs,
   Button,
+  Chip,
   CircularProgress,
   Divider,
   Link as MuiLink,
@@ -14,6 +16,7 @@ import {
   Step,
   StepButton,
   Stepper,
+  TextField,
   Typography,
 } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
@@ -225,6 +228,8 @@ export function EngagementDetail() {
       <PhaseChecklist
         engagementId={id!}
         engagementType={engagement.data.engagement_type}
+        studentId={engagement.data.student?.id ?? null}
+        familyId={engagement.data.family.id}
         tasks={tasks.data ?? []}
         catalogPhases={catalog.data ?? []}
         loading={tasks.isPending || catalog.isPending}
@@ -605,6 +610,8 @@ function groupTasksByPhase(tasks: EngagementTask[]): Map<string | null, Engageme
 function PhaseChecklist({
   engagementId,
   engagementType,
+  studentId,
+  familyId,
   tasks,
   catalogPhases,
   loading,
@@ -613,6 +620,8 @@ function PhaseChecklist({
 }: {
   engagementId: string;
   engagementType: string;
+  studentId: string | null;
+  familyId: string;
   tasks: EngagementTask[];
   catalogPhases: CatalogPhase[];
   loading: boolean;
@@ -705,6 +714,8 @@ function PhaseChecklist({
           const total = phaseTasks.length;
           const done = phaseTasks.filter((t) => t.status === "completed").length;
           const na = phaseTasks.filter((t) => t.status === "not_applicable").length;
+          const isClientIntake =
+            phase?.scope === "assessment" && phase?.title === "Client Intake";
           return (
             <Box key={phaseId ?? "orphan"}>
               <Stack direction="row" alignItems="baseline" spacing={1} sx={{ mb: 1 }}>
@@ -716,17 +727,28 @@ function PhaseChecklist({
                   {na > 0 ? ` · ${na} N/A` : ""}
                 </Typography>
               </Stack>
-              <Stack spacing={0.5}>
-                {phaseTasks.map((task) => (
-                  <TaskRow
-                    key={task.id}
-                    task={task}
-                    onSetStatus={(status) =>
-                      setStatus.mutate({ id: task.id, status })
-                    }
-                  />
-                ))}
-              </Stack>
+              {isClientIntake && studentId ? (
+                <ClientIntakePanel
+                  studentId={studentId}
+                  familyId={familyId}
+                  phaseTasks={phaseTasks}
+                  onSetStatus={(taskId, status) =>
+                    setStatus.mutate({ id: taskId, status })
+                  }
+                />
+              ) : (
+                <Stack spacing={0.5}>
+                  {phaseTasks.map((task) => (
+                    <TaskRow
+                      key={task.id}
+                      task={task}
+                      onSetStatus={(status) =>
+                        setStatus.mutate({ id: task.id, status })
+                      }
+                    />
+                  ))}
+                </Stack>
+              )}
             </Box>
           );
         })}
@@ -906,6 +928,353 @@ function NoTasksState({
         {seed.isPending ? "Seeding…" : "Seed from catalog"}
       </Button>
     </Stack>
+  );
+}
+
+// ---- Client Intake panel ------------------------------------------------
+
+// Subset of /api/students/{id} we read for the intake review. Hand-typed
+// because the endpoint returns a plain dict, no OpenAPI response model.
+interface StudentIntake {
+  id: string;
+  name: string;
+  current_school_id: string | null;
+  current_grade: string | null;
+  needs_goals: string | null;
+  has_504: boolean;
+  has_iep: boolean;
+  has_learning_disability: boolean;
+  has_adhd: boolean;
+  has_intellectual_disability: boolean;
+  has_health_impairment: boolean;
+  has_emotional_disturbance: boolean;
+  autism_level: 1 | 2 | 3 | null;
+  diagnosis_other: string | null;
+  school: { id: string; name: string } | null;
+  primary_parent: { name: string; email: string | null; phone: string | null } | null;
+}
+
+interface SchoolOption {
+  id: string;
+  name: string;
+  location: string | null;
+}
+
+/** Render the four Client Intake tasks as inline data blocks. Each block
+ *  pulls from the student record, lets the user fill the gap, and ticks
+ *  its matching engagement_task green when the data is present. Auto-
+ *  completion only fires when the task is still `not_started` so the
+ *  user can park anything in blocked / N-A and we won't fight them. */
+function ClientIntakePanel({
+  studentId,
+  familyId,
+  phaseTasks,
+  onSetStatus,
+}: {
+  studentId: string;
+  familyId: string;
+  phaseTasks: EngagementTask[];
+  onSetStatus: (taskId: string, status: EngagementTask["status"]) => void;
+}) {
+  const qc = useQueryClient();
+  const snackbar = useSnackbar();
+
+  const student = useQuery<StudentIntake, Error>({
+    queryKey: ["students", studentId],
+    queryFn: async () => {
+      const { data, error } = await api.GET("/api/students/{student_id}", {
+        params: { path: { student_id: studentId } },
+      });
+      if (error || !data) throw new Error("Failed to load student.");
+      return data as unknown as StudentIntake;
+    },
+  });
+
+  const schools = useQuery<SchoolOption[], Error>({
+    queryKey: ["schools"],
+    queryFn: async () => {
+      const { data, error } = await api.GET("/api/schools", {});
+      if (error || !data) throw new Error("Failed to load schools.");
+      return data as unknown as SchoolOption[];
+    },
+  });
+
+  const patchStudent = useMutation({
+    mutationFn: async (body: Record<string, unknown>) => {
+      const { error } = await api.PATCH("/api/students/{student_id}", {
+        params: { path: { student_id: studentId } },
+        body: body as never,
+      });
+      if (error) {
+        const msg = (error as { detail?: string }).detail ?? "Save failed.";
+        throw new Error(msg);
+      }
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["students", studentId] }),
+    onError: (e: Error) => snackbar.show(e.message, "error"),
+  });
+
+  const tasks = useMemo(() => {
+    const byTitle: Record<string, EngagementTask | undefined> = {};
+    for (const t of phaseTasks) byTitle[t.title] = t;
+    return {
+      names: byTitle["Names and contact"],
+      school: byTitle["Current school"],
+      diagnoses: byTitle["Background diagnoses"],
+      needs: byTitle["Needs and goals"],
+    };
+  }, [phaseTasks]);
+
+  // Auto-complete tasks whose data is unambiguously present. Each guard
+  // checks `not_started` so blocked / N-A overrides aren't trampled.
+  useEffect(() => {
+    const s = student.data;
+    if (!s) return;
+    if (tasks.names && tasks.names.status === "not_started") {
+      onSetStatus(tasks.names.id, "completed");
+    }
+    if (
+      tasks.school &&
+      tasks.school.status === "not_started" &&
+      s.current_school_id
+    ) {
+      onSetStatus(tasks.school.id, "completed");
+    }
+    if (
+      tasks.needs &&
+      tasks.needs.status === "not_started" &&
+      (s.needs_goals ?? "").trim()
+    ) {
+      onSetStatus(tasks.needs.id, "completed");
+    }
+  }, [student.data, tasks, onSetStatus]);
+
+  if (student.isPending) {
+    return (
+      <Box sx={{ display: "flex", justifyContent: "center", py: 3 }}>
+        <CircularProgress size={20} />
+      </Box>
+    );
+  }
+  if (student.error || !student.data) {
+    return <Alert severity="error">{student.error?.message ?? "Student not found."}</Alert>;
+  }
+  const s = student.data;
+
+  return (
+    <Stack spacing={1.5}>
+      <IntakeBlock title="Names & contact" task={tasks.names} onSetStatus={onSetStatus}>
+        <Stack spacing={0.5}>
+          <Typography variant="body2">
+            <Box component="span" sx={{ color: "text.secondary", mr: 1 }}>Student:</Box>
+            <MuiLink component={RouterLink} to={`/students/${s.id}`} underline="hover">
+              {s.name}
+            </MuiLink>
+            {s.current_grade && (
+              <Box component="span" sx={{ color: "text.secondary", ml: 1, fontSize: 13 }}>
+                · Grade {s.current_grade}
+              </Box>
+            )}
+          </Typography>
+          {s.primary_parent ? (
+            <Typography variant="body2">
+              <Box component="span" sx={{ color: "text.secondary", mr: 1 }}>Primary parent:</Box>
+              {s.primary_parent.name}
+              {s.primary_parent.email && (
+                <Box component="span" sx={{ color: "text.secondary", ml: 1 }}>
+                  · {s.primary_parent.email}
+                </Box>
+              )}
+              {s.primary_parent.phone && (
+                <Box component="span" sx={{ color: "text.secondary", ml: 1 }}>
+                  · {s.primary_parent.phone}
+                </Box>
+              )}
+            </Typography>
+          ) : (
+            <Typography variant="body2" color="warning.main">
+              No primary parent on the family.{" "}
+              <MuiLink component={RouterLink} to={`/families/${familyId}`} underline="hover">
+                Add one
+              </MuiLink>
+              .
+            </Typography>
+          )}
+        </Stack>
+      </IntakeBlock>
+
+      <IntakeBlock title="Current school" task={tasks.school} onSetStatus={onSetStatus}>
+        <Autocomplete
+          size="small"
+          options={schools.data ?? []}
+          loading={schools.isPending}
+          getOptionLabel={(o) => o.name}
+          isOptionEqualToValue={(a, b) => a.id === b.id}
+          value={
+            s.current_school_id
+              ? (schools.data ?? []).find((o) => o.id === s.current_school_id) ?? null
+              : null
+          }
+          onChange={(_e, option) =>
+            patchStudent.mutate({ current_school_id: option?.id ?? null })
+          }
+          renderOption={(props, o) => (
+            <li {...props} key={o.id}>
+              <Stack>
+                <Box component="span">{o.name}</Box>
+                {o.location && (
+                  <Box component="span" sx={{ color: "text.secondary", fontSize: 12 }}>
+                    {o.location}
+                  </Box>
+                )}
+              </Stack>
+            </li>
+          )}
+          renderInput={(params) => (
+            <TextField {...params} placeholder="Select the student's current school" />
+          )}
+        />
+      </IntakeBlock>
+
+      <IntakeBlock title="Background diagnoses" task={tasks.diagnoses} onSetStatus={onSetStatus}>
+        <DiagnosisSummary student={s} />
+      </IntakeBlock>
+
+      <IntakeBlock title="Needs & goals" task={tasks.needs} onSetStatus={onSetStatus}>
+        <NeedsGoalsField
+          initial={s.needs_goals ?? ""}
+          onCommit={(v) => patchStudent.mutate({ needs_goals: v || null })}
+        />
+      </IntakeBlock>
+    </Stack>
+  );
+}
+
+/** Card-shaped wrapper for a single intake block: title on the left,
+ *  task status chip on the right (clickable to open the standard status
+ *  menu), free-form body content below. */
+function IntakeBlock({
+  title,
+  task,
+  onSetStatus,
+  children,
+}: {
+  title: string;
+  task: EngagementTask | undefined;
+  onSetStatus: (taskId: string, status: EngagementTask["status"]) => void;
+  children: React.ReactNode;
+}) {
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  return (
+    <Paper variant="outlined" sx={{ p: 2 }}>
+      <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb: 1 }}>
+        <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+          {title}
+        </Typography>
+        {task && (
+          <Box
+            component="button"
+            type="button"
+            onClick={(e) => setAnchor(e.currentTarget)}
+            sx={{ all: "unset", cursor: "pointer" }}
+          >
+            <StatusChip
+              size="small"
+              label={STATUS_LABELS[task.status]}
+              tone={STATUS_TONES[task.status]}
+              variant="outlined"
+              sx={{ cursor: "pointer" }}
+            />
+          </Box>
+        )}
+        {task && (
+          <Menu
+            anchorEl={anchor}
+            open={!!anchor}
+            onClose={() => setAnchor(null)}
+            anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+            transformOrigin={{ vertical: "top", horizontal: "right" }}
+          >
+            {(["not_started", "in_progress", "completed", "blocked", "not_applicable"] as const).map((st) => (
+              <MenuItem
+                key={st}
+                selected={task.status === st}
+                onClick={() => {
+                  onSetStatus(task.id, st);
+                  setAnchor(null);
+                }}
+              >
+                <Stack direction="row" spacing={1} alignItems="center">
+                  {STATUS_ICONS[st]}
+                  <Box component="span">{STATUS_LABELS[st]}</Box>
+                </Stack>
+              </MenuItem>
+            ))}
+          </Menu>
+        )}
+      </Stack>
+      {children}
+    </Paper>
+  );
+}
+
+function DiagnosisSummary({ student }: { student: StudentIntake }) {
+  const chips: string[] = [];
+  if (student.has_504) chips.push("504");
+  if (student.has_iep) chips.push("IEP");
+  if (student.has_learning_disability) chips.push("Learning disability");
+  if (student.autism_level != null) chips.push(`Autism Level ${student.autism_level}`);
+  if (student.has_adhd) chips.push("ADHD / ADD");
+  if (student.has_intellectual_disability) chips.push("Intellectual disability");
+  if (student.has_health_impairment) chips.push("Health impairment");
+  if (student.has_emotional_disturbance) chips.push("Emotional disturbance");
+  if (student.diagnosis_other) chips.push(`Other: ${student.diagnosis_other}`);
+  return (
+    <Stack spacing={1}>
+      {chips.length === 0 ? (
+        <Typography variant="body2" color="text.secondary">
+          None recorded yet.
+        </Typography>
+      ) : (
+        <Stack direction="row" spacing={0.5} flexWrap="wrap" sx={{ gap: 0.5 }}>
+          {chips.map((c) => (
+            <Chip key={c} size="small" label={c} variant="outlined" />
+          ))}
+        </Stack>
+      )}
+      <Typography variant="caption">
+        <MuiLink component={RouterLink} to={`/students/${student.id}`} underline="hover">
+          Edit on student page
+        </MuiLink>
+      </Typography>
+    </Stack>
+  );
+}
+
+function NeedsGoalsField({
+  initial,
+  onCommit,
+}: {
+  initial: string;
+  onCommit: (v: string) => void;
+}) {
+  const [value, setValue] = useState(initial);
+  useEffect(() => {
+    setValue(initial);
+  }, [initial]);
+  return (
+    <TextField
+      fullWidth
+      size="small"
+      multiline
+      minRows={3}
+      placeholder="What is this student working toward? Skills, accommodations, supports, fit factors."
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={() => {
+        if (value !== initial) onCommit(value);
+      }}
+    />
   );
 }
 
