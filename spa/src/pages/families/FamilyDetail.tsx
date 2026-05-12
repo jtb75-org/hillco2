@@ -15,23 +15,18 @@ import {
   Typography,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
-import EditIcon from "@mui/icons-material/Edit";
-import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import dayjs from "dayjs";
 import { Link as RouterLink, useNavigate, useParams } from "react-router-dom";
 
 import { api } from "../../api/client";
-import { CardActionsMenu } from "../../components/CardActionsMenu";
 
 import { NewEngagementDialog } from "./NewEngagementDialog";
-import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { PageHeader } from "../../components/PageHeader";
 import { SectionPanel } from "../../components/SectionPanel";
 
 import { AddParentDialog } from "./AddParentDialog";
 import { AddStudentDialog } from "./AddStudentDialog";
-import { EditStudentDialog } from "./EditStudentDialog";
 import { ParentDrawer } from "./ParentDrawer";
 
 // /api/families/{id} returns a plain dict in the route — its OpenAPI
@@ -290,25 +285,6 @@ function StudentsCard({
   onChanged: () => void;
 }) {
   const [addOpen, setAddOpen] = useState(false);
-  const [editing, setEditing] = useState<Student | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<Student | null>(null);
-
-  const remove = useMutation({
-    mutationFn: async (id: string) => {
-      const { error: respError } = await api.DELETE(
-        "/api/students/{student_id}",
-        { params: { path: { student_id: id } } },
-      );
-      if (respError) {
-        const msg = (respError as { detail?: string }).detail ?? "Failed.";
-        throw new Error(msg);
-      }
-    },
-    onSuccess: () => {
-      setConfirmDelete(null);
-      onChanged();
-    },
-  });
 
   return (
     <SectionPanel title="Students">
@@ -325,7 +301,6 @@ function StudentsCard({
                 variant="outlined"
                 sx={{
                   height: "100%",
-                  position: "relative",
                   transition: (t) => t.transitions.create(["border-color", "background-color"]),
                   "&:hover": { borderColor: "primary.light", bgcolor: "action.hover" },
                 }}
@@ -335,7 +310,7 @@ function StudentsCard({
                   to={`/students/${s.id}`}
                   sx={{ height: "100%" }}
                 >
-                  <CardContent sx={{ pr: 5 }}>
+                  <CardContent>
                     <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
                       {s.name}
                     </Typography>
@@ -347,21 +322,6 @@ function StudentsCard({
                     <StudentFlagChips student={s} />
                   </CardContent>
                 </CardActionArea>
-                <CardActionsMenu
-                  actions={[
-                    {
-                      label: "Edit details",
-                      icon: <EditIcon fontSize="small" />,
-                      onClick: () => setEditing(s),
-                    },
-                    {
-                      label: "Remove from family",
-                      icon: <DeleteOutlineIcon fontSize="small" />,
-                      variant: "danger",
-                      onClick: () => setConfirmDelete(s),
-                    },
-                  ]}
-                />
               </Card>
             </Grid>
           ))
@@ -377,22 +337,6 @@ function StudentsCard({
         familyId={familyId}
         onClose={() => setAddOpen(false)}
         onCreated={onChanged}
-      />
-      <EditStudentDialog
-        open={!!editing}
-        student={editing}
-        onClose={() => setEditing(null)}
-        onSaved={onChanged}
-      />
-      <ConfirmDialog
-        open={!!confirmDelete}
-        title={`Remove ${confirmDelete?.name ?? "student"}?`}
-        description="They'll be soft-deleted from the system. Engagements stay intact with their student id reference."
-        confirmLabel="Remove"
-        confirmColor="error"
-        pending={remove.isPending}
-        onClose={() => setConfirmDelete(null)}
-        onConfirm={() => confirmDelete && remove.mutate(confirmDelete.id)}
       />
       </Box>
     </SectionPanel>
