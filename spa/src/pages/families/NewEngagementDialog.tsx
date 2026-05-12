@@ -104,27 +104,26 @@ export function NewEngagementDialog({
 
       // Optional: seed the catalog into engagement_tasks. Two-step
       // because the catalog endpoint needs the engagement to exist
-      // first (it filters by engagement_type scopes).
+      // first (it filters by engagement_type scopes). The endpoint
+      // returns a list of phases, each with an embedded `items[]`,
+      // so flatten the nested items to get every service_item_id.
       if (seedFromCatalog) {
         const cat = await api.GET(
           "/api/engagements/{engagement_id}/catalog",
           { params: { path: { engagement_id: eng.id } } },
         );
-        if (cat.data) {
-          const items = (cat.data as unknown as {
-            service_items: Array<{ id: string }>;
-          }).service_items;
-          if (items.length > 0) {
-            await api.POST(
-              "/api/engagements/{engagement_id}/tasks/bulk-from-catalog",
-              {
-                params: { path: { engagement_id: eng.id } },
-                body: {
-                  service_item_ids: items.map((s) => s.id),
-                } as never,
-              },
-            );
-          }
+        const phases = (cat.data as unknown as Array<{
+          items?: Array<{ id: string }>;
+        }> | undefined) ?? [];
+        const itemIds = phases.flatMap((p) => (p.items ?? []).map((i) => i.id));
+        if (itemIds.length > 0) {
+          await api.POST(
+            "/api/engagements/{engagement_id}/tasks/bulk-from-catalog",
+            {
+              params: { path: { engagement_id: eng.id } },
+              body: { service_item_ids: itemIds } as never,
+            },
+          );
         }
       }
       return eng;

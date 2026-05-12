@@ -71,6 +71,13 @@ interface EngagementTask {
   sort_order: number;
 }
 
+interface CatalogServiceItem {
+  id: string;
+  phase_id: string;
+  title: string;
+  sort_order: number;
+}
+
 interface CatalogPhase {
   id: string;
   scope: string;
@@ -78,17 +85,12 @@ interface CatalogPhase {
   title: string;
   description: string | null;
   est_hours: string | null;
+  items: CatalogServiceItem[];
 }
 
-interface CatalogResponse {
-  phases: CatalogPhase[];
-  service_items: Array<{
-    id: string;
-    phase_id: string;
-    title: string;
-    sort_order: number;
-  }>;
-}
+// /api/engagements/{id}/catalog returns a flat list of phases each
+// with embedded service items, not a wrapper object.
+type CatalogResponse = CatalogPhase[];
 
 const STATUS_TONES: Record<EngagementTask["status"], "neutral" | "info" | "success" | "warning" | "danger"> = {
   not_started: "neutral",
@@ -191,7 +193,7 @@ export function EngagementDetail() {
         engagementId={id!}
         engagementType={engagement.data.engagement_type}
         tasks={tasks.data ?? []}
-        catalogPhases={catalog.data?.phases ?? []}
+        catalogPhases={catalog.data ?? []}
         loading={tasks.isPending || catalog.isPending}
       />
     </Stack>
@@ -529,9 +531,8 @@ function NoTasksState({
         { params: { path: { engagement_id: engagementId } } },
       );
       if (error || !data) throw new Error("Failed to load catalog.");
-      const itemIds = (data as unknown as CatalogResponse).service_items.map(
-        (s) => s.id,
-      );
+      const phases = data as unknown as CatalogResponse;
+      const itemIds = phases.flatMap((p) => (p.items ?? []).map((i) => i.id));
       if (itemIds.length === 0) return { created: 0 };
       const post = await api.POST(
         "/api/engagements/{engagement_id}/tasks/bulk-from-catalog",
