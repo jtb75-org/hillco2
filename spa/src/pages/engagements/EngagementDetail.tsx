@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Box,
@@ -128,6 +128,10 @@ type PhaseSelection = string | null | "all";
 export function EngagementDetail() {
   const { id } = useParams<{ id: string }>();
   const [selectedPhase, setSelectedPhase] = useState<PhaseSelection>("all");
+  // Auto-jump to the first phase with incomplete work once tasks +
+  // catalog have loaded. Guarded by a ref so a user who clicks "All
+  // phases" doesn't immediately get re-routed back to the next phase.
+  const autoSelectedRef = useRef(false);
 
   const engagement = useQuery<EngagementDetail, Error>({
     queryKey: ["engagements", id],
@@ -168,6 +172,16 @@ export function EngagementDetail() {
       return data as unknown as CatalogResponse;
     },
   });
+
+  useEffect(() => {
+    if (autoSelectedRef.current) return;
+    const t = tasks.data;
+    const c = catalog.data;
+    if (!t || !c || t.length === 0 || c.length === 0) return;
+    autoSelectedRef.current = true;
+    const next = firstIncompletePhaseId(c, t);
+    if (next) setSelectedPhase(next);
+  }, [tasks.data, catalog.data]);
 
   if (engagement.error) {
     return <Alert severity="error">{engagement.error.message}</Alert>;
@@ -555,6 +569,23 @@ function PhaseStepIcon({
       </Box>
     </Box>
   );
+}
+
+/** First catalog phase (in catalog order) that still has open tasks.
+ *  Phases with zero tasks or all tasks completed/N-A are skipped. */
+function firstIncompletePhaseId(
+  catalogPhases: CatalogPhase[],
+  tasks: EngagementTask[],
+): string | null {
+  for (const phase of catalogPhases) {
+    const phaseTasks = tasks.filter((t) => t.phase_id === phase.id);
+    if (phaseTasks.length === 0) continue;
+    const settled = phaseTasks.filter(
+      (t) => t.status === "completed" || t.status === "not_applicable",
+    ).length;
+    if (settled < phaseTasks.length) return phase.id;
+  }
+  return null;
 }
 
 function groupTasksByPhase(tasks: EngagementTask[]): Map<string | null, EngagementTask[]> {
