@@ -1027,6 +1027,9 @@ function ClientIntakePanel({
 
   // Auto-complete tasks whose data is unambiguously present. Each guard
   // checks `not_started` so blocked / N-A overrides aren't trampled.
+  // Background diagnoses is special: chips set => data present, ticks
+  // green; no chips set is ambiguous (not reviewed vs. nothing applies)
+  // so the task stays manual in that case.
   useEffect(() => {
     const s = student.data;
     if (!s) return;
@@ -1046,6 +1049,13 @@ function ClientIntakePanel({
       (s.needs_goals ?? "").trim()
     ) {
       onSetStatus(tasks.needs.id, "completed");
+    }
+    if (
+      tasks.diagnoses &&
+      tasks.diagnoses.status === "not_started" &&
+      hasAnyDiagnosis(s)
+    ) {
+      onSetStatus(tasks.diagnoses.id, "completed");
     }
   }, [student.data, tasks, onSetStatus]);
 
@@ -1215,6 +1225,20 @@ function IntakeBlock({
       </Stack>
       {children}
     </Paper>
+  );
+}
+
+function hasAnyDiagnosis(s: StudentIntake): boolean {
+  return (
+    s.has_504 ||
+    s.has_iep ||
+    s.has_learning_disability ||
+    s.has_adhd ||
+    s.has_intellectual_disability ||
+    s.has_health_impairment ||
+    s.has_emotional_disturbance ||
+    s.autism_level != null ||
+    !!(s.diagnosis_other ?? "").trim()
   );
 }
 
