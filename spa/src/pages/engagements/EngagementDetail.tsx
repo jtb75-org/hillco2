@@ -15,9 +15,11 @@ import {
 } from "@mui/material";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import CircleOutlinedIcon from "@mui/icons-material/CircleOutlined";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import PauseCircleOutlineIcon from "@mui/icons-material/PauseCircleOutline";
 import PlayCircleOutlineIcon from "@mui/icons-material/PlayCircleOutline";
 import RemoveCircleOutlineIcon from "@mui/icons-material/RemoveCircleOutline";
+import ReplayIcon from "@mui/icons-material/Replay";
 import dayjs from "dayjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link as RouterLink, useNavigate, useParams } from "react-router-dom";
@@ -196,7 +198,117 @@ export function EngagementDetail() {
         catalogPhases={catalog.data ?? []}
         loading={tasks.isPending || catalog.isPending}
       />
+
+      <DangerZoneCard engagement={engagement.data} />
     </Stack>
+  );
+}
+
+function DangerZoneCard({ engagement }: { engagement: EngagementDetail }) {
+  const qc = useQueryClient();
+  const snackbar = useSnackbar();
+  const navigate = useNavigate();
+  const [confirming, setConfirming] = useState(false);
+
+  const setStatus = useMutation({
+    mutationFn: async (status: "in_progress" | "cancelled") => {
+      const { error } = await api.POST(
+        "/api/engagements/{engagement_id}/status",
+        {
+          params: { path: { engagement_id: engagement.id } },
+          body: { status } as never,
+        },
+      );
+      if (error) {
+        const msg = (error as { detail?: string }).detail ?? "Status update failed.";
+        throw new Error(msg);
+      }
+    },
+    onSuccess: (_d, status) => {
+      qc.invalidateQueries({ queryKey: ["engagements", engagement.id] });
+      qc.invalidateQueries({ queryKey: ["families", engagement.family.id] });
+      snackbar.show(status === "cancelled" ? "Engagement cancelled" : "Engagement reopened");
+    },
+    onError: (e: Error) => snackbar.show(e.message, "error"),
+  });
+
+  const remove = useMutation({
+    mutationFn: async () => {
+      const { error } = await api.DELETE(
+        "/api/engagements/{engagement_id}",
+        { params: { path: { engagement_id: engagement.id } } },
+      );
+      if (error) {
+        const msg = (error as { detail?: string }).detail ?? "Delete failed.";
+        throw new Error(msg);
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["families", engagement.family.id] });
+      snackbar.show("Engagement deleted");
+      navigate(`/families/${engagement.family.id}`);
+    },
+    onError: (e: Error) => snackbar.show(e.message, "error"),
+  });
+
+  const isCancelled = engagement.status === "cancelled";
+  return (
+    <Paper variant="outlined" sx={{ p: 2.5 }}>
+      <Typography variant="overline" color="error.main" sx={{ display: "block", mb: 1 }}>
+        Danger zone
+      </Typography>
+      <Divider sx={{ mb: 1.5 }} />
+      <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems="flex-start">
+        {isCancelled ? (
+          <Button
+            variant="outlined"
+            startIcon={<ReplayIcon />}
+            onClick={() => setStatus.mutate("in_progress")}
+            disabled={setStatus.isPending}
+          >
+            Reopen engagement
+          </Button>
+        ) : (
+          <Button
+            color="warning"
+            variant="outlined"
+            startIcon={<PauseCircleOutlineIcon />}
+            onClick={() => setStatus.mutate("cancelled")}
+            disabled={setStatus.isPending}
+          >
+            Cancel engagement
+          </Button>
+        )}
+        {!confirming ? (
+          <Button
+            color="error"
+            variant="outlined"
+            startIcon={<DeleteOutlineIcon />}
+            onClick={() => setConfirming(true)}
+          >
+            Delete engagement
+          </Button>
+        ) : (
+          <Stack spacing={1}>
+            <Typography variant="body2" color="text.secondary">
+              Soft-delete this engagement? It disappears from lists but the
+              underlying records (notes, time, invoices) stay intact.
+            </Typography>
+            <Stack direction="row" spacing={1}>
+              <Button
+                color="error"
+                variant="contained"
+                onClick={() => remove.mutate()}
+                disabled={remove.isPending}
+              >
+                Confirm delete
+              </Button>
+              <Button onClick={() => setConfirming(false)}>Cancel</Button>
+            </Stack>
+          </Stack>
+        )}
+      </Stack>
+    </Paper>
   );
 }
 
