@@ -6,6 +6,7 @@ import {
   Button,
   Chip,
   CircularProgress,
+  Divider,
   Grid,
   Link as MuiLink,
   MenuItem,
@@ -16,17 +17,22 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import dayjs from "dayjs";
-import { Link as RouterLink, useParams } from "react-router-dom";
+import { Link as RouterLink, useNavigate, useParams } from "react-router-dom";
 
 import { api } from "../../api/client";
+import { LabeledField } from "../../components/LabeledField";
+import { useSnackbar } from "../../components/Snackbar";
 
 // /api/students/{id} returns a plain dict — hand-typed here for the
 // fields we render. Documented in app/routes/students.py:student_detail.
 interface StudentDetail {
   id: string;
   name: string;
+  first_name: string;
+  last_name: string | null;
   dob: string | null;
   current_grade: string | null;
   current_school_id: string | null;
@@ -117,7 +123,7 @@ export function StudentDetail() {
         <Typography color="text.primary">{data.name}</Typography>
       </Breadcrumbs>
 
-      <HeaderStrip student={data} />
+      <HeaderStrip student={data} onPatch={(body) => patch.mutate(body)} />
       {patch.error && (
         <Alert severity="error" onClose={() => patch.reset()}>
           {patch.error.message}
@@ -125,22 +131,111 @@ export function StudentDetail() {
       )}
       <AtAGlanceCard student={data} onPatch={(body) => patch.mutate(body)} />
       <NeedsGoalsCard student={data} onPatch={(body) => patch.mutate(body)} />
+      <DangerZoneCard student={data} />
     </Stack>
   );
 }
 
-function HeaderStrip({ student }: { student: StudentDetail }) {
+function DangerZoneCard({ student }: { student: StudentDetail }) {
+  const snackbar = useSnackbar();
+  const navigate = useNavigate();
+  const [confirming, setConfirming] = useState(false);
+  const remove = useMutation({
+    mutationFn: async () => {
+      const { error: respError } = await api.DELETE(
+        "/api/students/{student_id}",
+        { params: { path: { student_id: student.id } } },
+      );
+      if (respError) {
+        const msg = (respError as { detail?: string }).detail ?? "Remove failed.";
+        throw new Error(msg);
+      }
+    },
+    onSuccess: () => {
+      snackbar.show(`${student.name} removed`);
+      navigate(student.family ? `/families/${student.family.id}` : "/families");
+    },
+    onError: (e: Error) => snackbar.show(e.message, "error"),
+  });
+  return (
+    <Paper variant="outlined" sx={{ p: 2.5 }}>
+      <Typography variant="overline" color="error.main" sx={{ display: "block", mb: 1 }}>
+        Danger zone
+      </Typography>
+      <Divider sx={{ mb: 1.5 }} />
+      {!confirming ? (
+        <Button
+          color="error"
+          variant="outlined"
+          startIcon={<DeleteOutlineIcon />}
+          onClick={() => setConfirming(true)}
+        >
+          Remove from family
+        </Button>
+      ) : (
+        <Stack spacing={1}>
+          <Typography variant="body2" color="text.secondary">
+            Soft-delete {student.name}? They'll disappear from the family
+            roster and contacts. Engagement history stays intact.
+          </Typography>
+          <Stack direction="row" spacing={1}>
+            <Button
+              color="error"
+              variant="contained"
+              onClick={() => remove.mutate()}
+              disabled={remove.isPending}
+            >
+              Confirm remove
+            </Button>
+            <Button onClick={() => setConfirming(false)}>Cancel</Button>
+          </Stack>
+        </Stack>
+      )}
+    </Paper>
+  );
+}
+
+function HeaderStrip({
+  student,
+  onPatch,
+}: {
+  student: StudentDetail;
+  onPatch: (body: Record<string, unknown>) => void;
+}) {
   const reach = student.primary_parent;
   return (
     <Paper variant="outlined" sx={{ p: 2.5 }}>
-      <Typography variant="h4" sx={{ fontWeight: 600, mb: 0.5 }}>
-        {student.name}
-      </Typography>
-      {student.current_grade && (
-        <Typography variant="caption" color="text.secondary">
-          Grade {student.current_grade}
-        </Typography>
-      )}
+      <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+        <Box sx={{ flex: 1 }}>
+          <LabeledField label="First name" required>
+            <NameField
+              initial={student.first_name}
+              onCommit={(v) =>
+                v.trim() && onPatch({ first_name: v.trim() })
+              }
+            />
+          </LabeledField>
+        </Box>
+        <Box sx={{ flex: 1 }}>
+          <LabeledField label="Last name" required>
+            <NameField
+              initial={student.last_name ?? ""}
+              onCommit={(v) =>
+                v.trim() && onPatch({ last_name: v.trim() })
+              }
+            />
+          </LabeledField>
+        </Box>
+        <Box sx={{ width: { xs: "100%", sm: 140 } }}>
+          <LabeledField label="Grade">
+            <NameField
+              initial={student.current_grade ?? ""}
+              placeholder='e.g. "8th"'
+              onCommit={(v) => onPatch({ current_grade: v.trim() || null })}
+            />
+          </LabeledField>
+        </Box>
+      </Stack>
       <Box
         sx={{
           mt: 2,
@@ -178,6 +273,35 @@ function HeaderStrip({ student }: { student: StudentDetail }) {
         </Box>
       </Box>
     </Paper>
+  );
+}
+
+/** Save-on-blur text input used for the editable name and grade
+ *  fields in the header. */
+function NameField({
+  initial,
+  placeholder,
+  onCommit,
+}: {
+  initial: string;
+  placeholder?: string;
+  onCommit: (v: string) => void;
+}) {
+  const [value, setValue] = useState(initial);
+  useEffect(() => {
+    setValue(initial);
+  }, [initial]);
+  return (
+    <TextField
+      fullWidth
+      size="small"
+      placeholder={placeholder}
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={() => {
+        if (value !== initial) onCommit(value);
+      }}
+    />
   );
 }
 

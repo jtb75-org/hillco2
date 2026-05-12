@@ -103,6 +103,7 @@ _LEGACY_SHAPE_SELECT = """
         CASE WHEN p.last_name IS NOT NULL AND p.last_name <> ''
              THEN ' ' || p.last_name ELSE '' END
       )                                       AS name,
+      p.first_name, p.last_name,
       p.birthday                              AS dob,
       sd.current_school_id, sd.current_grade,
       sd.autism_level,
