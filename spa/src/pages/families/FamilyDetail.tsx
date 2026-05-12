@@ -211,15 +211,10 @@ function ParentsCard({
                       sx={{ height: "100%" }}
                     >
                       <CardContent>
-                        <Stack direction="row" alignItems="baseline" spacing={1} sx={{ mb: 0.5 }}>
-                          <Typography variant="subtitle1" sx={{ fontWeight: 600, flex: 1 }}>
-                            {p.name}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            {p.role}
-                          </Typography>
-                        </Stack>
-                        <Stack direction="row" spacing={0.5} sx={{ mb: 1 }}>
+                        {/* Trimmed per design: chips on top, then
+                            name, email, phone. Address + billing
+                            override live on the drawer. */}
+                        <Stack direction="row" spacing={0.5} sx={{ mb: 1, minHeight: 24 }}>
                           {p.id === primaryId && (
                             <Chip size="small" label="primary" color="primary" variant="outlined" />
                           )}
@@ -227,6 +222,9 @@ function ParentsCard({
                             <Chip size="small" label="billing" color="success" variant="outlined" />
                           )}
                         </Stack>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                          {p.name}
+                        </Typography>
                         {p.email && (
                           <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
                             {p.email}
@@ -236,36 +234,6 @@ function ParentsCard({
                           <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
                             {p.phone}
                           </Typography>
-                        )}
-                        {p.mailing_address && (
-                          <Typography
-                            variant="caption"
-                            color="text.secondary"
-                            sx={{ display: "block", whiteSpace: "pre-line", mt: 0.75 }}
-                          >
-                            {p.mailing_address}
-                          </Typography>
-                        )}
-                        {isBilling && (p.billing_address || p.billing_attention_to) && (
-                          <Box sx={{ mt: 0.75, pt: 0.75, borderTop: 1, borderColor: "divider" }}>
-                            <Typography variant="caption" color="text.secondary" sx={{ fontStyle: "italic" }}>
-                              Billing override:
-                            </Typography>
-                            {p.billing_attention_to && (
-                              <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-                                Attn: {p.billing_attention_to}
-                              </Typography>
-                            )}
-                            {p.billing_address && (
-                              <Typography
-                                variant="caption"
-                                color="text.secondary"
-                                sx={{ display: "block", whiteSpace: "pre-line" }}
-                              >
-                                {p.billing_address}
-                              </Typography>
-                            )}
-                          </Box>
                         )}
                       </CardContent>
                     </CardActionArea>
