@@ -11,8 +11,13 @@ import {
   MenuItem,
   Paper,
   Stack,
+  Step,
+  StepButton,
+  Stepper,
   Typography,
 } from "@mui/material";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import CircleOutlinedIcon from "@mui/icons-material/CircleOutlined";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
@@ -116,8 +121,13 @@ const STATUS_ICONS: Record<EngagementTask["status"], React.ReactNode> = {
   not_applicable: <RemoveCircleOutlineIcon fontSize="small" />,
 };
 
+// Stepper selection: "all" shows every phase; a phase UUID or null
+// (the orphan / "Other tasks" bucket) filters the checklist down.
+type PhaseSelection = string | null | "all";
+
 export function EngagementDetail() {
   const { id } = useParams<{ id: string }>();
+  const [selectedPhase, setSelectedPhase] = useState<PhaseSelection>("all");
 
   const engagement = useQuery<EngagementDetail, Error>({
     queryKey: ["engagements", id],
@@ -191,12 +201,21 @@ export function EngagementDetail() {
 
       <HeaderStrip engagement={engagement.data} />
 
+      <PhaseStepper
+        catalogPhases={catalog.data ?? []}
+        tasks={tasks.data ?? []}
+        selected={selectedPhase}
+        onSelect={setSelectedPhase}
+      />
+
       <PhaseChecklist
         engagementId={id!}
         engagementType={engagement.data.engagement_type}
         tasks={tasks.data ?? []}
         catalogPhases={catalog.data ?? []}
         loading={tasks.isPending || catalog.isPending}
+        selectedPhase={selectedPhase}
+        onClearFilter={() => setSelectedPhase("all")}
       />
 
       <DangerZoneCard engagement={engagement.data} />
@@ -390,37 +409,191 @@ function HeaderStrip({ engagement }: { engagement: EngagementDetail }) {
   );
 }
 
+function PhaseStepper({
+  catalogPhases,
+  tasks,
+  selected,
+  onSelect,
+}: {
+  catalogPhases: CatalogPhase[];
+  tasks: EngagementTask[];
+  selected: PhaseSelection;
+  onSelect: (s: PhaseSelection) => void;
+}) {
+  const byPhase = useMemo(() => groupTasksByPhase(tasks), [tasks]);
+
+  // One step per catalog phase, plus an "Other tasks" step iff there
+  // are orphan (no phase_id) tasks. Stepper is intentionally hidden
+  // until tasks have been seeded — there's nothing to summarize yet.
+  const steps: Array<{ id: string | null; title: string }> = catalogPhases.map((p) => ({
+    id: p.id,
+    title: p.title,
+  }));
+  if ((byPhase.get(null)?.length ?? 0) > 0) {
+    steps.push({ id: null, title: "Other tasks" });
+  }
+  if (steps.length === 0) return null;
+
+  return (
+    <Paper variant="outlined" sx={{ p: 2 }}>
+      <Stepper nonLinear alternativeLabel sx={{ "& .MuiStepConnector-line": { mt: 1 } }}>
+        {steps.map((s) => {
+          const phaseTasks = byPhase.get(s.id) ?? [];
+          const total = phaseTasks.length;
+          const done = phaseTasks.filter((t) => t.status === "completed").length;
+          const na = phaseTasks.filter((t) => t.status === "not_applicable").length;
+          const isComplete = total > 0 && done + na === total;
+          const isActive = selected === s.id;
+          const eff = Math.max(total - na, 0);
+          return (
+            <Step key={s.id ?? "orphan"} completed={isComplete} active={isActive}>
+              <StepButton
+                onClick={() => onSelect(isActive ? "all" : s.id)}
+                icon={
+                  <PhaseStepIcon
+                    done={done}
+                    total={total}
+                    na={na}
+                    active={isActive}
+                    completed={isComplete}
+                  />
+                }
+              >
+                <Stack alignItems="center" spacing={0.25}>
+                  <Typography variant="body2" sx={{ fontWeight: isActive ? 600 : 500 }}>
+                    {s.title}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {total === 0
+                      ? "no tasks"
+                      : `${done} / ${eff} complete${na > 0 ? ` · ${na} N/A` : ""}`}
+                  </Typography>
+                </Stack>
+              </StepButton>
+            </Step>
+          );
+        })}
+      </Stepper>
+    </Paper>
+  );
+}
+
+function PhaseStepIcon({
+  done,
+  total,
+  na,
+  active,
+  completed,
+}: {
+  done: number;
+  total: number;
+  na: number;
+  active: boolean;
+  completed: boolean;
+}) {
+  if (completed) {
+    return (
+      <CheckCircleIcon
+        sx={{ fontSize: 32, color: active ? "primary.main" : "success.main" }}
+      />
+    );
+  }
+  if (total === 0) {
+    return (
+      <Box
+        sx={{
+          width: 32,
+          height: 32,
+          borderRadius: "50%",
+          border: 2,
+          borderColor: active ? "primary.main" : "divider",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "text.disabled",
+        }}
+      >
+        <Typography variant="caption" sx={{ fontSize: 11 }}>
+          —
+        </Typography>
+      </Box>
+    );
+  }
+  const eff = Math.max(total - na, 0);
+  const pct = eff > 0 ? (done / eff) * 100 : 0;
+  return (
+    <Box sx={{ position: "relative", display: "inline-flex", width: 32, height: 32 }}>
+      <CircularProgress
+        variant="determinate"
+        value={100}
+        size={32}
+        thickness={4}
+        sx={{ color: "action.disabledBackground", position: "absolute" }}
+      />
+      <CircularProgress
+        variant="determinate"
+        value={pct}
+        size={32}
+        thickness={4}
+        sx={{ color: active ? "primary.main" : "primary.light" }}
+      />
+      <Box
+        sx={{
+          position: "absolute",
+          inset: 0,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Typography
+          variant="caption"
+          sx={{ fontSize: 11, fontWeight: 600, color: active ? "primary.main" : "text.primary" }}
+        >
+          {done}
+        </Typography>
+      </Box>
+    </Box>
+  );
+}
+
+function groupTasksByPhase(tasks: EngagementTask[]): Map<string | null, EngagementTask[]> {
+  const groups = new Map<string | null, EngagementTask[]>();
+  for (const t of tasks) {
+    const key = t.phase_id ?? null;
+    const arr = groups.get(key) ?? [];
+    arr.push(t);
+    groups.set(key, arr);
+  }
+  for (const arr of groups.values()) {
+    arr.sort((a, b) => a.sort_order - b.sort_order);
+  }
+  return groups;
+}
+
 function PhaseChecklist({
   engagementId,
   engagementType,
   tasks,
   catalogPhases,
   loading,
+  selectedPhase,
+  onClearFilter,
 }: {
   engagementId: string;
   engagementType: string;
   tasks: EngagementTask[];
   catalogPhases: CatalogPhase[];
   loading: boolean;
+  selectedPhase: PhaseSelection;
+  onClearFilter: () => void;
 }) {
   const qc = useQueryClient();
   const snackbar = useSnackbar();
 
   // Group tasks by phase_id. Tasks without a phase land in an "Other"
   // bucket so the operator can still see them.
-  const byPhase = useMemo(() => {
-    const groups = new Map<string | null, EngagementTask[]>();
-    for (const t of tasks) {
-      const key = t.phase_id ?? null;
-      const arr = groups.get(key) ?? [];
-      arr.push(t);
-      groups.set(key, arr);
-    }
-    for (const arr of groups.values()) {
-      arr.sort((a, b) => a.sort_order - b.sort_order);
-    }
-    return groups;
-  }, [tasks]);
+  const byPhase = useMemo(() => groupTasksByPhase(tasks), [tasks]);
 
   const setStatus = useMutation({
     mutationFn: async (args: { id: string; status: EngagementTask["status"] }) => {
@@ -468,15 +641,32 @@ function PhaseChecklist({
     if (b === null) return -1;
     return (phaseOrder.get(a) ?? 999) - (phaseOrder.get(b) ?? 999);
   });
+  const visiblePhaseIds =
+    selectedPhase === "all"
+      ? orderedPhaseIds
+      : orderedPhaseIds.filter((p) => p === selectedPhase);
+  const filtered = selectedPhase !== "all";
 
   return (
     <Paper variant="outlined" sx={{ p: 3 }}>
-      <Typography variant="overline" color="text.secondary" sx={{ display: "block", mb: 1 }}>
-        Phases &amp; tasks
-      </Typography>
+      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+        <Typography variant="overline" color="text.secondary">
+          Phases &amp; tasks
+        </Typography>
+        {filtered && (
+          <Button size="small" startIcon={<ArrowBackIcon />} onClick={onClearFilter}>
+            All phases
+          </Button>
+        )}
+      </Stack>
       <Divider sx={{ mb: 2 }} />
       <Stack spacing={3}>
-        {orderedPhaseIds.map((phaseId) => {
+        {visiblePhaseIds.length === 0 && (
+          <Typography variant="body2" color="text.disabled">
+            No tasks in this phase yet.
+          </Typography>
+        )}
+        {visiblePhaseIds.map((phaseId) => {
           const phase = phaseId
             ? catalogPhases.find((p) => p.id === phaseId)
             : null;
