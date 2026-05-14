@@ -81,6 +81,14 @@ interface StudentRow {
   name: string;
   dob: string | null;
   current_grade: string | null;
+  has_504?: boolean;
+  has_iep?: boolean;
+  has_learning_disability?: boolean;
+  has_adhd?: boolean;
+  has_intellectual_disability?: boolean;
+  has_health_impairment?: boolean;
+  has_emotional_disturbance?: boolean;
+  autism_level?: number | null;
 }
 
 interface FamilyDetail {
@@ -978,25 +986,13 @@ function StudentsSection({
             No students on file yet.
           </Typography>
         ) : (
-          <Stack divider={<Divider flexItem />} spacing={0}>
+          <Grid container spacing={2}>
             {students.map((s) => (
-              <Stack key={s.id} direction="row" alignItems="center" spacing={1} sx={{ py: 1 }}>
-                <Box sx={{ flex: 1, minWidth: 0 }}>
-                  <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                    {s.name || "(no name)"}
-                  </Typography>
-                  <Stack direction="row" spacing={1.5} sx={{ color: "text.secondary", fontSize: 12 }}>
-                    {s.current_grade && (
-                      <Box component="span">Grade {s.current_grade}</Box>
-                    )}
-                    {s.dob && (
-                      <Box component="span">DOB {dayjs(s.dob).format("MMM D, YYYY")}</Box>
-                    )}
-                  </Stack>
-                </Box>
-              </Stack>
+              <Grid key={s.id} item xs={12} md={6}>
+                <StudentCard student={s} />
+              </Grid>
             ))}
-          </Stack>
+          </Grid>
         )}
 
         <AddStudentDialog
@@ -1013,6 +1009,67 @@ function StudentsSection({
         />
       </AccordionDetails>
     </Accordion>
+  );
+}
+
+/** Single student as a clickable card. Surfaces the basics the
+ *  consultant uses at a glance (name, grade, DOB) plus a row of
+ *  diagnosis chips when any flags are set. Click navigates to the
+ *  student detail page for full editing — that page already owns
+ *  every clinical field, so no inline drawer needed yet. */
+function StudentCard({ student }: { student: StudentRow }) {
+  const chips: string[] = [];
+  if (student.has_504) chips.push("504");
+  if (student.has_iep) chips.push("IEP");
+  if (student.has_learning_disability) chips.push("LD");
+  if (student.autism_level != null) chips.push(`Autism ${student.autism_level}`);
+  if (student.has_adhd) chips.push("ADHD");
+  if (student.has_intellectual_disability) chips.push("Intellectual");
+  if (student.has_health_impairment) chips.push("Health");
+  if (student.has_emotional_disturbance) chips.push("Emotional");
+
+  return (
+    <Card
+      variant="outlined"
+      sx={{
+        height: "100%",
+        transition: (t) => t.transitions.create(["border-color", "background-color"]),
+        "&:hover": { borderColor: "primary.light", bgcolor: "action.hover" },
+      }}
+    >
+      <CardActionArea
+        component={RouterLink}
+        to={`/students/${student.id}`}
+        sx={{ height: "100%" }}
+      >
+        <CardContent>
+          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+            {student.name || "(no name)"}
+          </Typography>
+          <Stack
+            direction="row"
+            spacing={1.5}
+            sx={{ color: "text.secondary", fontSize: 12, mt: 0.25 }}
+          >
+            {student.current_grade && (
+              <Box component="span">Grade {student.current_grade}</Box>
+            )}
+            {student.dob && (
+              <Box component="span">
+                DOB {dayjs(student.dob).format("MMM D, YYYY")}
+              </Box>
+            )}
+          </Stack>
+          {chips.length > 0 && (
+            <Stack direction="row" spacing={0.5} flexWrap="wrap" sx={{ mt: 1, gap: 0.5 }}>
+              {chips.map((c) => (
+                <Chip key={c} size="small" label={c} variant="outlined" />
+              ))}
+            </Stack>
+          )}
+        </CardContent>
+      </CardActionArea>
+    </Card>
   );
 }
 
