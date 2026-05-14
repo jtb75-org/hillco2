@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Alert,
   Button,
@@ -23,14 +23,35 @@ export function AddFamilyDialog({
   open,
   onClose,
   onCreated,
+  initialHouseholdName,
+  navigateOnSuccess = true,
 }: {
   open: boolean;
   onClose: () => void;
-  onCreated: () => void;
+  // Called with the created family's id. Existing callers (FamiliesList)
+  // pass a refetch fn that ignores the arg; that still works.
+  onCreated: (id: string) => void;
+  // Prefill for inline create flows (intake form types a name, doesn't
+  // find a match, hits "Add"). Reset back to this each time the dialog
+  // opens.
+  initialHouseholdName?: string;
+  // Default keeps the FamiliesList behavior: after creating, route to
+  // the new family's detail page. Intake-form flow disables this so the
+  // user stays on the form with the new family selected.
+  navigateOnSuccess?: boolean;
 }) {
   const navigate = useNavigate();
-  const [householdName, setHouseholdName] = useState("");
+  const [householdName, setHouseholdName] = useState(initialHouseholdName ?? "");
   const [notes, setNotes] = useState("");
+
+  // Re-seed local state whenever the dialog opens, so a second use
+  // with a different prefill doesn't show the previous value.
+  useEffect(() => {
+    if (open) {
+      setHouseholdName(initialHouseholdName ?? "");
+      setNotes("");
+    }
+  }, [open, initialHouseholdName]);
 
   const create = useMutation({
     mutationFn: async (body: FamilyCreate) => {
@@ -44,13 +65,12 @@ export function AddFamilyDialog({
       return data as { id: string };
     },
     onSuccess: (created) => {
-      onCreated();
+      onCreated(created.id);
       reset();
       onClose();
-      // Drop the user straight into the new family's detail page so the
-      // next thing they want to do — add a parent and a student — is
-      // one click away.
-      navigate(`/families/${created.id}`);
+      if (navigateOnSuccess) {
+        navigate(`/families/${created.id}`);
+      }
     },
   });
 
