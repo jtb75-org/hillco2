@@ -2932,7 +2932,7 @@
           "engagement_tasks"
         ],
         "summary": "Applicable Catalog",
-        "description": "Phases + service items applicable to this engagement's type, used\nby the SPA's \"seed the plan\" UI. assessment engagements see scope =\n'assessment' phases; full_placement engagements see both scopes.",
+        "description": "Phases + service items applicable to this engagement's type. The\nSPA's \"seed the plan\" UI calls this; only items whose\nservice_item_engagement_types row matches the engagement's type\nare returned, and a phase is only included if it has at least one\nsuch item.",
         "operationId": "applicable_catalog_api_engagements__engagement_id__catalog_get",
         "parameters": [
           {
@@ -3226,6 +3226,212 @@
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/engagement-types": {
+      "get": {
+        "tags": [
+          "engagement-types"
+        ],
+        "summary": "List Types",
+        "operationId": "list_types_api_engagement_types_get",
+        "parameters": [
+          {
+            "name": "include_deleted",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include Deleted"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "engagement-types"
+        ],
+        "summary": "Create Type",
+        "operationId": "create_type_api_engagement_types_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EngagementTypeCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/engagement-types/{type_id}": {
+      "patch": {
+        "tags": [
+          "engagement-types"
+        ],
+        "summary": "Update Type",
+        "operationId": "update_type_api_engagement_types__type_id__patch",
+        "parameters": [
+          {
+            "name": "type_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Type Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EngagementTypeUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "engagement-types"
+        ],
+        "summary": "Soft Delete Type",
+        "description": "Soft delete only. Hard-deleting a type that's still referenced\nby an engagement would violate the FK (ON DELETE RESTRICT).",
+        "operationId": "soft_delete_type_api_engagement_types__type_id__delete",
+        "parameters": [
+          {
+            "name": "type_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Type Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/engagement-types/{type_id}/restore": {
+      "post": {
+        "tags": [
+          "engagement-types"
+        ],
+        "summary": "Restore Type",
+        "description": "Undo a soft delete. No-op if the type is already live.",
+        "operationId": "restore_type_api_engagement_types__type_id__restore_post",
+        "parameters": [
+          {
+            "name": "type_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Type Id"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -7195,10 +7401,6 @@
           },
           "engagement_type": {
             "type": "string",
-            "enum": [
-              "assessment",
-              "full_placement"
-            ],
             "title": "Engagement Type",
             "default": "assessment"
           },
@@ -7271,16 +7473,91 @@
         ],
         "title": "EngagementCreate"
       },
+      "EngagementTypeCreate": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Code"
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Label"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "sort_order": {
+            "type": "integer",
+            "title": "Sort Order",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "label"
+        ],
+        "title": "EngagementTypeCreate"
+      },
+      "EngagementTypeUpdate": {
+        "properties": {
+          "label": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "sort_order": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sort Order"
+          }
+        },
+        "type": "object",
+        "title": "EngagementTypeUpdate"
+      },
       "EngagementUpdate": {
         "properties": {
           "engagement_type": {
             "anyOf": [
               {
-                "type": "string",
-                "enum": [
-                  "assessment",
-                  "full_placement"
-                ]
+                "type": "string"
               },
               {
                 "type": "null"
@@ -7942,6 +8219,21 @@
               }
             ],
             "title": "Default Owner Role"
+          },
+          "engagement_type_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Engagement Type Ids"
           }
         },
         "type": "object",
@@ -8052,6 +8344,21 @@
               }
             ],
             "title": "Default Owner Role"
+          },
+          "engagement_type_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Engagement Type Ids"
           }
         },
         "type": "object",

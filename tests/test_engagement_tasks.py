@@ -1,8 +1,9 @@
 """Catalog scoping for engagement tasks: assessment engagements only see
-phases tagged 'assessment'; full_placement engagements see both scopes.
-The mapping is in app code (ENGAGEMENT_TYPE_SCOPES), not the DB, so a
-regression there silently shows the wrong tasks in the SPA's seed-plan
-picker."""
+items tagged with the 'assessment' engagement type; full_placement
+engagements see items tagged with the 'full_placement' type, which —
+by seed convention — covers both assessment- and placement-scope
+phases. The mapping lives in the service_item_engagement_types M2M as
+of migration 0003."""
 from uuid import uuid4
 
 
@@ -31,7 +32,7 @@ async def _make_engagement_of_type(db_pool, user_id, engagement_type: str):
                 """
                 INSERT INTO engagements (
                   family_id, student_id, engagement_type, status, lead_consultant_id
-                ) VALUES ($1, $2, $3::engagement_type, 'in_progress', $4)
+                ) VALUES ($1, $2, $3, 'in_progress', $4)
                 RETURNING id
                 """,
                 family_id, student_id, engagement_type, user_id,

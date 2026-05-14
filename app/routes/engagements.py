@@ -12,12 +12,27 @@ from ..db import get_conn
 router = APIRouter(prefix="/api", tags=["engagements"])
 
 
-EngagementType = Literal["assessment", "full_placement"]
+# engagement_type is now a free-form code that must resolve to an
+# `engagement_types(code)` row. Keep the field as plain str so the SPA
+# can add new types via /api/engagement-types without a code change.
+EngagementType = str
 EngagementStatus = Literal["in_progress", "on_hold", "completed", "cancelled"]
 StatusFilter = Literal["active", "completed", "cancelled", "all"]
 
 
 # ---- I/O models ------------------------------------------------------------
+
+async def _validate_engagement_type(conn, code: str) -> None:
+    """Reject codes that don't resolve to a live engagement_types row."""
+    if not await conn.fetchval(
+        "SELECT 1 FROM engagement_types WHERE code = $1 AND deleted_at IS NULL",
+        code,
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown engagement_type '{code}'.",
+        )
+
 
 class EngagementCreate(BaseModel):
     student_id: UUID
@@ -164,6 +179,7 @@ async def create_engagement(
         raise HTTPException(status_code=404, detail="Family not found")
 
     await _validate_student_in_family(conn, body.student_id, family_id)
+    await _validate_engagement_type(conn, body.engagement_type)
 
     lead_id = body.lead_consultant_id or user["id"]
     notes = (body.notes or "").strip() or None
@@ -275,6 +291,8 @@ async def update_engagement(
     fields = body.model_dump(exclude_unset=True)
     if "student_id" in fields:
         await _validate_student_in_family(conn, fields["student_id"], eng["family_id"])
+    if "engagement_type" in fields:
+        await _validate_engagement_type(conn, fields["engagement_type"])
     if "notes" in fields:
         fields["notes"] = (fields["notes"] or "").strip() or None
 
