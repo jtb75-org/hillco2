@@ -17,6 +17,7 @@ import {
   Typography,
 } from "@mui/material";
 import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
+import AssignmentOutlinedIcon from "@mui/icons-material/AssignmentOutlined";
 import ContactsIcon from "@mui/icons-material/Contacts";
 import GroupsIcon from "@mui/icons-material/Groups";
 import HomeIcon from "@mui/icons-material/Home";
@@ -30,6 +31,7 @@ const DRAWER_WIDTH = 240;
 const NAV_ITEMS: ReadonlyArray<{ to: string; label: string; icon: JSX.Element }> = [
   { to: "/", label: "Home", icon: <HomeIcon /> },
   { to: "/families", label: "Families", icon: <GroupsIcon /> },
+  { to: "/engagements", label: "Engagements", icon: <AssignmentOutlinedIcon /> },
   { to: "/contacts", label: "Contacts", icon: <ContactsIcon /> },
   { to: "/admin", label: "Admin", icon: <AdminPanelSettingsIcon /> },
 ];

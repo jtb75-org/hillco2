@@ -135,9 +135,13 @@ async def list_engagements(
           e.id, e.engagement_type, e.status, e.start_date, e.target_end_date,
           e.default_hourly_rate,
           f.id AS family_id, f.household_name,
-          u.id AS lead_consultant_id, TRIM(BOTH ' ' FROM COALESCE(u.first_name,'') || CASE WHEN u.last_name IS NOT NULL AND u.last_name <> '' THEN ' ' || u.last_name ELSE '' END) AS lead_consultant_name
+          s.id AS student_id,
+          TRIM(BOTH ' ' FROM COALESCE(s.first_name,'') || CASE WHEN s.last_name IS NOT NULL AND s.last_name <> '' THEN ' ' || s.last_name ELSE '' END) AS student_name,
+          u.id AS lead_consultant_id,
+          TRIM(BOTH ' ' FROM COALESCE(u.first_name,'') || CASE WHEN u.last_name IS NOT NULL AND u.last_name <> '' THEN ' ' || u.last_name ELSE '' END) AS lead_consultant_name
         FROM engagements e
         JOIN families f ON f.id = e.family_id AND f.deleted_at IS NULL
+        LEFT JOIN people s ON s.id = e.student_id AND s.kind = 'student' AND s.deleted_at IS NULL
         LEFT JOIN people u ON u.id = e.lead_consultant_id
         WHERE e.deleted_at IS NULL {clause}
         ORDER BY e.start_date DESC NULLS LAST, e.id DESC
