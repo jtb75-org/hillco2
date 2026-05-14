@@ -13,6 +13,7 @@ import { FamiliesList } from "./pages/families/FamiliesList";
 import { FamilyDetail } from "./pages/families/FamilyDetail";
 import { EngagementDetail } from "./pages/engagements/EngagementDetail";
 import { EngagementsList } from "./pages/engagements/EngagementsList";
+import { CatalogPage } from "./pages/catalog/CatalogPage";
 import { IntakeWizard } from "./pages/intake/IntakeWizard";
 import { StudentDetail } from "./pages/students/StudentDetail";
 
@@ -62,6 +63,7 @@ export function App() {
             <Route path="/engagements/:id" element={<EngagementDetail />} />
             <Route path="/intake" element={<IntakeWizard />} />
             <Route path="/contacts" element={<ContactsList />} />
+            <Route path="/catalog" element={<CatalogPage />} />
             <Route path="/admin" element={<AdminLayout />}>
               <Route index element={<Navigate to="users" replace />} />
               <Route path="users" element={<AdminUsers />} />
