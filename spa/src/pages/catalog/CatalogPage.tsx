@@ -135,6 +135,12 @@ export function CatalogPage() {
     return m;
   }, [items.data]);
 
+  // Mutation-level onSuccess intentionally omitted: the reorder paths
+  // below batch many PATCHes via Promise.all + a single invalidate
+  // afterwards, and auto-invalidating per call would cause flicker
+  // from partial server states landing mid-batch. Single-field edits
+  // (chip toggle, inline rename, expand-field commit) pass their own
+  // per-call onSuccess invalidation at the use site.
   const patchPhase = useMutation({
     mutationFn: async (args: { id: string; body: Record<string, unknown> }) => {
       const { error } = await api.PATCH("/api/catalog/phases/{phase_id}", {
@@ -287,11 +293,28 @@ export function CatalogPage() {
                 items={itemsByPhase.get(phase.id) ?? []}
                 allPhaseIds={phases.data.map((p) => p.id)}
                 engagementTypes={liveTypes}
-                onPatchPhase={(body) => patchPhase.mutate({ id: phase.id, body })}
+                onPatchPhase={(body) =>
+                  // Per-call invalidation here (not at the mutation
+                  // level) so the reorder Promise.all below isn't
+                  // hammered with per-PATCH refetches mid-batch.
+                  patchPhase.mutate(
+                    { id: phase.id, body },
+                    {
+                      onSuccess: () =>
+                        qc.invalidateQueries({ queryKey: ["catalog", "phases"] }),
+                    },
+                  )
+                }
                 onDeletePhase={() => deletePhase.mutate(phase.id)}
                 onAddItem={() => setAddItemPhaseId(phase.id)}
                 onPatchItem={(itemId, body) =>
-                  patchItem.mutate({ id: itemId, body })
+                  patchItem.mutate(
+                    { id: itemId, body },
+                    {
+                      onSuccess: () =>
+                        qc.invalidateQueries({ queryKey: ["catalog", "items"] }),
+                    },
+                  )
                 }
                 onDeleteItem={(itemId) => deleteItem.mutate(itemId)}
                 onItemsReorder={async (newItems) => {
