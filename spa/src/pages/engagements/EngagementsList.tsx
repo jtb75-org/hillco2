@@ -220,9 +220,18 @@ export function EngagementsList() {
   );
 }
 
+interface FamilyPickerOption {
+  id: string;
+  household_name: string;
+  primary_parent_name: string | null;
+  student_names: string[];
+}
+
 // Tiny family-picker. Routing the user back to /families/:id and
 // letting FamilyDetail open its existing NewEngagementDialog avoids
-// duplicating the create flow on this page.
+// duplicating the create flow on this page. Each option renders a
+// secondary line with the primary guardian and student names so two
+// households with the same surname are distinguishable.
 function PickFamilyDialog({
   open,
   onClose,
@@ -232,7 +241,7 @@ function PickFamilyDialog({
   onClose: () => void;
   onPicked: (familyId: string) => void;
 }) {
-  const families = useQuery<Array<{ id: string; household_name: string }>, Error>({
+  const families = useQuery<FamilyPickerOption[], Error>({
     queryKey: ["families", "picker"],
     enabled: open,
     queryFn: async () => {
@@ -240,10 +249,10 @@ function PickFamilyDialog({
         params: { query: { include_archived: false } },
       });
       if (error || !data) throw new Error("families fetch failed");
-      return data as unknown as Array<{ id: string; household_name: string }>;
+      return data as unknown as FamilyPickerOption[];
     },
   });
-  const [picked, setPicked] = useState<{ id: string; household_name: string } | null>(null);
+  const [picked, setPicked] = useState<FamilyPickerOption | null>(null);
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>Start engagement</DialogTitle>
@@ -256,6 +265,40 @@ function PickFamilyDialog({
             onChange={(_e, v) => setPicked(v)}
             getOptionLabel={(o) => o.household_name}
             isOptionEqualToValue={(a, b) => a.id === b.id}
+            // Match on the rendered secondary line too so typing a
+            // student or guardian name narrows the list as expected.
+            filterOptions={(options, state) => {
+              const q = state.inputValue.trim().toLowerCase();
+              if (!q) return options;
+              return options.filter((o) => {
+                const hay = [
+                  o.household_name,
+                  o.primary_parent_name ?? "",
+                  ...o.student_names,
+                ]
+                  .join(" ")
+                  .toLowerCase();
+                return hay.includes(q);
+              });
+            }}
+            renderOption={(props, o) => (
+              <li {...props} key={o.id}>
+                <Stack spacing={0.25} sx={{ py: 0.25 }}>
+                  <Box component="span" sx={{ fontWeight: 500 }}>
+                    {o.household_name}
+                  </Box>
+                  <Box
+                    component="span"
+                    sx={{ color: "text.secondary", fontSize: 12 }}
+                  >
+                    {o.primary_parent_name
+                      ? `Primary: ${o.primary_parent_name}`
+                      : "No primary parent"}
+                    {o.student_names.length > 0 && ` · ${o.student_names.join(", ")}`}
+                  </Box>
+                </Stack>
+              </li>
+            )}
             renderInput={(params) => (
               <TextField {...params} label="Family" autoFocus />
             )}
