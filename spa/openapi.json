@@ -3455,6 +3455,24 @@
       }
     },
     "/api/intakes": {
+      "get": {
+        "tags": [
+          "intakes"
+        ],
+        "summary": "List Intakes",
+        "description": "All intakes across the practice, newest first. Includes the\nfamily household name and consultant display name so the SPA's\nlist view can render each row without per-row roundtrips.",
+        "operationId": "list_intakes_api_intakes_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
       "post": {
         "tags": [
           "intakes"

@@ -16,6 +16,7 @@ import { EngagementsList } from "./pages/engagements/EngagementsList";
 import { CatalogPage } from "./pages/catalog/CatalogPage";
 import { IntakeWizard } from "./pages/intake/IntakeWizard";
 import { IntakeForm } from "./pages/intake/IntakeForm";
+import { IntakesList } from "./pages/intake/IntakesList";
 import { StudentDetail } from "./pages/students/StudentDetail";
 
 function AuthGate({ children }: { children: React.ReactNode }) {
@@ -63,7 +64,8 @@ export function App() {
             <Route path="/engagements" element={<EngagementsList />} />
             <Route path="/engagements/:id" element={<EngagementDetail />} />
             <Route path="/intake" element={<IntakeWizard />} />
-            <Route path="/intake-form" element={<IntakeForm />} />
+            <Route path="/intakes" element={<IntakesList />} />
+            <Route path="/intakes/:id" element={<IntakeForm />} />
             <Route path="/contacts" element={<ContactsList />} />
             <Route path="/catalog" element={<CatalogPage />} />
             <Route path="/admin" element={<AdminLayout />}>
