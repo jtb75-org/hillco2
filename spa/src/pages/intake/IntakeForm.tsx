@@ -18,14 +18,21 @@ import {
   DialogTitle,
   Divider,
   Grid,
+  IconButton,
   Link as MuiLink,
+  ListItemIcon,
+  ListItemText,
+  Menu,
+  MenuItem,
   Paper,
   Stack,
   TextField,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
+import MoreVertIcon from "@mui/icons-material/MoreVert";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ReplayIcon from "@mui/icons-material/Replay";
@@ -90,6 +97,9 @@ export function IntakeForm() {
   const snackbar = useSnackbar();
   const navigate = useNavigate();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  // Anchor for the header's kebab menu. Single button replaces what
+  // were two separate header buttons (mark-complete/reopen + delete).
+  const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
 
   const intake = useQuery<Intake, Error>({
     queryKey: ["intakes", id],
@@ -229,35 +239,64 @@ export function IntakeForm() {
           </Breadcrumbs>
         }
         actions={
-          <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
-            {isComplete ? (
-              <Button
-                variant="outlined"
-                startIcon={<ReplayIcon />}
-                disabled={toggleComplete.isPending}
-                onClick={() => toggleComplete.mutate("reopen")}
+          <>
+            <Tooltip title="Intake actions">
+              <IconButton
+                onClick={(e) => setMenuAnchor(e.currentTarget)}
+                aria-label="Intake actions"
+                size="medium"
               >
-                Reopen
-              </Button>
-            ) : (
-              <Button
-                variant="contained"
-                startIcon={<CheckCircleOutlineIcon />}
-                disabled={toggleComplete.isPending}
-                onClick={() => toggleComplete.mutate("complete")}
-              >
-                Mark complete
-              </Button>
-            )}
-            <Button
-              color="error"
-              variant="outlined"
-              startIcon={<DeleteOutlineIcon />}
-              onClick={() => setConfirmingDelete(true)}
+                <MoreVertIcon />
+              </IconButton>
+            </Tooltip>
+            <Menu
+              anchorEl={menuAnchor}
+              open={!!menuAnchor}
+              onClose={() => setMenuAnchor(null)}
+              anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+              transformOrigin={{ vertical: "top", horizontal: "right" }}
             >
-              Delete
-            </Button>
-          </Stack>
+              {isComplete ? (
+                <MenuItem
+                  disabled={toggleComplete.isPending}
+                  onClick={() => {
+                    setMenuAnchor(null);
+                    toggleComplete.mutate("reopen");
+                  }}
+                >
+                  <ListItemIcon>
+                    <ReplayIcon fontSize="small" />
+                  </ListItemIcon>
+                  <ListItemText>Reopen</ListItemText>
+                </MenuItem>
+              ) : (
+                <MenuItem
+                  disabled={toggleComplete.isPending}
+                  onClick={() => {
+                    setMenuAnchor(null);
+                    toggleComplete.mutate("complete");
+                  }}
+                >
+                  <ListItemIcon>
+                    <CheckCircleOutlineIcon fontSize="small" />
+                  </ListItemIcon>
+                  <ListItemText>Mark complete</ListItemText>
+                </MenuItem>
+              )}
+              <MenuItem
+                onClick={() => {
+                  setMenuAnchor(null);
+                  setConfirmingDelete(true);
+                }}
+                sx={{ color: "error.main" }}
+              >
+                <ListItemIcon>
+                  <DeleteOutlineIcon fontSize="small" sx={{ color: "error.main" }} />
+                </ListItemIcon>
+                <ListItemText>Delete</ListItemText>
+              </MenuItem>
+            </Menu>
+          </>
         }
       />
 
