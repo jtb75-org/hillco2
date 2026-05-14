@@ -218,3 +218,27 @@ JOIN (VALUES
      1.5::numeric(5,2), TRUE, NULL, 'consultant'::owner_role)
 ) AS items(scope, phase_title, sort_order, title, description, est_hours, billable, deliverable, owner_role)
 ON cp.scope = items.scope::catalog_scope AND cp.title = items.phase_title;
+
+-- ============================================================
+-- Engagement-type memberships
+-- ============================================================
+-- Backfill the service_item_engagement_types M2M from the phase scope
+-- so the seeded catalog behaves like the pre-PR-A model: assessment
+-- items appear in BOTH engagement types (full_placement is a superset
+-- of assessment); placement items appear in full_placement only.
+INSERT INTO service_item_engagement_types (service_item_id, engagement_type_id)
+SELECT si.id, et.id
+  FROM service_items si
+  JOIN catalog_phases cp ON cp.id = si.phase_id
+  CROSS JOIN engagement_types et
+ WHERE cp.scope = 'assessment'
+   AND et.code IN ('assessment', 'full_placement')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO service_item_engagement_types (service_item_id, engagement_type_id)
+SELECT si.id, et.id
+  FROM service_items si
+  JOIN catalog_phases cp ON cp.id = si.phase_id
+  JOIN engagement_types et ON et.code = 'full_placement'
+ WHERE cp.scope = 'placement'
+ON CONFLICT DO NOTHING;

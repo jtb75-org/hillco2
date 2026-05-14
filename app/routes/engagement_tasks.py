@@ -15,14 +15,10 @@ TaskStatus = Literal[
 ]
 OwnerRole = Literal["consultant", "assistant", "both"]
 
-# engagement_type -> catalog_scope[] applicable to that engagement.
-# Captured here in app code rather than in the database (was the
-# service_item_engagement_types M2M in hillco-portal) so the mapping
-# evolves without schema churn.
-ENGAGEMENT_TYPE_SCOPES: dict[str, list[str]] = {
-    "assessment": ["assessment"],
-    "full_placement": ["assessment", "placement"],
-}
+# Engagement-type → service-item membership now lives in the database
+# (service_item_engagement_types M2M, see migration 0003). This module
+# JOINs through it; the old hardcoded ENGAGEMENT_TYPE_SCOPES dict is
+# gone now that types are user-managed.
 
 
 # ---- I/O models ------------------------------------------------------------
@@ -83,10 +79,6 @@ async def _task_or_404(conn, task_id: UUID):
     return row
 
 
-def _scopes_for(engagement_type: str) -> list[str]:
-    return ENGAGEMENT_TYPE_SCOPES.get(engagement_type, ["assessment"])
-
-
 # ---- Routes ----------------------------------------------------------------
 
 @router.get("/engagements/{engagement_id}/catalog")
@@ -95,48 +87,74 @@ async def applicable_catalog(
     _user=Depends(require_user),
     conn=Depends(get_conn),
 ):
-    """Phases + service items applicable to this engagement's type, used
-    by the SPA's "seed the plan" UI. assessment engagements see scope =
-    'assessment' phases; full_placement engagements see both scopes."""
+    """Phases + service items applicable to this engagement's type. The
+    SPA's "seed the plan" UI calls this; only items whose
+    service_item_engagement_types row matches the engagement's type
+    are returned, and a phase is only included if it has at least one
+    such item."""
     eng = await _engagement_or_404(conn, engagement_id)
-    scopes = _scopes_for(eng["engagement_type"])
 
-    phases = await conn.fetch(
-        """
-        SELECT id, scope, sort_order, title, description, est_hours,
-               default_billable
-        FROM catalog_phases
-        WHERE deleted_at IS NULL AND scope = ANY($1::catalog_scope[])
-        ORDER BY scope, sort_order, title
-        """,
-        scopes,
-    )
     items = await conn.fetch(
         """
         SELECT si.id, si.phase_id, si.title, si.description, si.sort_order,
                si.default_est_hours, si.default_billable,
-               si.default_deliverable, si.default_owner_role
+               si.default_deliverable, si.default_owner_role,
+               cp.scope, cp.sort_order AS phase_sort_order, cp.title AS phase_title
         FROM service_items si
-        JOIN catalog_phases cp ON cp.id = si.phase_id
+        JOIN service_item_engagement_types siet ON siet.service_item_id = si.id
+        JOIN engagement_types et
+          ON et.id = siet.engagement_type_id
+         AND et.deleted_at IS NULL
+        JOIN catalog_phases cp
+          ON cp.id = si.phase_id
+         AND cp.deleted_at IS NULL
         WHERE si.deleted_at IS NULL
-          AND cp.deleted_at IS NULL
-          AND cp.scope = ANY($1::catalog_scope[])
-        ORDER BY cp.scope, cp.sort_order, si.sort_order, si.title
+          AND et.code = $1
+        ORDER BY cp.sort_order, cp.title, si.sort_order, si.title
         """,
-        scopes,
+        eng["engagement_type"],
     )
 
-    items_by_phase: dict[UUID, list[dict]] = {}
+    # Build the phase wrappers in first-seen order so the response
+    # mirrors the SQL's catalog ordering.
+    phases_seen: dict[UUID, dict] = {}
     for it in items:
-        d = dict(it)
-        items_by_phase.setdefault(it["phase_id"], []).append(d)
+        phase_id = it["phase_id"]
+        if phase_id not in phases_seen:
+            phases_seen[phase_id] = {
+                "id": phase_id,
+                "scope": it["scope"],
+                "sort_order": it["phase_sort_order"],
+                "title": it["phase_title"],
+                "description": None,
+                "est_hours": None,
+                "default_billable": True,
+                "items": [],
+            }
+        item = dict(it)
+        for k in ("scope", "phase_sort_order", "phase_title"):
+            item.pop(k, None)
+        phases_seen[phase_id]["items"].append(item)
 
-    out = []
-    for ph in phases:
-        d = dict(ph)
-        d["items"] = items_by_phase.get(ph["id"], [])
-        out.append(d)
-    return out
+    # Top up phase metadata (description, est_hours, default_billable)
+    # for any phase that's in the result set. Single batched fetch.
+    if phases_seen:
+        meta = await conn.fetch(
+            """
+            SELECT id, description, est_hours, default_billable
+            FROM catalog_phases
+            WHERE id = ANY($1::uuid[])
+            """,
+            list(phases_seen.keys()),
+        )
+        for m in meta:
+            ph = phases_seen.get(m["id"])
+            if ph:
+                ph["description"] = m["description"]
+                ph["est_hours"] = m["est_hours"]
+                ph["default_billable"] = m["default_billable"]
+
+    return list(phases_seen.values())
 
 
 @router.get("/engagements/{engagement_id}/tasks")
@@ -220,7 +238,6 @@ async def bulk_from_catalog(
     per (engagement_id, service_item_id) — already-seeded items are skipped
     so calling this again to add newly-checked items is safe."""
     eng = await _engagement_or_404(conn, engagement_id)
-    scopes = _scopes_for(eng["engagement_type"])
 
     items = await conn.fetch(
         """
@@ -228,13 +245,18 @@ async def bulk_from_catalog(
                si.default_est_hours, si.default_billable,
                si.default_deliverable, si.default_owner_role
         FROM service_items si
-        JOIN catalog_phases cp ON cp.id = si.phase_id
+        JOIN service_item_engagement_types siet ON siet.service_item_id = si.id
+        JOIN engagement_types et
+          ON et.id = siet.engagement_type_id
+         AND et.deleted_at IS NULL
+        JOIN catalog_phases cp
+          ON cp.id = si.phase_id
+         AND cp.deleted_at IS NULL
         WHERE si.id = ANY($1::uuid[])
           AND si.deleted_at IS NULL
-          AND cp.deleted_at IS NULL
-          AND cp.scope = ANY($2::catalog_scope[])
+          AND et.code = $2
         """,
-        body.service_item_ids, scopes,
+        body.service_item_ids, eng["engagement_type"],
     )
 
     created_ids: list[UUID] = []

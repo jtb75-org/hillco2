@@ -19,6 +19,7 @@ from .routes import contacts as contacts_routes
 from .routes import dashboard as dashboard_routes
 from .routes import documents as documents_routes
 from .routes import engagement_tasks as engagement_tasks_routes
+from .routes import engagement_types as engagement_types_routes
 from .routes import engagements as engagements_routes
 from .routes import expenses as expenses_routes
 from .routes import families as families_routes
@@ -183,6 +184,7 @@ app.include_router(expenses_routes.router)
 app.include_router(school_visits_routes.router)
 app.include_router(recommendations_routes.router)
 app.include_router(engagement_tasks_routes.router)
+app.include_router(engagement_types_routes.router)
 app.include_router(learning_profiles_routes.router)
 app.include_router(learning_supports_routes.router)
 app.include_router(catalog_routes.router)

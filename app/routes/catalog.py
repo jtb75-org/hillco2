@@ -43,6 +43,9 @@ class ItemCreate(BaseModel):
     default_billable: bool = True
     default_deliverable: str | None = None
     default_owner_role: OwnerRole | None = None
+    # If omitted, the item gets no engagement-type membership and won't
+    # be seeded onto any engagement. SPA picker controls this.
+    engagement_type_ids: list[UUID] | None = None
 
 
 class ItemUpdate(BaseModel):
@@ -54,6 +57,10 @@ class ItemUpdate(BaseModel):
     default_billable: bool | None = None
     default_deliverable: str | None = None
     default_owner_role: OwnerRole | None = None
+    # Replaces the item's full engagement-type membership when present.
+    # Pass an empty list to clear it. Omit to leave existing memberships
+    # alone (so partial PATCHes don't accidentally wipe the M2M).
+    engagement_type_ids: list[UUID] | None = None
 
 
 # ---- Helpers ---------------------------------------------------------------
@@ -76,6 +83,46 @@ async def _item_or_404(conn, item_id: UUID):
     if not row:
         raise HTTPException(status_code=404, detail="Service item not found")
     return row
+
+
+async def _validate_engagement_type_ids(conn, ids: list[UUID]) -> None:
+    if not ids:
+        return
+    rows = await conn.fetch(
+        "SELECT id FROM engagement_types WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL",
+        ids,
+    )
+    found = {r["id"] for r in rows}
+    missing = [i for i in ids if i not in found]
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown engagement_type_ids: {missing}",
+        )
+
+
+async def _replace_item_memberships(conn, item_id: UUID, ids: list[UUID]) -> None:
+    await conn.execute(
+        "DELETE FROM service_item_engagement_types WHERE service_item_id = $1",
+        item_id,
+    )
+    if ids:
+        await conn.executemany(
+            """
+            INSERT INTO service_item_engagement_types (service_item_id, engagement_type_id)
+            VALUES ($1, $2)
+            ON CONFLICT DO NOTHING
+            """,
+            [(item_id, et_id) for et_id in ids],
+        )
+
+
+async def _fetch_item_memberships(conn, item_id: UUID) -> list[UUID]:
+    rows = await conn.fetch(
+        "SELECT engagement_type_id FROM service_item_engagement_types WHERE service_item_id = $1",
+        item_id,
+    )
+    return [r["engagement_type_id"] for r in rows]
 
 
 def _normalize_phase(fields: dict) -> dict:
@@ -166,12 +213,17 @@ async def get_phase(
     phase = await _phase_or_404(conn, phase_id)
     items = await conn.fetch(
         """
-        SELECT id, phase_id, sort_order, title, description,
-               default_est_hours, default_billable, default_deliverable,
-               default_owner_role, created_at, updated_at
-        FROM service_items
-        WHERE phase_id = $1 AND deleted_at IS NULL
-        ORDER BY sort_order, title
+        SELECT si.id, si.phase_id, si.sort_order, si.title, si.description,
+               si.default_est_hours, si.default_billable, si.default_deliverable,
+               si.default_owner_role, si.created_at, si.updated_at,
+               COALESCE((
+                 SELECT array_agg(siet.engagement_type_id)
+                 FROM service_item_engagement_types siet
+                 WHERE siet.service_item_id = si.id
+               ), ARRAY[]::uuid[]) AS engagement_type_ids
+        FROM service_items si
+        WHERE si.phase_id = $1 AND si.deleted_at IS NULL
+        ORDER BY si.sort_order, si.title
         """,
         phase_id,
     )
@@ -259,7 +311,12 @@ async def list_items(
                si.default_deliverable, si.default_owner_role,
                si.created_at, si.updated_at,
                cp.scope AS phase_scope, cp.title AS phase_title,
-               cp.sort_order AS phase_sort_order
+               cp.sort_order AS phase_sort_order,
+               COALESCE((
+                 SELECT array_agg(siet.engagement_type_id)
+                 FROM service_item_engagement_types siet
+                 WHERE siet.service_item_id = si.id
+               ), ARRAY[]::uuid[]) AS engagement_type_ids
         FROM service_items si
         JOIN catalog_phases cp ON cp.id = si.phase_id
         WHERE {" AND ".join(clauses)}
@@ -277,6 +334,8 @@ async def create_item(
     conn=Depends(get_conn),
 ):
     await _phase_or_404(conn, body.phase_id)
+    if body.engagement_type_ids:
+        await _validate_engagement_type_ids(conn, body.engagement_type_ids)
     title = body.title.strip()
     description = (body.description or "").strip() or None
     deliverable = (body.default_deliverable or "").strip() or None
@@ -293,7 +352,11 @@ async def create_item(
         body.default_est_hours, body.default_billable,
         deliverable, body.default_owner_role,
     )
-    return dict(row)
+    out = dict(row)
+    if body.engagement_type_ids:
+        await _replace_item_memberships(conn, out["id"], body.engagement_type_ids)
+    out["engagement_type_ids"] = list(body.engagement_type_ids or [])
+    return out
 
 
 @router.patch("/items/{item_id}")
@@ -305,7 +368,12 @@ async def update_item(
 ):
     await _item_or_404(conn, item_id)
     fields = _normalize_item(body.model_dump(exclude_unset=True))
-    if not fields:
+    # Pull engagement_type_ids out of the column-update path; it's
+    # stored in the M2M, not on service_items.
+    engagement_type_ids = fields.pop("engagement_type_ids", None)
+    if engagement_type_ids is not None:
+        await _validate_engagement_type_ids(conn, engagement_type_ids)
+    if not fields and engagement_type_ids is None:
         raise HTTPException(status_code=400, detail="No fields to update")
     if "phase_id" in fields and fields["phase_id"] is not None:
         if not await conn.fetchval(
@@ -314,21 +382,29 @@ async def update_item(
         ):
             raise HTTPException(status_code=400, detail="phase_id does not match an active phase")
 
-    set_sql_parts = []
-    values = []
-    for col, val in fields.items():
-        values.append(val)
-        if col == "default_owner_role":
-            set_sql_parts.append(f"default_owner_role = ${len(values)+1}::owner_role")
-        else:
-            set_sql_parts.append(f"{col} = ${len(values)+1}")
-    set_sql = ", ".join(set_sql_parts)
-    row = await conn.fetchrow(
-        f"UPDATE service_items SET {set_sql} WHERE id = $1 RETURNING *",
-        item_id,
-        *values,
-    )
-    return dict(row)
+    if fields:
+        set_sql_parts = []
+        values = []
+        for col, val in fields.items():
+            values.append(val)
+            if col == "default_owner_role":
+                set_sql_parts.append(f"default_owner_role = ${len(values)+1}::owner_role")
+            else:
+                set_sql_parts.append(f"{col} = ${len(values)+1}")
+        set_sql = ", ".join(set_sql_parts)
+        row = await conn.fetchrow(
+            f"UPDATE service_items SET {set_sql} WHERE id = $1 RETURNING *",
+            item_id,
+            *values,
+        )
+    else:
+        row = await conn.fetchrow("SELECT * FROM service_items WHERE id = $1", item_id)
+
+    if engagement_type_ids is not None:
+        await _replace_item_memberships(conn, item_id, engagement_type_ids)
+    out = dict(row)
+    out["engagement_type_ids"] = await _fetch_item_memberships(conn, item_id)
+    return out
 
 
 @router.delete("/items/{item_id}", status_code=204)
