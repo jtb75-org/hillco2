@@ -4,6 +4,7 @@ import {
   AccordionDetails,
   AccordionSummary,
   Alert,
+  Autocomplete,
   Box,
   Breadcrumbs,
   Button,
@@ -12,6 +13,7 @@ import {
   CardContent,
   Chip,
   CircularProgress,
+  createFilterOptions,
   Dialog,
   DialogActions,
   DialogContent,
@@ -568,6 +570,38 @@ function GuardianCard({
   );
 }
 
+interface GuardianPersonOption {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  phone: string | null;
+  family_id: string | null;
+  family_household_name: string | null;
+}
+
+type GuardianEntry =
+  | { kind: "person"; person: GuardianPersonOption }
+  | { kind: "add"; label: string };
+
+const filterGuardians = createFilterOptions<GuardianEntry>({
+  stringify: (entry) => {
+    if (entry.kind === "add") return entry.label;
+    const p = entry.person;
+    return [
+      p.first_name ?? "",
+      p.last_name ?? "",
+      p.email ?? "",
+      p.family_household_name ?? "",
+    ].join(" ");
+  },
+});
+
+/** Two-stage dialog. First, search for an existing guardian by name
+ *  or email — that's the common path when a parent has reached out
+ *  before. Picking a row links them to this family via person_id.
+ *  Falling back to "+ Add new" reveals the create form for a brand-
+ *  new person. */
 function AddGuardianDialog({
   open,
   familyId,
@@ -580,15 +614,62 @@ function AddGuardianDialog({
   onCreated: () => void;
 }) {
   const snackbar = useSnackbar();
+  const [search, setSearch] = useState("");
+  const [picked, setPicked] = useState<GuardianPersonOption | null>(null);
+  const [creating, setCreating] = useState(false);
+  // Form fields for the "+ Add new" path.
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
 
+  const people = useQuery<GuardianPersonOption[], Error>({
+    queryKey: ["people", "guardian", search],
+    enabled: open,
+    queryFn: async () => {
+      const { data, error } = await api.GET("/api/people", {
+        params: { query: { kind: "guardian", search } },
+      });
+      if (error || !data) throw new Error("Failed to load guardians.");
+      return data as unknown as GuardianPersonOption[];
+    },
+  });
+
+  // Hide guardians that already belong to THIS family — they can't be
+  // linked twice (the backend would 409). Surfacing them in the
+  // search results would just look broken.
+  const baseOptions: GuardianEntry[] = (people.data ?? [])
+    .filter((p) => p.family_id !== familyId)
+    .map((p) => ({ kind: "person", person: p }));
+
+  const link = useMutation({
+    mutationFn: async (personId: string) => {
+      if (!familyId) throw new Error("No family selected.");
+      const { error } = await api.POST(
+        "/api/families/{family_id}/parents",
+        {
+          params: { path: { family_id: familyId } },
+          body: { person_id: personId } as never,
+        },
+      );
+      if (error) {
+        const msg =
+          (error as { detail?: string } | undefined)?.detail ??
+          "Failed to link guardian.";
+        throw new Error(msg);
+      }
+    },
+    onSuccess: () => {
+      snackbar.show("Guardian added");
+      onCreated();
+    },
+    onError: (e: Error) => snackbar.show(e.message, "error"),
+  });
+
   const create = useMutation({
     mutationFn: async () => {
       if (!familyId) throw new Error("No family selected.");
-      const { data, error } = await api.POST(
+      const { error } = await api.POST(
         "/api/families/{family_id}/parents",
         {
           params: { path: { family_id: familyId } },
@@ -600,13 +681,12 @@ function AddGuardianDialog({
           } as never,
         },
       );
-      if (error || !data) {
+      if (error) {
         const msg =
           (error as { detail?: string } | undefined)?.detail ??
           "Failed to add guardian.";
         throw new Error(msg);
       }
-      return data;
     },
     onSuccess: () => {
       snackbar.show("Guardian added");
@@ -615,62 +695,183 @@ function AddGuardianDialog({
     onError: (e: Error) => snackbar.show(e.message, "error"),
   });
 
+  // When the user picks "+ Add new" with typed text, prefill the
+  // form by splitting on the first whitespace so a single-token name
+  // becomes the first name (and the user can fill the rest).
+  const startCreating = (label: string) => {
+    const [first, ...rest] = label.trim().split(/\s+/);
+    setFirstName(first ?? "");
+    setLastName(rest.join(" "));
+    setCreating(true);
+    setPicked(null);
+  };
+
+  const personLabel = (p: GuardianPersonOption) =>
+    `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim() || "(no name)";
+
+  const pending = link.isPending || create.isPending;
   const canSubmit =
-    !!familyId && !create.isPending && (firstName.trim() || lastName.trim());
+    !!familyId &&
+    !pending &&
+    (picked
+      ? true
+      : creating && (firstName.trim() !== "" || lastName.trim() !== ""));
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>Add guardian</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 1 }}>
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-            <LabeledField label="First name">
-              <TextField
-                autoFocus
-                size="small"
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
-                fullWidth
-              />
-            </LabeledField>
-            <LabeledField label="Last name">
-              <TextField
-                size="small"
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-                fullWidth
-              />
-            </LabeledField>
-          </Stack>
-          <LabeledField label="Phone">
-            <TextField
+          <Box>
+            <Typography
+              variant="body2"
+              sx={{ mb: 0.5, color: "text.secondary", fontWeight: 500 }}
+            >
+              Search existing guardians
+            </Typography>
+            <Autocomplete<GuardianEntry, false, false, false>
               size="small"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              fullWidth
+              options={baseOptions}
+              loading={people.isPending}
+              value={picked ? { kind: "person", person: picked } : null}
+              inputValue={search}
+              onInputChange={(_e, v, reason) => {
+                if (reason !== "reset") setSearch(v);
+              }}
+              onChange={(_e, entry) => {
+                if (!entry) {
+                  setPicked(null);
+                  return;
+                }
+                if (entry.kind === "person") {
+                  setPicked(entry.person);
+                  setCreating(false);
+                  setSearch(personLabel(entry.person));
+                  return;
+                }
+                startCreating(entry.label);
+              }}
+              getOptionLabel={(entry) =>
+                entry.kind === "person" ? personLabel(entry.person) : entry.label
+              }
+              isOptionEqualToValue={(a, b) =>
+                a.kind === "person" &&
+                b.kind === "person" &&
+                a.person.id === b.person.id
+              }
+              filterOptions={(opts, state) => {
+                const filtered = filterGuardians(opts, state);
+                const q = state.inputValue.trim();
+                if (q) filtered.push({ kind: "add", label: q });
+                return filtered;
+              }}
+              renderOption={(props, entry) => {
+                if (entry.kind === "add") {
+                  return (
+                    <li {...props} key="__add__">
+                      <Typography variant="body2" color="primary">
+                        + Add "{entry.label}" as a new guardian
+                      </Typography>
+                    </li>
+                  );
+                }
+                const p = entry.person;
+                return (
+                  <li {...props} key={p.id}>
+                    <Stack spacing={0.25} sx={{ py: 0.25 }}>
+                      <Box component="span" sx={{ fontWeight: 500 }}>
+                        {personLabel(p)}
+                      </Box>
+                      <Box
+                        component="span"
+                        sx={{ color: "text.secondary", fontSize: 12 }}
+                      >
+                        {p.email && <span>{p.email}</span>}
+                        {p.email && p.phone && <span> · </span>}
+                        {p.phone && <span>{p.phone}</span>}
+                        {(p.email || p.phone) && p.family_household_name && (
+                          <span> · </span>
+                        )}
+                        {p.family_household_name && (
+                          <span>also on {p.family_household_name}</span>
+                        )}
+                      </Box>
+                    </Stack>
+                  </li>
+                );
+              }}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  autoFocus
+                  placeholder="Name or email"
+                />
+              )}
             />
-          </LabeledField>
-          <LabeledField label="Email">
-            <TextField
-              size="small"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              fullWidth
-            />
-          </LabeledField>
+          </Box>
+
+          {creating && (
+            <>
+              <Divider flexItem>or fill in a new guardian</Divider>
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                <LabeledField label="First name">
+                  <TextField
+                    size="small"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    fullWidth
+                  />
+                </LabeledField>
+                <LabeledField label="Last name">
+                  <TextField
+                    size="small"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    fullWidth
+                  />
+                </LabeledField>
+              </Stack>
+              <LabeledField label="Phone">
+                <TextField
+                  size="small"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  fullWidth
+                />
+              </LabeledField>
+              <LabeledField label="Email">
+                <TextField
+                  size="small"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  fullWidth
+                />
+              </LabeledField>
+            </>
+          )}
+
+          {picked && (
+            <Typography variant="caption" color="text.secondary">
+              Linking <strong>{personLabel(picked)}</strong> to this family.
+              Their record stays the source of truth.
+            </Typography>
+          )}
         </Stack>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose} disabled={create.isPending}>
+        <Button onClick={onClose} disabled={pending}>
           Cancel
         </Button>
         <Button
           variant="contained"
           disabled={!canSubmit}
-          onClick={() => create.mutate()}
+          onClick={() => {
+            if (picked) link.mutate(picked.id);
+            else if (creating) create.mutate();
+          }}
         >
-          {create.isPending ? "Adding…" : "Add"}
+          {pending ? "Adding…" : picked ? "Link" : "Add"}
         </Button>
       </DialogActions>
     </Dialog>
