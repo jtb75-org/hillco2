@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Alert,
   Box,
   Breadcrumbs,
@@ -11,7 +14,6 @@ import {
   DialogContent,
   DialogTitle,
   Divider,
-  Grid,
   Link as MuiLink,
   Paper,
   Stack,
@@ -21,6 +23,7 @@ import {
 import AddIcon from "@mui/icons-material/Add";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ReplayIcon from "@mui/icons-material/Replay";
 import dayjs from "dayjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -241,22 +244,16 @@ export function IntakeForm() {
         }
       />
 
-      <Grid container spacing={2} alignItems="stretch">
-        <Grid item xs={12} md={6}>
-          <Stack spacing={2}>
-            <GuardiansSection family={family.data ?? null} loading={family.isPending} />
-            {/* Future left-column sections (student, etc.) drop in here.
-                Family is shown in the breadcrumb above — no need for
-                a dedicated section since it's mandatory + immutable. */}
-          </Stack>
-        </Grid>
-        <Grid item xs={12} md={6}>
-          <IntakeNotesSection
-            initial={intake.data.notes ?? ""}
-            onCommit={(html) => patch.mutate({ notes: html || null })}
-          />
-        </Grid>
-      </Grid>
+      {/* Roster sections (guardians, future student) collapse into
+          accordions on top so the consultant can capture them once,
+          fold them away, and have the notes editor span the full
+          width of the page for the rest of the meeting. */}
+      <GuardiansSection family={family.data ?? null} loading={family.isPending} />
+
+      <IntakeNotesSection
+        initial={intake.data.notes ?? ""}
+        onCommit={(html) => patch.mutate({ notes: html || null })}
+      />
 
       <Dialog open={confirmingDelete} onClose={() => setConfirmingDelete(false)}>
         <DialogTitle>Delete this intake?</DialogTitle>
@@ -301,12 +298,12 @@ function IntakeNotesSection({
     setValue(initial);
   }, [initial]);
   return (
-    <Paper variant="outlined" sx={{ p: 2, height: "100%", display: "flex", flexDirection: "column" }}>
+    <Paper variant="outlined" sx={{ p: 2, display: "flex", flexDirection: "column" }}>
       <Typography variant="overline" color="text.secondary" sx={{ display: "block", mb: 1 }}>
         Intake notes
       </Typography>
       <Box
-        sx={{ flex: 1, display: "flex" }}
+        sx={{ display: "flex" }}
         onBlur={(e) => {
           // Commit when focus leaves the editor entirely. relatedTarget
           // is null if focus moves outside this subtree.
@@ -340,68 +337,86 @@ function GuardiansSection({
   const guardians = family?.parents ?? [];
 
   return (
-    <Paper variant="outlined" sx={{ p: 2 }}>
-      <Stack direction="row" alignItems="baseline" spacing={1} sx={{ mb: 1 }}>
-        <Typography variant="overline" color="text.secondary" sx={{ flex: 1 }}>
-          Family guardians
-        </Typography>
-        <Button
-          size="small"
-          variant="text"
-          startIcon={<AddIcon fontSize="small" />}
-          disabled={!family}
-          onClick={() => setAddOpen(true)}
+    <Accordion variant="outlined" defaultExpanded disableGutters>
+      <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+        <Stack
+          direction="row"
+          alignItems="center"
+          spacing={1}
+          sx={{ width: "100%", mr: 1 }}
         >
-          Add guardian
-        </Button>
-      </Stack>
-
-      {loading || !family ? (
-        <Box sx={{ display: "flex", justifyContent: "center", py: 2 }}>
-          <CircularProgress size={20} />
-        </Box>
-      ) : guardians.length === 0 ? (
-        <Typography variant="body2" color="text.disabled">
-          No guardians on file yet.
-        </Typography>
-      ) : (
-        <Stack divider={<Divider flexItem />} spacing={0}>
-          {guardians.map((g) => (
-            <Stack key={g.id} direction="row" alignItems="center" spacing={1} sx={{ py: 1 }}>
-              <Box sx={{ flex: 1, minWidth: 0 }}>
-                <Stack direction="row" spacing={0.5} alignItems="baseline" sx={{ mb: 0.25 }}>
-                  <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                    {g.name || "(no name)"}
-                  </Typography>
-                  {g.is_primary_contact && (
-                    <Chip size="small" label="primary" color="primary" variant="outlined" />
-                  )}
-                  {g.is_billing_contact && (
-                    <Chip size="small" label="billing" color="success" variant="outlined" />
-                  )}
-                </Stack>
-                <Stack direction="row" spacing={1.5} sx={{ color: "text.secondary", fontSize: 12 }}>
-                  {g.email && <Box component="span">{g.email}</Box>}
-                  {g.phone && <Box component="span">{g.phone}</Box>}
-                </Stack>
+          <Typography variant="overline" color="text.secondary" sx={{ flex: 1 }}>
+            Family guardians
+            {!loading && family && (
+              <Box component="span" sx={{ ml: 1, color: "text.disabled", fontWeight: 400 }}>
+                ({guardians.length})
               </Box>
-            </Stack>
-          ))}
+            )}
+          </Typography>
+          {/* Stop expansion toggle so clicking + Add doesn't collapse
+              the panel underneath. */}
+          <Button
+            size="small"
+            variant="text"
+            startIcon={<AddIcon fontSize="small" />}
+            disabled={!family}
+            onClick={(e) => {
+              e.stopPropagation();
+              setAddOpen(true);
+            }}
+          >
+            Add guardian
+          </Button>
         </Stack>
-      )}
+      </AccordionSummary>
+      <AccordionDetails>
+        {loading || !family ? (
+          <Box sx={{ display: "flex", justifyContent: "center", py: 2 }}>
+            <CircularProgress size={20} />
+          </Box>
+        ) : guardians.length === 0 ? (
+          <Typography variant="body2" color="text.disabled">
+            No guardians on file yet.
+          </Typography>
+        ) : (
+          <Stack divider={<Divider flexItem />} spacing={0}>
+            {guardians.map((g) => (
+              <Stack key={g.id} direction="row" alignItems="center" spacing={1} sx={{ py: 1 }}>
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Stack direction="row" spacing={0.5} alignItems="baseline" sx={{ mb: 0.25 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                      {g.name || "(no name)"}
+                    </Typography>
+                    {g.is_primary_contact && (
+                      <Chip size="small" label="primary" color="primary" variant="outlined" />
+                    )}
+                    {g.is_billing_contact && (
+                      <Chip size="small" label="billing" color="success" variant="outlined" />
+                    )}
+                  </Stack>
+                  <Stack direction="row" spacing={1.5} sx={{ color: "text.secondary", fontSize: 12 }}>
+                    {g.email && <Box component="span">{g.email}</Box>}
+                    {g.phone && <Box component="span">{g.phone}</Box>}
+                  </Stack>
+                </Box>
+              </Stack>
+            ))}
+          </Stack>
+        )}
 
-      <AddGuardianDialog
-        key={addOpen ? `add-${family?.id}` : "closed"}
-        open={addOpen}
-        familyId={family?.id ?? null}
-        onClose={() => setAddOpen(false)}
-        onCreated={() => {
-          setAddOpen(false);
-          qc.invalidateQueries({ queryKey: ["families", "intake-detail", family?.id] });
-          qc.invalidateQueries({ queryKey: ["families", "intake-picker"] });
-        }}
-      />
-    </Paper>
+        <AddGuardianDialog
+          key={addOpen ? `add-${family?.id}` : "closed"}
+          open={addOpen}
+          familyId={family?.id ?? null}
+          onClose={() => setAddOpen(false)}
+          onCreated={() => {
+            setAddOpen(false);
+            qc.invalidateQueries({ queryKey: ["families", "intake-detail", family?.id] });
+            qc.invalidateQueries({ queryKey: ["families", "intake-picker"] });
+          }}
+        />
+      </AccordionDetails>
+    </Accordion>
   );
 }
 

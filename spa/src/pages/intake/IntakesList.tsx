@@ -118,7 +118,7 @@ export function IntakesList() {
 
       <DataTableContainer
         loading={isPending}
-        loadingColumns={5}
+        loadingColumns={4}
         loadingRows={5}
         empty={!isPending && (data?.length ?? 0) === 0}
         emptyTitle="No intakes yet"
@@ -140,7 +140,6 @@ export function IntakesList() {
               <TableCell>Intake date</TableCell>
               <TableCell>Status</TableCell>
               <TableCell>Consultant</TableCell>
-              <TableCell>Notes</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -173,9 +172,6 @@ export function IntakesList() {
                     <Box component="span" sx={{ color: "text.disabled" }}>—</Box>
                   )}
                 </TableCell>
-                <TableCell sx={{ maxWidth: 360 }}>
-                  <NotesPreview html={row.notes ?? ""} />
-                </TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -196,33 +192,3 @@ export function IntakesList() {
   );
 }
 
-/** Strip HTML for the table preview cell — the rich text editor saves
- *  HTML and dumping tags into the table looks awful. innerText via a
- *  scratch div is good enough for this use; full sanitization happens
- *  on the detail page where the content actually renders. */
-function NotesPreview({ html }: { html: string }) {
-  if (!html.trim()) {
-    return (
-      <Box component="span" sx={{ color: "text.disabled" }}>
-        —
-      </Box>
-    );
-  }
-  const div = document.createElement("div");
-  div.innerHTML = html;
-  const text = (div.textContent ?? "").trim();
-  return (
-    <Box
-      component="span"
-      sx={{
-        display: "-webkit-box",
-        WebkitLineClamp: 2,
-        WebkitBoxOrient: "vertical",
-        overflow: "hidden",
-        color: "text.secondary",
-      }}
-    >
-      {text}
-    </Box>
-  );
-}
