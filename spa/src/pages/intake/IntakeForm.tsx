@@ -194,9 +194,18 @@ export function IntakeForm() {
             <MuiLink component={RouterLink} to="/intakes" color="inherit" underline="hover">
               Intakes
             </MuiLink>
-            <Typography color="text.primary">
-              {family.data?.household_name ?? "…"}
-            </Typography>
+            {family.data ? (
+              <MuiLink
+                component={RouterLink}
+                to={`/families/${family.data.id}`}
+                color="inherit"
+                underline="hover"
+              >
+                {family.data.household_name}
+              </MuiLink>
+            ) : (
+              <Typography color="text.primary">…</Typography>
+            )}
           </Breadcrumbs>
         }
         actions={
@@ -235,9 +244,10 @@ export function IntakeForm() {
       <Grid container spacing={2} alignItems="stretch">
         <Grid item xs={12} md={6}>
           <Stack spacing={2}>
-            <FamilySummary family={family.data ?? null} loading={family.isPending} />
             <GuardiansSection family={family.data ?? null} loading={family.isPending} />
-            {/* Future left-column sections (student, etc.) drop in here. */}
+            {/* Future left-column sections (student, etc.) drop in here.
+                Family is shown in the breadcrumb above — no need for
+                a dedicated section since it's mandatory + immutable. */}
           </Stack>
         </Grid>
         <Grid item xs={12} md={6}>
@@ -272,39 +282,6 @@ export function IntakeForm() {
         </DialogActions>
       </Dialog>
     </Stack>
-  );
-}
-
-// ---- Family summary (read-only) -------------------------------------------
-
-function FamilySummary({
-  family,
-  loading,
-}: {
-  family: FamilyDetail | null;
-  loading: boolean;
-}) {
-  return (
-    <Paper variant="outlined" sx={{ p: 2 }}>
-      <Typography variant="overline" color="text.secondary" sx={{ display: "block", mb: 1 }}>
-        Family
-      </Typography>
-      {loading || !family ? (
-        <Box sx={{ display: "flex", justifyContent: "center", py: 1 }}>
-          <CircularProgress size={20} />
-        </Box>
-      ) : (
-        <Typography variant="body2">
-          <MuiLink
-            component={RouterLink}
-            to={`/families/${family.id}`}
-            underline="hover"
-          >
-            {family.household_name}
-          </MuiLink>
-        </Typography>
-      )}
-    </Paper>
   );
 }
 
