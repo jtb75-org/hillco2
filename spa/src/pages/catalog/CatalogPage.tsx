@@ -31,6 +31,7 @@ import {
   KeyboardSensor,
   PointerSensor,
   closestCenter,
+  useDroppable,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
@@ -213,12 +214,28 @@ export function CatalogPage() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  const onPhaseDragEnd = (e: DragEndEvent) => {
-    if (!phases.data) return;
+  // Single top-level drag handler. Differentiates phases vs items via
+  // the `type` we tag on each useSortable's data — cross-phase moves
+  // need one shared DndContext, so we can't have a per-PhaseCard
+  // DndContext like the earlier version did.
+  const onDragEnd = async (e: DragEndEvent) => {
     const { active, over } = e;
     if (!over || active.id === over.id) return;
-    const oldIndex = phases.data.findIndex((p) => p.id === active.id);
-    const newIndex = phases.data.findIndex((p) => p.id === over.id);
+    const activeType = (active.data.current as { type?: string } | undefined)?.type;
+    if (activeType === "phase") {
+      handlePhaseDragEnd(active.id as string, over.id as string);
+      return;
+    }
+    if (activeType === "item") {
+      await handleItemDragEnd(active, over);
+      return;
+    }
+  };
+
+  const handlePhaseDragEnd = (activeId: string, overId: string) => {
+    if (!phases.data) return;
+    const oldIndex = phases.data.findIndex((p) => p.id === activeId);
+    const newIndex = phases.data.findIndex((p) => p.id === overId);
     if (oldIndex < 0 || newIndex < 0) return;
     const next = arrayMove(phases.data, oldIndex, newIndex);
     qc.setQueryData(["catalog", "phases"], next);
@@ -232,6 +249,63 @@ export function CatalogPage() {
     )
       .then(() => qc.invalidateQueries({ queryKey: ["catalog", "phases"] }))
       .catch(() => qc.invalidateQueries({ queryKey: ["catalog", "phases"] }));
+  };
+
+  const handleItemDragEnd = async (
+    active: DragEndEvent["active"],
+    over: NonNullable<DragEndEvent["over"]>,
+  ) => {
+    const sourcePhaseId = (active.data.current as { phaseId?: string } | undefined)?.phaseId;
+    if (!sourcePhaseId) return;
+    // Target phase: comes either from another item's data (dropping
+    // on top of an item in another phase) or from the phase drop
+    // target itself (dropping on the empty area of a phase).
+    const overData = over.data.current as
+      | { type?: string; phaseId?: string }
+      | undefined;
+    const targetPhaseId =
+      overData?.type === "item"
+        ? overData.phaseId
+        : overData?.type === "phase-drop"
+          ? overData.phaseId
+          : undefined;
+    if (!targetPhaseId) return;
+
+    if (targetPhaseId !== sourcePhaseId) {
+      // Cross-phase move. Renumber the destination so the dropped
+      // item lands at the end; backend will accept a single PATCH.
+      const destItems = itemsByPhase.get(targetPhaseId) ?? [];
+      const nextSort = (destItems.length + 1) * 100;
+      await patchItem.mutateAsync({
+        id: String(active.id),
+        body: { phase_id: targetPhaseId, sort_order: nextSort },
+      });
+      qc.invalidateQueries({ queryKey: ["catalog", "items"] });
+      qc.invalidateQueries({ queryKey: ["catalog", "phases"] });
+      return;
+    }
+
+    // Same-phase reorder. Find the indices within this phase and
+    // renumber sort_order spaced by 100 for any rows that moved.
+    const phaseItems = itemsByPhase.get(sourcePhaseId) ?? [];
+    const oldIndex = phaseItems.findIndex((i) => i.id === active.id);
+    const newIndex = phaseItems.findIndex((i) => i.id === over.id);
+    if (oldIndex < 0 || newIndex < 0) return;
+    const reordered = arrayMove(phaseItems, oldIndex, newIndex);
+    qc.setQueryData<Item[]>(["catalog", "items"], (prev) => {
+      if (!prev) return prev;
+      const others = prev.filter((i) => i.phase_id !== sourcePhaseId);
+      return [...others, ...reordered];
+    });
+    await Promise.all(
+      reordered
+        .map((it, idx) => ({ it, sort_order: (idx + 1) * 100 }))
+        .filter(({ it, sort_order }) => it.sort_order !== sort_order)
+        .map(({ it, sort_order }) =>
+          patchItem.mutateAsync({ id: it.id, body: { sort_order } }),
+        ),
+    );
+    qc.invalidateQueries({ queryKey: ["catalog", "items"] });
   };
 
   if (phases.error || items.error || engagementTypes.error) {
@@ -280,7 +354,7 @@ export function CatalogPage() {
         </Alert>
       )}
 
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onPhaseDragEnd}>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
         <SortableContext
           items={phases.data.map((p) => p.id)}
           strategy={verticalListSortingStrategy}
@@ -291,12 +365,11 @@ export function CatalogPage() {
                 key={phase.id}
                 phase={phase}
                 items={itemsByPhase.get(phase.id) ?? []}
-                allPhaseIds={phases.data.map((p) => p.id)}
                 engagementTypes={liveTypes}
                 onPatchPhase={(body) =>
                   // Per-call invalidation here (not at the mutation
-                  // level) so the reorder Promise.all below isn't
-                  // hammered with per-PATCH refetches mid-batch.
+                  // level) so the multi-PATCH reorder paths above
+                  // don't get hammered with per-PATCH refetches.
                   patchPhase.mutate(
                     { id: phase.id, body },
                     {
@@ -317,30 +390,6 @@ export function CatalogPage() {
                   )
                 }
                 onDeleteItem={(itemId) => deleteItem.mutate(itemId)}
-                onItemsReorder={async (newItems) => {
-                  qc.setQueryData<Item[]>(["catalog", "items"], (prev) => {
-                    if (!prev) return prev;
-                    const others = prev.filter((i) => i.phase_id !== phase.id);
-                    return [...others, ...newItems];
-                  });
-                  await Promise.all(
-                    newItems
-                      .map((it, idx) => ({ it, sort_order: (idx + 1) * 100 }))
-                      .filter(({ it, sort_order }) => it.sort_order !== sort_order)
-                      .map(({ it, sort_order }) =>
-                        patchItem.mutateAsync({ id: it.id, body: { sort_order } }),
-                      ),
-                  );
-                  qc.invalidateQueries({ queryKey: ["catalog", "items"] });
-                }}
-                onItemMoveOut={async (itemId, targetPhaseId) => {
-                  await patchItem.mutateAsync({
-                    id: itemId,
-                    body: { phase_id: targetPhaseId },
-                  });
-                  qc.invalidateQueries({ queryKey: ["catalog", "items"] });
-                  qc.invalidateQueries({ queryKey: ["catalog", "phases"] });
-                }}
               />
             ))}
           </Stack>
@@ -685,52 +734,29 @@ function EditEngagementTypeDialog({
 function PhaseCard({
   phase,
   items,
-  allPhaseIds,
   engagementTypes,
   onPatchPhase,
   onDeletePhase,
   onAddItem,
   onPatchItem,
   onDeleteItem,
-  onItemsReorder,
-  onItemMoveOut,
 }: {
   phase: Phase;
   items: Item[];
-  allPhaseIds: string[];
   engagementTypes: EngagementType[];
   onPatchPhase: (body: Record<string, unknown>) => void;
   onDeletePhase: () => void;
   onAddItem: () => void;
   onPatchItem: (itemId: string, body: Record<string, unknown>) => void;
   onDeleteItem: (itemId: string) => void;
-  onItemsReorder: (next: Item[]) => Promise<void> | void;
-  onItemMoveOut: (itemId: string, targetPhaseId: string) => Promise<void> | void;
 }) {
+  // Tag this sortable with type=phase so the top-level onDragEnd can
+  // tell phase reorders from item drags.
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: phase.id });
+    useSortable({ id: phase.id, data: { type: "phase" } });
   const [expanded, setExpanded] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  );
-  const onItemDragEnd = async (e: DragEndEvent) => {
-    const { active, over } = e;
-    if (!over || active.id === over.id) return;
-    const overPhaseId = allPhaseIds.find((id) => id === over.id);
-    if (overPhaseId && overPhaseId !== phase.id) {
-      await onItemMoveOut(String(active.id), overPhaseId);
-      return;
-    }
-    const oldIndex = items.findIndex((i) => i.id === active.id);
-    const newIndex = items.findIndex((i) => i.id === over.id);
-    if (oldIndex < 0 || newIndex < 0) return;
-    const next = arrayMove(items, oldIndex, newIndex);
-    await onItemsReorder(next);
-  };
 
   return (
     <Paper
@@ -804,34 +830,38 @@ function PhaseCard({
         </Box>
       </Collapse>
 
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onItemDragEnd}>
-        <SortableContext
-          items={items.map((i) => i.id)}
-          strategy={verticalListSortingStrategy}
-        >
-          <Stack spacing={0} sx={{ p: 1 }}>
-            <PhaseDropTarget phaseId={phase.id} />
-            {items.map((item) => (
-              <ItemRow
-                key={item.id}
-                item={item}
-                engagementTypes={engagementTypes}
-                onPatch={(body) => onPatchItem(item.id, body)}
-                onDelete={() => onDeleteItem(item.id)}
-              />
-            ))}
-            {items.length === 0 && (
-              <Typography
-                variant="caption"
-                color="text.disabled"
-                sx={{ pl: 4, py: 1, fontStyle: "italic" }}
-              >
-                No activities — drag one in or click + above to add.
-              </Typography>
-            )}
-          </Stack>
-        </SortableContext>
-      </DndContext>
+      {/* Items live in the outer DndContext (set up by CatalogPage)
+          so they can be dragged across phases. SortableContext here
+          handles within-phase ordering. The PhaseDropZone wraps the
+          item list as a separate droppable so an item dragged in
+          from another phase has a valid drop target even when this
+          phase is empty. */}
+      <SortableContext
+        items={items.map((i) => i.id)}
+        strategy={verticalListSortingStrategy}
+      >
+        <PhaseDropZone phaseId={phase.id}>
+          {items.map((item) => (
+            <ItemRow
+              key={item.id}
+              item={item}
+              phaseId={phase.id}
+              engagementTypes={engagementTypes}
+              onPatch={(body) => onPatchItem(item.id, body)}
+              onDelete={() => onDeleteItem(item.id)}
+            />
+          ))}
+          {items.length === 0 && (
+            <Typography
+              variant="caption"
+              color="text.disabled"
+              sx={{ pl: 4, py: 1, fontStyle: "italic" }}
+            >
+              No activities — drag one in or click + above to add.
+            </Typography>
+          )}
+        </PhaseDropZone>
+      </SortableContext>
 
       <Dialog open={confirmingDelete} onClose={() => setConfirmingDelete(false)}>
         <DialogTitle>Remove "{phase.title}"?</DialogTitle>
@@ -859,34 +889,56 @@ function PhaseCard({
   );
 }
 
-function PhaseDropTarget({ phaseId }: { phaseId: string }) {
-  const { setNodeRef, isOver } = useSortable({ id: phaseId, disabled: true });
+/** Drop target wrapping a phase's item list. Registered as a plain
+ *  droppable (not a sortable) tagged with the phase id, so the
+ *  top-level onDragEnd can route items dropped here to that phase
+ *  even when it has no items to land "on top of". */
+function PhaseDropZone({
+  phaseId,
+  children,
+}: {
+  phaseId: string;
+  children: React.ReactNode;
+}) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: `phase-drop-${phaseId}`,
+    data: { type: "phase-drop", phaseId },
+  });
   return (
-    <Box
+    <Stack
       ref={setNodeRef}
+      spacing={0}
       sx={{
-        height: isOver ? 32 : 8,
+        p: 1,
+        minHeight: 40,
         borderRadius: 1,
         bgcolor: isOver ? "primary.light" : "transparent",
-        transition: "all 120ms",
+        transition: "background-color 120ms",
       }}
-    />
+    >
+      {children}
+    </Stack>
   );
 }
 
 function ItemRow({
   item,
+  phaseId,
   engagementTypes,
   onPatch,
   onDelete,
 }: {
   item: Item;
+  phaseId: string;
   engagementTypes: EngagementType[];
   onPatch: (body: Record<string, unknown>) => void;
   onDelete: () => void;
 }) {
+  // Tag this sortable with type=item + the owning phase so the
+  // top-level drag handler can resolve same-phase reorder vs.
+  // cross-phase move from the active/over data.
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: item.id });
+    useSortable({ id: item.id, data: { type: "item", phaseId } });
   const [expanded, setExpanded] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
