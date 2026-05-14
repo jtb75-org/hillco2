@@ -267,6 +267,24 @@ async def list_families(
                           AND sp.kind = 'student'
                           AND sp.deleted_at IS NULL
              WHERE fs.family_id = f.id) AS student_count,
+          -- Aggregated student names so list consumers (e.g. the
+          -- engagement-start family picker) can disambiguate same-
+          -- surname households without an extra round-trip.
+          COALESCE((
+            SELECT array_agg(
+              TRIM(BOTH ' ' FROM
+                COALESCE(sp.first_name, '') ||
+                CASE WHEN sp.last_name IS NOT NULL AND sp.last_name <> ''
+                     THEN ' ' || sp.last_name ELSE '' END
+              )
+              ORDER BY sp.first_name, sp.last_name
+            )
+            FROM family_students fs
+            JOIN people sp ON sp.id = fs.person_id
+                         AND sp.kind = 'student'
+                         AND sp.deleted_at IS NULL
+            WHERE fs.family_id = f.id
+          ), ARRAY[]::text[]) AS student_names,
           (SELECT COUNT(*) FROM family_guardians fg
              WHERE fg.family_id = f.id) AS parent_count,
           (SELECT COUNT(*) FROM engagements e
