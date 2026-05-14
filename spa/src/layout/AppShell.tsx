@@ -18,6 +18,7 @@ import {
 } from "@mui/material";
 import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
 import AssignmentOutlinedIcon from "@mui/icons-material/AssignmentOutlined";
+import AutoStoriesOutlinedIcon from "@mui/icons-material/AutoStoriesOutlined";
 import ContactsIcon from "@mui/icons-material/Contacts";
 import GroupsIcon from "@mui/icons-material/Groups";
 import HomeIcon from "@mui/icons-material/Home";
@@ -33,6 +34,7 @@ const NAV_ITEMS: ReadonlyArray<{ to: string; label: string; icon: JSX.Element }>
   { to: "/families", label: "Families", icon: <GroupsIcon /> },
   { to: "/engagements", label: "Engagements", icon: <AssignmentOutlinedIcon /> },
   { to: "/contacts", label: "Contacts", icon: <ContactsIcon /> },
+  { to: "/catalog", label: "Catalog", icon: <AutoStoriesOutlinedIcon /> },
   { to: "/admin", label: "Admin", icon: <AdminPanelSettingsIcon /> },
 ];
 
