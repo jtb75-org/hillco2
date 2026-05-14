@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Alert,
   Box,
@@ -17,7 +17,7 @@ import {
 import AddIcon from "@mui/icons-material/Add";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import dayjs from "dayjs";
-import { Link as RouterLink, useNavigate, useParams } from "react-router-dom";
+import { Link as RouterLink, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { api } from "../../api/client";
 
@@ -396,6 +396,18 @@ function EngagementsCard({
 }) {
   const navigate = useNavigate();
   const [newOpen, setNewOpen] = useState(false);
+  // Auto-open the create dialog when the engagements list page routes
+  // us here via /families/:id?new=engagement, then strip the param so
+  // a reload doesn't keep re-opening the dialog.
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    if (!loading && students.length > 0 && searchParams.get("new") === "engagement") {
+      setNewOpen(true);
+      const next = new URLSearchParams(searchParams);
+      next.delete("new");
+      setSearchParams(next, { replace: true });
+    }
+  }, [loading, students.length, searchParams, setSearchParams]);
   const studentChoices = students.map((s) => ({
     id: s.id,
     name: s.name,
