@@ -57,10 +57,18 @@ interface GuardianRow {
   is_billing_contact: boolean;
 }
 
+interface StudentRow {
+  id: string;
+  name: string;
+  dob: string | null;
+  current_grade: string | null;
+}
+
 interface FamilyDetail {
   id: string;
   household_name: string;
   parents: GuardianRow[];
+  students: StudentRow[];
 }
 
 /** Intake detail page at /intakes/:id. The family is locked once the
@@ -244,11 +252,12 @@ export function IntakeForm() {
         }
       />
 
-      {/* Roster sections (guardians, future student) collapse into
-          accordions on top so the consultant can capture them once,
-          fold them away, and have the notes editor span the full
-          width of the page for the rest of the meeting. */}
+      {/* Roster sections collapse into accordions on top so the
+          consultant can capture them once, fold them away, and have
+          the notes editor span the full width for the rest of the
+          meeting. */}
       <GuardiansSection family={family.data ?? null} loading={family.isPending} />
+      <StudentsSection family={family.data ?? null} loading={family.isPending} />
 
       <IntakeNotesSection
         initial={intake.data.notes ?? ""}
@@ -507,6 +516,216 @@ function AddGuardianDialog({
             onChange={(e) => setEmail(e.target.value)}
             fullWidth
           />
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose} disabled={create.isPending}>
+          Cancel
+        </Button>
+        <Button
+          variant="contained"
+          disabled={!canSubmit}
+          onClick={() => create.mutate()}
+        >
+          {create.isPending ? "Adding…" : "Add"}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+// ---- Students section -----------------------------------------------------
+
+function StudentsSection({
+  family,
+  loading,
+}: {
+  family: FamilyDetail | null;
+  loading: boolean;
+}) {
+  const qc = useQueryClient();
+  const [addOpen, setAddOpen] = useState(false);
+  const students = family?.students ?? [];
+
+  return (
+    <Accordion variant="outlined" defaultExpanded disableGutters>
+      <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+        <Stack
+          direction="row"
+          alignItems="center"
+          spacing={1}
+          sx={{ width: "100%", mr: 1 }}
+        >
+          <Typography variant="overline" color="text.secondary" sx={{ flex: 1 }}>
+            Students
+            {!loading && family && (
+              <Box component="span" sx={{ ml: 1, color: "text.disabled", fontWeight: 400 }}>
+                ({students.length})
+              </Box>
+            )}
+          </Typography>
+          <Button
+            size="small"
+            variant="text"
+            startIcon={<AddIcon fontSize="small" />}
+            disabled={!family}
+            onClick={(e) => {
+              e.stopPropagation();
+              setAddOpen(true);
+            }}
+          >
+            Add student
+          </Button>
+        </Stack>
+      </AccordionSummary>
+      <AccordionDetails>
+        {loading || !family ? (
+          <Box sx={{ display: "flex", justifyContent: "center", py: 2 }}>
+            <CircularProgress size={20} />
+          </Box>
+        ) : students.length === 0 ? (
+          <Typography variant="body2" color="text.disabled">
+            No students on file yet.
+          </Typography>
+        ) : (
+          <Stack divider={<Divider flexItem />} spacing={0}>
+            {students.map((s) => (
+              <Stack key={s.id} direction="row" alignItems="center" spacing={1} sx={{ py: 1 }}>
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                    {s.name || "(no name)"}
+                  </Typography>
+                  <Stack direction="row" spacing={1.5} sx={{ color: "text.secondary", fontSize: 12 }}>
+                    {s.current_grade && (
+                      <Box component="span">Grade {s.current_grade}</Box>
+                    )}
+                    {s.dob && (
+                      <Box component="span">DOB {dayjs(s.dob).format("MMM D, YYYY")}</Box>
+                    )}
+                  </Stack>
+                </Box>
+              </Stack>
+            ))}
+          </Stack>
+        )}
+
+        <AddStudentDialog
+          // Remount per open so useState starts blank each time.
+          key={addOpen ? `add-${family?.id}` : "closed"}
+          open={addOpen}
+          familyId={family?.id ?? null}
+          onClose={() => setAddOpen(false)}
+          onCreated={() => {
+            setAddOpen(false);
+            qc.invalidateQueries({ queryKey: ["families", "intake-detail", family?.id] });
+            qc.invalidateQueries({ queryKey: ["families", "intake-picker"] });
+          }}
+        />
+      </AccordionDetails>
+    </Accordion>
+  );
+}
+
+function AddStudentDialog({
+  open,
+  familyId,
+  onClose,
+  onCreated,
+}: {
+  open: boolean;
+  familyId: string | null;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const snackbar = useSnackbar();
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [dob, setDob] = useState("");
+  const [grade, setGrade] = useState("");
+
+  const create = useMutation({
+    mutationFn: async () => {
+      if (!familyId) throw new Error("No family selected.");
+      const { data, error } = await api.POST(
+        "/api/families/{family_id}/students",
+        {
+          params: { path: { family_id: familyId } },
+          body: {
+            first_name: firstName.trim() || null,
+            last_name: lastName.trim() || null,
+            dob: dob || null,
+            current_grade: grade.trim() || null,
+          } as never,
+        },
+      );
+      if (error || !data) {
+        const msg =
+          (error as { detail?: string } | undefined)?.detail ??
+          "Failed to add student.";
+        throw new Error(msg);
+      }
+      return data;
+    },
+    onSuccess: () => {
+      snackbar.show("Student added");
+      onCreated();
+    },
+    onError: (e: Error) => snackbar.show(e.message, "error"),
+  });
+
+  const canSubmit =
+    !!familyId &&
+    !create.isPending &&
+    !!firstName.trim() &&
+    !!lastName.trim();
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>Add student</DialogTitle>
+      <DialogContent>
+        <Stack spacing={2} sx={{ mt: 1 }}>
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+            <TextField
+              autoFocus
+              required
+              size="small"
+              label="First name"
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+              fullWidth
+            />
+            <TextField
+              required
+              size="small"
+              label="Last name"
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+              fullWidth
+            />
+          </Stack>
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+            <TextField
+              size="small"
+              label="Date of birth"
+              type="date"
+              value={dob}
+              onChange={(e) => setDob(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+              fullWidth
+            />
+            <TextField
+              size="small"
+              label="Current grade"
+              placeholder='e.g. "8th"'
+              value={grade}
+              onChange={(e) => setGrade(e.target.value)}
+              fullWidth
+            />
+          </Stack>
+          <Typography variant="caption" color="text.disabled">
+            Diagnoses, current school, and other clinical fields are
+            edited from the student detail page once the row exists.
+          </Typography>
         </Stack>
       </DialogContent>
       <DialogActions>
