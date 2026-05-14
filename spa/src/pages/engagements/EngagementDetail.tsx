@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Autocomplete,
@@ -652,6 +652,16 @@ function PhaseChecklist({
     },
     onError: (e: Error) => snackbar.show(e.message, "error"),
   });
+  // Stable handler so ClientIntakePanel's auto-complete useEffect deps
+  // don't churn every time setStatus.isPending toggles — without this,
+  // each in-flight mutation re-renders us, mints a new onSetStatus,
+  // and re-fires the effect before the tasks query has refetched.
+  // That's React error #185 ("Maximum update depth exceeded").
+  const handleSetStatus = useCallback(
+    (taskId: string, status: EngagementTask["status"]) =>
+      setStatus.mutate({ id: taskId, status }),
+    [setStatus.mutate],
+  );
 
   if (loading) {
     return (
@@ -732,9 +742,7 @@ function PhaseChecklist({
                   studentId={studentId}
                   familyId={familyId}
                   phaseTasks={phaseTasks}
-                  onSetStatus={(taskId, status) =>
-                    setStatus.mutate({ id: taskId, status })
-                  }
+                  onSetStatus={handleSetStatus}
                 />
               ) : (
                 <Stack spacing={0.5}>
@@ -1030,33 +1038,28 @@ function ClientIntakePanel({
   // Background diagnoses is special: chips set => data present, ticks
   // green; no chips set is ambiguous (not reviewed vs. nothing applies)
   // so the task stays manual in that case.
+  //
+  // A per-mount ref-set tracks which task IDs we've already auto-fired
+  // so that even if the effect re-runs (e.g., due to a stale tasks
+  // snapshot in flight) we never PATCH the same task twice. That's
+  // belt-and-suspenders next to handleSetStatus being stabilized by
+  // useCallback upstream — without it, the in-flight mutation can
+  // briefly leave the task as not_started across renders and cause
+  // React error #185 ("Maximum update depth exceeded").
+  const autoFiredRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     const s = student.data;
     if (!s) return;
-    if (tasks.names && tasks.names.status === "not_started") {
-      onSetStatus(tasks.names.id, "completed");
-    }
-    if (
-      tasks.school &&
-      tasks.school.status === "not_started" &&
-      s.current_school_id
-    ) {
-      onSetStatus(tasks.school.id, "completed");
-    }
-    if (
-      tasks.needs &&
-      tasks.needs.status === "not_started" &&
-      (s.needs_goals ?? "").trim()
-    ) {
-      onSetStatus(tasks.needs.id, "completed");
-    }
-    if (
-      tasks.diagnoses &&
-      tasks.diagnoses.status === "not_started" &&
-      hasAnyDiagnosis(s)
-    ) {
-      onSetStatus(tasks.diagnoses.id, "completed");
-    }
+    const fire = (task: EngagementTask | undefined, when: boolean) => {
+      if (!task || task.status !== "not_started" || !when) return;
+      if (autoFiredRef.current.has(task.id)) return;
+      autoFiredRef.current.add(task.id);
+      onSetStatus(task.id, "completed");
+    };
+    fire(tasks.names, true);
+    fire(tasks.school, !!s.current_school_id);
+    fire(tasks.needs, !!(s.needs_goals ?? "").trim());
+    fire(tasks.diagnoses, hasAnyDiagnosis(s));
   }, [student.data, tasks, onSetStatus]);
 
   if (student.isPending) {
