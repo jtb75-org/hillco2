@@ -19,7 +19,6 @@ import {
   DialogContent,
   DialogTitle,
   Divider,
-  Grid,
   IconButton,
   Link as MuiLink,
   ListItemIcon,
@@ -502,16 +501,20 @@ function GuardiansSection({
             No guardians on file yet.
           </Typography>
         ) : (
-          <Grid container spacing={2}>
+          // Flex-wrap layout with a sane card width so a single
+          // guardian doesn't stretch across the full panel. Each
+          // card has a ~300px target and never exceeds 360px;
+          // multiples wrap naturally.
+          <Stack direction="row" useFlexGap flexWrap="wrap" sx={{ gap: 2 }}>
             {guardians.map((g) => (
-              <Grid key={g.id} item xs={12} md={6}>
+              <Box key={g.id} sx={{ flex: "1 1 300px", maxWidth: 360 }}>
                 <GuardianCard
                   guardian={g}
                   onOpen={() => setDrawerGuardian(g)}
                 />
-              </Grid>
+              </Box>
             ))}
-          </Grid>
+          </Stack>
         )}
 
         <AddGuardianDialog
@@ -986,13 +989,13 @@ function StudentsSection({
             No students on file yet.
           </Typography>
         ) : (
-          <Grid container spacing={2}>
+          <Stack direction="row" useFlexGap flexWrap="wrap" sx={{ gap: 2 }}>
             {students.map((s) => (
-              <Grid key={s.id} item xs={12} md={6}>
+              <Box key={s.id} sx={{ flex: "1 1 300px", maxWidth: 360 }}>
                 <StudentCard student={s} />
-              </Grid>
+              </Box>
             ))}
-          </Grid>
+          </Stack>
         )}
 
         <AddStudentDialog
