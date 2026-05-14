@@ -224,7 +224,9 @@ interface FamilyPickerOption {
   id: string;
   household_name: string;
   primary_parent_name: string | null;
-  student_names: string[];
+  // Optional defensively: older backend builds didn't return this
+  // field, and crashing the dialog over a missing extra is rude.
+  student_names?: string[] | null;
 }
 
 // Tiny family-picker. Routing the user back to /families/:id and
@@ -274,31 +276,34 @@ function PickFamilyDialog({
                 const hay = [
                   o.household_name,
                   o.primary_parent_name ?? "",
-                  ...o.student_names,
+                  ...(o.student_names ?? []),
                 ]
                   .join(" ")
                   .toLowerCase();
                 return hay.includes(q);
               });
             }}
-            renderOption={(props, o) => (
-              <li {...props} key={o.id}>
-                <Stack spacing={0.25} sx={{ py: 0.25 }}>
-                  <Box component="span" sx={{ fontWeight: 500 }}>
-                    {o.household_name}
-                  </Box>
-                  <Box
-                    component="span"
-                    sx={{ color: "text.secondary", fontSize: 12 }}
-                  >
-                    {o.primary_parent_name
-                      ? `Primary: ${o.primary_parent_name}`
-                      : "No primary parent"}
-                    {o.student_names.length > 0 && ` · ${o.student_names.join(", ")}`}
-                  </Box>
-                </Stack>
-              </li>
-            )}
+            renderOption={(props, o) => {
+              const students = o.student_names ?? [];
+              return (
+                <li {...props} key={o.id}>
+                  <Stack spacing={0.25} sx={{ py: 0.25 }}>
+                    <Box component="span" sx={{ fontWeight: 500 }}>
+                      {o.household_name}
+                    </Box>
+                    <Box
+                      component="span"
+                      sx={{ color: "text.secondary", fontSize: 12 }}
+                    >
+                      {o.primary_parent_name
+                        ? `Primary: ${o.primary_parent_name}`
+                        : "No primary parent"}
+                      {students.length > 0 && ` · ${students.join(", ")}`}
+                    </Box>
+                  </Stack>
+                </li>
+              );
+            }}
             renderInput={(params) => (
               <TextField {...params} label="Family" autoFocus />
             )}
