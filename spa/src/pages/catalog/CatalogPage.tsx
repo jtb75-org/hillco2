@@ -55,7 +55,6 @@ type OwnerRole = "consultant" | "assistant" | "both";
 
 interface Phase {
   id: string;
-  scope: string; // deprecated; kept on the row but not surfaced
   sort_order: number;
   title: string;
   description: string | null;
@@ -91,11 +90,6 @@ const OWNER_OPTIONS: Array<{ value: OwnerRole; label: string }> = [
   { value: "assistant", label: "Assistant" },
   { value: "both", label: "Either" },
 ];
-
-// New phases default to this scope under the hood. catalog_phases.scope
-// is deprecated post-PR-A and the SPA no longer surfaces it; this just
-// satisfies the NOT NULL constraint until PR C drops the column.
-const DEFAULT_PHASE_SCOPE = "assessment";
 
 export function CatalogPage() {
   const qc = useQueryClient();
@@ -1155,7 +1149,6 @@ function AddPhaseDialog({
     mutationFn: async () => {
       const { error } = await api.POST("/api/catalog/phases", {
         body: {
-          scope: DEFAULT_PHASE_SCOPE,
           title: title.trim(),
           description: description.trim() || null,
           sort_order: nextSortOrder,

@@ -10,14 +10,12 @@ from ..db import get_conn
 
 router = APIRouter(prefix="/api/catalog", tags=["catalog"])
 
-CatalogScope = Literal["assessment", "placement"]
 OwnerRole = Literal["consultant", "assistant", "both"]
 
 
 # ---- I/O models ------------------------------------------------------------
 
 class PhaseCreate(BaseModel):
-    scope: CatalogScope
     sort_order: int = 0
     title: str = Field(..., min_length=1)
     description: str | None = None
@@ -26,7 +24,6 @@ class PhaseCreate(BaseModel):
 
 
 class PhaseUpdate(BaseModel):
-    scope: CatalogScope | None = None
     sort_order: int | None = None
     title: str | None = Field(default=None, min_length=1)
     description: str | None = None
@@ -148,38 +145,22 @@ def _normalize_item(fields: dict) -> dict:
 
 @router.get("/phases")
 async def list_phases(
-    scope: CatalogScope | None = Query(None),
     _user=Depends(require_user),
     conn=Depends(get_conn),
 ):
-    """List phases with their item counts. Filter by scope when set."""
-    if scope is None:
-        rows = await conn.fetch(
-            """
-            SELECT cp.id, cp.scope, cp.sort_order, cp.title, cp.description,
-                   cp.est_hours, cp.default_billable,
-                   cp.created_at, cp.updated_at,
-                   (SELECT COUNT(*) FROM service_items si
-                      WHERE si.phase_id = cp.id AND si.deleted_at IS NULL) AS item_count
-            FROM catalog_phases cp
-            WHERE cp.deleted_at IS NULL
-            ORDER BY cp.scope, cp.sort_order, cp.title
-            """
-        )
-    else:
-        rows = await conn.fetch(
-            """
-            SELECT cp.id, cp.scope, cp.sort_order, cp.title, cp.description,
-                   cp.est_hours, cp.default_billable,
-                   cp.created_at, cp.updated_at,
-                   (SELECT COUNT(*) FROM service_items si
-                      WHERE si.phase_id = cp.id AND si.deleted_at IS NULL) AS item_count
-            FROM catalog_phases cp
-            WHERE cp.deleted_at IS NULL AND cp.scope = $1
-            ORDER BY cp.sort_order, cp.title
-            """,
-            scope,
-        )
+    """List phases with their item counts, in sort order."""
+    rows = await conn.fetch(
+        """
+        SELECT cp.id, cp.sort_order, cp.title, cp.description,
+               cp.est_hours, cp.default_billable,
+               cp.created_at, cp.updated_at,
+               (SELECT COUNT(*) FROM service_items si
+                  WHERE si.phase_id = cp.id AND si.deleted_at IS NULL) AS item_count
+        FROM catalog_phases cp
+        WHERE cp.deleted_at IS NULL
+        ORDER BY cp.sort_order, cp.title
+        """
+    )
     return [dict(r) for r in rows]
 
 
@@ -194,11 +175,11 @@ async def create_phase(
     row = await conn.fetchrow(
         """
         INSERT INTO catalog_phases (
-          scope, sort_order, title, description, est_hours, default_billable
-        ) VALUES ($1::catalog_scope, $2, $3, $4, $5, $6)
+          sort_order, title, description, est_hours, default_billable
+        ) VALUES ($1, $2, $3, $4, $5)
         RETURNING *
         """,
-        body.scope, body.sort_order, title, description,
+        body.sort_order, title, description,
         body.est_hours, body.default_billable,
     )
     return dict(row)
@@ -244,19 +225,11 @@ async def update_phase(
     if not fields:
         raise HTTPException(status_code=400, detail="No fields to update")
 
-    set_sql_parts = []
-    values = []
-    for col, val in fields.items():
-        values.append(val)
-        if col == "scope":
-            set_sql_parts.append(f"scope = ${len(values)+1}::catalog_scope")
-        else:
-            set_sql_parts.append(f"{col} = ${len(values)+1}")
-    set_sql = ", ".join(set_sql_parts)
+    set_sql = ", ".join(f"{col} = ${i+2}" for i, col in enumerate(fields))
     row = await conn.fetchrow(
         f"UPDATE catalog_phases SET {set_sql} WHERE id = $1 RETURNING *",
         phase_id,
-        *values,
+        *fields.values(),
     )
     return dict(row)
 
@@ -284,7 +257,6 @@ async def delete_phase(
 @router.get("/items")
 async def list_items(
     phase_id: UUID | None = Query(None),
-    scope: CatalogScope | None = Query(None),
     q: str = Query("", description="Substring search over title + description"),
     _user=Depends(require_user),
     conn=Depends(get_conn),
@@ -294,9 +266,6 @@ async def list_items(
     if phase_id is not None:
         args.append(phase_id)
         clauses.append(f"si.phase_id = ${len(args)}")
-    if scope is not None:
-        args.append(scope)
-        clauses.append(f"cp.scope = ${len(args)}::catalog_scope")
     q = q.strip()
     if q:
         args.append(f"%{q}%")
@@ -310,7 +279,7 @@ async def list_items(
                si.default_est_hours, si.default_billable,
                si.default_deliverable, si.default_owner_role,
                si.created_at, si.updated_at,
-               cp.scope AS phase_scope, cp.title AS phase_title,
+               cp.title AS phase_title,
                cp.sort_order AS phase_sort_order,
                COALESCE((
                  SELECT array_agg(siet.engagement_type_id)
@@ -320,7 +289,7 @@ async def list_items(
         FROM service_items si
         JOIN catalog_phases cp ON cp.id = si.phase_id
         WHERE {" AND ".join(clauses)}
-        ORDER BY cp.scope, cp.sort_order, si.sort_order, si.title
+        ORDER BY cp.sort_order, si.sort_order, si.title
         """,
         *args,
     )

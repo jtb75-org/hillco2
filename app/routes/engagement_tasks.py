@@ -99,7 +99,7 @@ async def applicable_catalog(
         SELECT si.id, si.phase_id, si.title, si.description, si.sort_order,
                si.default_est_hours, si.default_billable,
                si.default_deliverable, si.default_owner_role,
-               cp.scope, cp.sort_order AS phase_sort_order, cp.title AS phase_title
+               cp.sort_order AS phase_sort_order, cp.title AS phase_title
         FROM service_items si
         JOIN service_item_engagement_types siet ON siet.service_item_id = si.id
         JOIN engagement_types et
@@ -123,7 +123,6 @@ async def applicable_catalog(
         if phase_id not in phases_seen:
             phases_seen[phase_id] = {
                 "id": phase_id,
-                "scope": it["scope"],
                 "sort_order": it["phase_sort_order"],
                 "title": it["phase_title"],
                 "description": None,
@@ -132,7 +131,7 @@ async def applicable_catalog(
                 "items": [],
             }
         item = dict(it)
-        for k in ("scope", "phase_sort_order", "phase_title"):
+        for k in ("phase_sort_order", "phase_title"):
             item.pop(k, None)
         phases_seen[phase_id]["items"].append(item)
 
@@ -174,7 +173,7 @@ async def list_tasks(
                t.deliverable, t.owner_role, t.assignee_id, t.sort_order,
                t.completed_at, t.notes, t.created_at, t.updated_at,
                TRIM(BOTH ' ' FROM COALESCE(u.first_name,'') || CASE WHEN u.last_name IS NOT NULL AND u.last_name <> '' THEN ' ' || u.last_name ELSE '' END) AS assignee_name,
-               cp.scope AS phase_scope, cp.title AS phase_title,
+               cp.title AS phase_title,
                cp.sort_order AS phase_sort_order
         FROM engagement_tasks t
         LEFT JOIN people u ON u.id = t.assignee_id
