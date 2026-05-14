@@ -363,7 +363,7 @@ function GuardiansSection({
   };
 
   return (
-    <Accordion variant="outlined" defaultExpanded disableGutters>
+    <Accordion variant="outlined" disableGutters>
       <AccordionSummary expandIcon={<ExpandMoreIcon />}>
         {/* No interactive element in here — AccordionSummary already
             renders as a <button>, and nesting another button is
@@ -647,7 +647,7 @@ function StudentsSection({
   const students = family?.students ?? [];
 
   return (
-    <Accordion variant="outlined" defaultExpanded disableGutters>
+    <Accordion variant="outlined" disableGutters>
       <AccordionSummary expandIcon={<ExpandMoreIcon />}>
         {/* Add button lives in the expanded panel — nesting a Button
             inside AccordionSummary's button is invalid HTML. */}
