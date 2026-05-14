@@ -29,6 +29,7 @@ import { DataTableContainer } from "../../components/DataTableContainer";
 import { DataToolbar } from "../../components/DataToolbar";
 import { PageHeader } from "../../components/PageHeader";
 import { StatusChip } from "../../components/StatusChip";
+import { useEngagementTypes } from "../../hooks/useEngagementTypes";
 
 // GET /api/engagements returns a plain list of dicts — hand-typed for
 // the columns we render. Backend selects student_id/student_name so the
@@ -57,6 +58,7 @@ export function EngagementsList() {
   const [status, setStatus] = useState<StatusFilter>("active");
   const [search, setSearch] = useState("");
   const [startOpen, setStartOpen] = useState(false);
+  const { labelFor: labelForType } = useEngagementTypes();
 
   const { data, isPending, error } = useQuery<EngagementRow[], Error>({
     queryKey: ["engagements", "list", status],
@@ -337,13 +339,3 @@ function toneForStatus(s: EngagementRow["status"]): "info" | "success" | "warnin
   }
 }
 
-function labelForType(t: string): string {
-  switch (t) {
-    case "assessment":
-      return "Assessment";
-    case "full_placement":
-      return "Full placement";
-    default:
-      return t.replace(/_/g, " ");
-  }
-}

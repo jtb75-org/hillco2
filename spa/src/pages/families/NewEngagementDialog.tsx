@@ -16,7 +16,7 @@ import {
 } from "@mui/material";
 import { DatePicker } from "@mui/x-date-pickers";
 import dayjs, { type Dayjs } from "dayjs";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 
 import { api } from "../../api/client";
 import { LabeledField } from "../../components/LabeledField";
@@ -27,20 +27,13 @@ interface StudentChoice {
   current_grade?: string | null;
 }
 
-type EngagementType = "assessment" | "full_placement";
-
-const TYPE_OPTIONS: Array<{ value: EngagementType; label: string; hint: string }> = [
-  {
-    value: "assessment",
-    label: "Assessment",
-    hint: "Just the assessment-scope phases (intake, doc review, profile).",
-  },
-  {
-    value: "full_placement",
-    label: "Full placement",
-    hint: "Assessment + placement scope (search process, feedback, package).",
-  },
-];
+interface EngagementTypeOption {
+  id: string;
+  code: string;
+  label: string;
+  description: string | null;
+  deleted_at: string | null;
+}
 
 /**
  * Quick "New engagement" flow. On save, POSTs to
@@ -64,17 +57,35 @@ export function NewEngagementDialog({
   onCreated: (engagementId: string) => void;
 }) {
   const [studentId, setStudentId] = useState<string>("");
-  const [engagementType, setEngagementType] = useState<EngagementType>("assessment");
+  const [engagementType, setEngagementType] = useState<string>("");
   const [startDate, setStartDate] = useState<Dayjs | null>(dayjs());
   const [targetEndDate, setTargetEndDate] = useState<Dayjs | null>(null);
   const [rate, setRate] = useState("");
   const [notes, setNotes] = useState("");
   const [seedFromCatalog, setSeedFromCatalog] = useState(true);
 
-  // Default to the family's first student.
+  const engagementTypes = useQuery<EngagementTypeOption[], Error>({
+    queryKey: ["engagement-types"],
+    enabled: open,
+    queryFn: async () => {
+      const { data, error } = await api.GET("/api/engagement-types", {});
+      if (error || !data) throw new Error("Failed to load engagement types.");
+      return (data as unknown as EngagementTypeOption[]).filter(
+        (t) => !t.deleted_at,
+      );
+    },
+  });
+
+  // Default to the family's first student and the lowest-sort-order
+  // engagement type once both arrive.
   useEffect(() => {
     if (open && !studentId && students[0]) setStudentId(students[0].id);
   }, [open, students, studentId]);
+  useEffect(() => {
+    if (open && !engagementType && engagementTypes.data && engagementTypes.data[0]) {
+      setEngagementType(engagementTypes.data[0].code);
+    }
+  }, [open, engagementType, engagementTypes.data]);
 
   const create = useMutation({
     mutationFn: async (): Promise<{ id: string }> => {
@@ -137,7 +148,7 @@ export function NewEngagementDialog({
 
   const reset = () => {
     setStudentId("");
-    setEngagementType("assessment");
+    setEngagementType("");
     setStartDate(dayjs());
     setTargetEndDate(null);
     setRate("");
@@ -152,8 +163,9 @@ export function NewEngagementDialog({
     onClose();
   };
 
-  const hint = TYPE_OPTIONS.find((t) => t.value === engagementType)?.hint;
-  const submitDisabled = create.isPending || !studentId;
+  const liveTypes = engagementTypes.data ?? [];
+  const hint = liveTypes.find((t) => t.code === engagementType)?.description ?? undefined;
+  const submitDisabled = create.isPending || !studentId || !engagementType;
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
@@ -194,11 +206,12 @@ export function NewEngagementDialog({
               <TextField
                 select
                 value={engagementType}
-                onChange={(e) => setEngagementType(e.target.value as EngagementType)}
+                onChange={(e) => setEngagementType(e.target.value)}
                 fullWidth
+                disabled={engagementTypes.isPending || liveTypes.length === 0}
               >
-                {TYPE_OPTIONS.map((t) => (
-                  <MenuItem key={t.value} value={t.value}>
+                {liveTypes.map((t) => (
+                  <MenuItem key={t.code} value={t.code}>
                     {t.label}
                   </MenuItem>
                 ))}

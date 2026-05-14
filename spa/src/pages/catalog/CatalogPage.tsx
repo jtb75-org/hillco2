@@ -4,6 +4,7 @@ import {
   Box,
   Button,
   Checkbox,
+  Chip,
   CircularProgress,
   Collapse,
   Dialog,
@@ -15,8 +16,6 @@ import {
   MenuItem,
   Paper,
   Stack,
-  Tab,
-  Tabs,
   TextField,
   Tooltip,
   Typography,
@@ -49,14 +48,14 @@ import { api } from "../../api/client";
 import { PageHeader } from "../../components/PageHeader";
 import { useSnackbar } from "../../components/Snackbar";
 
-// /api/catalog/* returns plain dicts. Hand-typed for the columns we
-// render and edit; backend shape is in app/routes/catalog.py.
-type CatalogScope = "assessment" | "placement";
+// /api/catalog/* + /api/engagement-types return plain dicts. Hand-typed
+// here for the columns we render and edit; backend shapes are in
+// app/routes/catalog.py and app/routes/engagement_types.py.
 type OwnerRole = "consultant" | "assistant" | "both";
 
 interface Phase {
   id: string;
-  scope: CatalogScope;
+  scope: string; // deprecated; kept on the row but not surfaced
   sort_order: number;
   title: string;
   description: string | null;
@@ -75,6 +74,16 @@ interface Item {
   default_billable: boolean;
   default_deliverable: string | null;
   default_owner_role: OwnerRole | null;
+  engagement_type_ids: string[];
+}
+
+interface EngagementType {
+  id: string;
+  code: string;
+  label: string;
+  description: string | null;
+  sort_order: number;
+  deleted_at: string | null;
 }
 
 const OWNER_OPTIONS: Array<{ value: OwnerRole; label: string }> = [
@@ -83,56 +92,39 @@ const OWNER_OPTIONS: Array<{ value: OwnerRole; label: string }> = [
   { value: "both", label: "Either" },
 ];
 
+// New phases default to this scope under the hood. catalog_phases.scope
+// is deprecated post-PR-A and the SPA no longer surfaces it; this just
+// satisfies the NOT NULL constraint until PR C drops the column.
+const DEFAULT_PHASE_SCOPE = "assessment";
+
 export function CatalogPage() {
-  const [scope, setScope] = useState<CatalogScope>("assessment");
-
-  return (
-    <Stack spacing={2}>
-      <PageHeader
-        title="Catalog"
-        subtitle="The phases and tasks that seed every engagement. Drag to reorder, click to edit, soft-delete to retire."
-      />
-
-      <Tabs
-        value={scope}
-        onChange={(_e, v: CatalogScope) => setScope(v)}
-        sx={{ borderBottom: 1, borderColor: "divider" }}
-      >
-        <Tab value="assessment" label="Assessment" />
-        <Tab value="placement" label="Placement" />
-      </Tabs>
-
-      <CatalogScope scope={scope} />
-    </Stack>
-  );
-}
-
-function CatalogScope({ scope }: { scope: CatalogScope }) {
   const qc = useQueryClient();
   const snackbar = useSnackbar();
 
   const phases = useQuery<Phase[], Error>({
-    queryKey: ["catalog", "phases", scope],
+    queryKey: ["catalog", "phases"],
     queryFn: async () => {
-      const { data, error } = await api.GET("/api/catalog/phases", {
-        params: { query: { scope } },
-      });
+      const { data, error } = await api.GET("/api/catalog/phases", {});
       if (error || !data) throw new Error("Failed to load phases.");
       return data as unknown as Phase[];
     },
   });
 
-  // All items across the scope's phases. We fetch via /catalog/items
-  // with scope filter so we get every row in one request and can
-  // group client-side, including the cross-phase move case.
   const items = useQuery<Item[], Error>({
-    queryKey: ["catalog", "items", scope],
+    queryKey: ["catalog", "items"],
     queryFn: async () => {
-      const { data, error } = await api.GET("/api/catalog/items", {
-        params: { query: { scope } },
-      });
+      const { data, error } = await api.GET("/api/catalog/items", {});
       if (error || !data) throw new Error("Failed to load items.");
       return data as unknown as Item[];
+    },
+  });
+
+  const engagementTypes = useQuery<EngagementType[], Error>({
+    queryKey: ["engagement-types"],
+    queryFn: async () => {
+      const { data, error } = await api.GET("/api/engagement-types", {});
+      if (error || !data) throw new Error("Failed to load engagement types.");
+      return data as unknown as EngagementType[];
     },
   });
 
@@ -188,8 +180,8 @@ function CatalogScope({ scope }: { scope: CatalogScope }) {
       }
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["catalog", "phases", scope] });
-      qc.invalidateQueries({ queryKey: ["catalog", "items", scope] });
+      qc.invalidateQueries({ queryKey: ["catalog", "phases"] });
+      qc.invalidateQueries({ queryKey: ["catalog", "items"] });
       snackbar.show("Phase removed");
     },
     onError: (e: Error) => snackbar.show(e.message, "error"),
@@ -206,8 +198,8 @@ function CatalogScope({ scope }: { scope: CatalogScope }) {
       }
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["catalog", "items", scope] });
-      qc.invalidateQueries({ queryKey: ["catalog", "phases", scope] }); // item_count
+      qc.invalidateQueries({ queryKey: ["catalog", "items"] });
+      qc.invalidateQueries({ queryKey: ["catalog", "phases"] }); // item_count
       snackbar.show("Activity removed");
     },
     onError: (e: Error) => snackbar.show(e.message, "error"),
@@ -221,8 +213,6 @@ function CatalogScope({ scope }: { scope: CatalogScope }) {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  // Reorder phases on drag end. Recompute sort_order spaced by 100
-  // and PATCH every phase whose position changed.
   const onPhaseDragEnd = (e: DragEndEvent) => {
     if (!phases.data) return;
     const { active, over } = e;
@@ -231,11 +221,7 @@ function CatalogScope({ scope }: { scope: CatalogScope }) {
     const newIndex = phases.data.findIndex((p) => p.id === over.id);
     if (oldIndex < 0 || newIndex < 0) return;
     const next = arrayMove(phases.data, oldIndex, newIndex);
-
-    // Optimistic update.
-    qc.setQueryData(["catalog", "phases", scope], next);
-
-    // Persist new sort orders for any row whose position changed.
+    qc.setQueryData(["catalog", "phases"], next);
     Promise.all(
       next
         .map((p, idx) => ({ p, sort_order: (idx + 1) * 100 }))
@@ -244,18 +230,18 @@ function CatalogScope({ scope }: { scope: CatalogScope }) {
           patchPhase.mutateAsync({ id: p.id, body: { sort_order } }),
         ),
     )
-      .then(() => qc.invalidateQueries({ queryKey: ["catalog", "phases", scope] }))
-      .catch(() => qc.invalidateQueries({ queryKey: ["catalog", "phases", scope] }));
+      .then(() => qc.invalidateQueries({ queryKey: ["catalog", "phases"] }))
+      .catch(() => qc.invalidateQueries({ queryKey: ["catalog", "phases"] }));
   };
 
-  if (phases.error || items.error) {
+  if (phases.error || items.error || engagementTypes.error) {
     return (
       <Alert severity="error">
-        {phases.error?.message ?? items.error?.message}
+        {phases.error?.message ?? items.error?.message ?? engagementTypes.error?.message}
       </Alert>
     );
   }
-  if (phases.isPending || items.isPending) {
+  if (phases.isPending || items.isPending || engagementTypes.isPending) {
     return (
       <Box sx={{ display: "flex", justifyContent: "center", py: 6 }}>
         <CircularProgress />
@@ -263,9 +249,22 @@ function CatalogScope({ scope }: { scope: CatalogScope }) {
     );
   }
 
+  const allTypes = engagementTypes.data;
+  const liveTypes = allTypes.filter((t) => !t.deleted_at);
+
   return (
     <Stack spacing={2}>
-      <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
+      <PageHeader
+        title="Catalog"
+        subtitle="Engagement types, phases, and activities. Drag to reorder; tag each activity with the engagement types it belongs to."
+      />
+
+      <EngagementTypesPanel types={allTypes} />
+
+      <Stack direction="row" alignItems="baseline" spacing={1}>
+        <Typography variant="h6" sx={{ fontWeight: 600, flex: 1 }}>
+          Phases &amp; activities
+        </Typography>
         <Button
           variant="contained"
           startIcon={<AddIcon />}
@@ -273,7 +272,13 @@ function CatalogScope({ scope }: { scope: CatalogScope }) {
         >
           Add phase
         </Button>
-      </Box>
+      </Stack>
+
+      {liveTypes.length === 0 && (
+        <Alert severity="info">
+          No engagement types yet. Add one above so new activities have somewhere to belong.
+        </Alert>
+      )}
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onPhaseDragEnd}>
         <SortableContext
@@ -287,9 +292,8 @@ function CatalogScope({ scope }: { scope: CatalogScope }) {
                 phase={phase}
                 items={itemsByPhase.get(phase.id) ?? []}
                 allPhaseIds={phases.data.map((p) => p.id)}
-                onPatchPhase={(body) =>
-                  patchPhase.mutate({ id: phase.id, body })
-                }
+                engagementTypes={liveTypes}
+                onPatchPhase={(body) => patchPhase.mutate({ id: phase.id, body })}
                 onDeletePhase={() => deletePhase.mutate(phase.id)}
                 onAddItem={() => setAddItemPhaseId(phase.id)}
                 onPatchItem={(itemId, body) =>
@@ -297,9 +301,7 @@ function CatalogScope({ scope }: { scope: CatalogScope }) {
                 }
                 onDeleteItem={(itemId) => deleteItem.mutate(itemId)}
                 onItemsReorder={async (newItems) => {
-                  // Optimistic update for the affected phase's slice
-                  // of the items query.
-                  qc.setQueryData<Item[]>(["catalog", "items", scope], (prev) => {
+                  qc.setQueryData<Item[]>(["catalog", "items"], (prev) => {
                     if (!prev) return prev;
                     const others = prev.filter((i) => i.phase_id !== phase.id);
                     return [...others, ...newItems];
@@ -312,15 +314,15 @@ function CatalogScope({ scope }: { scope: CatalogScope }) {
                         patchItem.mutateAsync({ id: it.id, body: { sort_order } }),
                       ),
                   );
-                  qc.invalidateQueries({ queryKey: ["catalog", "items", scope] });
+                  qc.invalidateQueries({ queryKey: ["catalog", "items"] });
                 }}
                 onItemMoveOut={async (itemId, targetPhaseId) => {
                   await patchItem.mutateAsync({
                     id: itemId,
                     body: { phase_id: targetPhaseId },
                   });
-                  qc.invalidateQueries({ queryKey: ["catalog", "items", scope] });
-                  qc.invalidateQueries({ queryKey: ["catalog", "phases", scope] });
+                  qc.invalidateQueries({ queryKey: ["catalog", "items"] });
+                  qc.invalidateQueries({ queryKey: ["catalog", "phases"] });
                 }}
               />
             ))}
@@ -330,12 +332,11 @@ function CatalogScope({ scope }: { scope: CatalogScope }) {
 
       <AddPhaseDialog
         open={addPhaseOpen}
-        scope={scope}
         nextSortOrder={(phases.data.length + 1) * 100}
         onClose={() => setAddPhaseOpen(false)}
         onCreated={() => {
           setAddPhaseOpen(false);
-          qc.invalidateQueries({ queryKey: ["catalog", "phases", scope] });
+          qc.invalidateQueries({ queryKey: ["catalog", "phases"] });
         }}
       />
       <AddItemDialog
@@ -345,21 +346,330 @@ function CatalogScope({ scope }: { scope: CatalogScope }) {
             ? ((itemsByPhase.get(addItemPhaseId) ?? []).length + 1) * 100
             : 100
         }
+        engagementTypes={liveTypes}
         onClose={() => setAddItemPhaseId(null)}
         onCreated={() => {
           setAddItemPhaseId(null);
-          qc.invalidateQueries({ queryKey: ["catalog", "items", scope] });
-          qc.invalidateQueries({ queryKey: ["catalog", "phases", scope] });
+          qc.invalidateQueries({ queryKey: ["catalog", "items"] });
+          qc.invalidateQueries({ queryKey: ["catalog", "phases"] });
         }}
       />
     </Stack>
   );
 }
 
+// ---- Engagement types panel ------------------------------------------------
+
+function EngagementTypesPanel({ types }: { types: EngagementType[] }) {
+  const qc = useQueryClient();
+  const snackbar = useSnackbar();
+  const [addOpen, setAddOpen] = useState(false);
+  const [editing, setEditing] = useState<EngagementType | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState<EngagementType | null>(null);
+
+  const remove = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await api.DELETE("/api/engagement-types/{type_id}", {
+        params: { path: { type_id: id } as never },
+      });
+      if (error) {
+        const msg = (error as { detail?: string }).detail ?? "Delete failed.";
+        throw new Error(msg);
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["engagement-types"] });
+      snackbar.show("Engagement type removed");
+    },
+    onError: (e: Error) => snackbar.show(e.message, "error"),
+  });
+
+  const restore = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await api.POST("/api/engagement-types/{type_id}/restore", {
+        params: { path: { type_id: id } as never },
+      });
+      if (error) {
+        const msg = (error as { detail?: string }).detail ?? "Restore failed.";
+        throw new Error(msg);
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["engagement-types"] });
+      snackbar.show("Engagement type restored");
+    },
+    onError: (e: Error) => snackbar.show(e.message, "error"),
+  });
+
+  const live = types.filter((t) => !t.deleted_at);
+  const archived = types.filter((t) => !!t.deleted_at);
+
+  return (
+    <Paper variant="outlined" sx={{ p: 2 }}>
+      <Stack direction="row" alignItems="baseline" spacing={1} sx={{ mb: 1 }}>
+        <Typography variant="overline" color="text.secondary" sx={{ flex: 1 }}>
+          Engagement types
+        </Typography>
+        <Button
+          size="small"
+          variant="text"
+          startIcon={<AddIcon fontSize="small" />}
+          onClick={() => setAddOpen(true)}
+        >
+          Add type
+        </Button>
+      </Stack>
+      {live.length === 0 ? (
+        <Typography variant="body2" color="text.disabled">
+          No engagement types yet.
+        </Typography>
+      ) : (
+        <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ gap: 1 }}>
+          {live.map((t) => (
+            <Chip
+              key={t.id}
+              label={`${t.label} · ${t.code}`}
+              onClick={() => setEditing(t)}
+              onDelete={() => setConfirmingDelete(t)}
+              variant="outlined"
+            />
+          ))}
+        </Stack>
+      )}
+      {archived.length > 0 && (
+        <Box sx={{ mt: 1.5 }}>
+          <Typography variant="caption" color="text.disabled" sx={{ display: "block", mb: 0.5 }}>
+            Archived
+          </Typography>
+          <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ gap: 1 }}>
+            {archived.map((t) => (
+              <Chip
+                key={t.id}
+                label={`${t.label} · ${t.code}`}
+                onClick={() => restore.mutate(t.id)}
+                variant="outlined"
+                sx={{ color: "text.disabled", textDecoration: "line-through" }}
+              />
+            ))}
+          </Stack>
+        </Box>
+      )}
+
+      <AddEngagementTypeDialog
+        open={addOpen}
+        nextSortOrder={(live.length + 1) * 100}
+        onClose={() => setAddOpen(false)}
+        onCreated={() => {
+          setAddOpen(false);
+          qc.invalidateQueries({ queryKey: ["engagement-types"] });
+        }}
+      />
+      <EditEngagementTypeDialog
+        target={editing}
+        onClose={() => setEditing(null)}
+        onSaved={() => {
+          setEditing(null);
+          qc.invalidateQueries({ queryKey: ["engagement-types"] });
+        }}
+      />
+      <Dialog open={!!confirmingDelete} onClose={() => setConfirmingDelete(null)}>
+        <DialogTitle>Remove "{confirmingDelete?.label}"?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            Soft delete only. Existing engagements that already use this type stay
+            intact; it just stops appearing in pickers and on new activities.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmingDelete(null)}>Cancel</Button>
+          <Button
+            color="error"
+            variant="contained"
+            onClick={() => {
+              if (confirmingDelete) remove.mutate(confirmingDelete.id);
+              setConfirmingDelete(null);
+            }}
+          >
+            Remove
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Paper>
+  );
+}
+
+function AddEngagementTypeDialog({
+  open,
+  nextSortOrder,
+  onClose,
+  onCreated,
+}: {
+  open: boolean;
+  nextSortOrder: number;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const snackbar = useSnackbar();
+  const [code, setCode] = useState("");
+  const [label, setLabel] = useState("");
+  const [description, setDescription] = useState("");
+  const create = useMutation({
+    mutationFn: async () => {
+      const { error } = await api.POST("/api/engagement-types", {
+        body: {
+          code: code.trim(),
+          label: label.trim(),
+          description: description.trim() || null,
+          sort_order: nextSortOrder,
+        } as never,
+      });
+      if (error) {
+        const msg = (error as { detail?: string }).detail ?? "Create failed.";
+        throw new Error(msg);
+      }
+    },
+    onSuccess: () => {
+      setCode("");
+      setLabel("");
+      setDescription("");
+      onCreated();
+    },
+    onError: (e: Error) => snackbar.show(e.message, "error"),
+  });
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>Add engagement type</DialogTitle>
+      <DialogContent>
+        <Stack spacing={2} sx={{ mt: 1 }}>
+          <TextField
+            size="small"
+            label="Code"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            required
+            helperText="Stable slug, e.g. consultation. lowercase letters / digits / underscores."
+          />
+          <TextField
+            size="small"
+            label="Label"
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            required
+            helperText="Display name shown to users."
+          />
+          <TextField
+            size="small"
+            label="Description (optional)"
+            multiline
+            minRows={2}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button
+          variant="contained"
+          disabled={!code.trim() || !label.trim() || create.isPending}
+          onClick={() => create.mutate()}
+        >
+          {create.isPending ? "Adding…" : "Add type"}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+function EditEngagementTypeDialog({
+  target,
+  onClose,
+  onSaved,
+}: {
+  target: EngagementType | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const snackbar = useSnackbar();
+  const [label, setLabel] = useState(target?.label ?? "");
+  const [description, setDescription] = useState(target?.description ?? "");
+  // Reset local state when target changes (open with a fresh row).
+  // useEffect would be cleaner; here we just key on the dialog's open
+  // transition via a derived check.
+  if (target && label === "" && description === "") {
+    // first render after target set; initialize once
+    setLabel(target.label);
+    setDescription(target.description ?? "");
+  }
+  const save = useMutation({
+    mutationFn: async () => {
+      if (!target) return;
+      const { error } = await api.PATCH("/api/engagement-types/{type_id}", {
+        params: { path: { type_id: target.id } as never },
+        body: {
+          label: label.trim(),
+          description: description.trim() || null,
+        } as never,
+      });
+      if (error) {
+        const msg = (error as { detail?: string }).detail ?? "Save failed.";
+        throw new Error(msg);
+      }
+    },
+    onSuccess: () => {
+      setLabel("");
+      setDescription("");
+      onSaved();
+    },
+    onError: (e: Error) => snackbar.show(e.message, "error"),
+  });
+  return (
+    <Dialog open={!!target} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>Edit "{target?.code}"</DialogTitle>
+      <DialogContent>
+        <Stack spacing={2} sx={{ mt: 1 }}>
+          <TextField
+            size="small"
+            label="Label"
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            required
+          />
+          <TextField
+            size="small"
+            label="Description"
+            multiline
+            minRows={2}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+          <Typography variant="caption" color="text.disabled">
+            Code "{target?.code}" can't be renamed — it's the stable identifier
+            referenced by engagements and activity memberships.
+          </Typography>
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button
+          variant="contained"
+          disabled={!label.trim() || save.isPending}
+          onClick={() => save.mutate()}
+        >
+          {save.isPending ? "Saving…" : "Save"}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+// ---- Phase + Item rendering ------------------------------------------------
+
 function PhaseCard({
   phase,
   items,
   allPhaseIds,
+  engagementTypes,
   onPatchPhase,
   onDeletePhase,
   onAddItem,
@@ -371,6 +681,7 @@ function PhaseCard({
   phase: Phase;
   items: Item[];
   allPhaseIds: string[];
+  engagementTypes: EngagementType[];
   onPatchPhase: (body: Record<string, unknown>) => void;
   onDeletePhase: () => void;
   onAddItem: () => void;
@@ -385,9 +696,6 @@ function PhaseCard({
   const [editingTitle, setEditingTitle] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
-  // Drag end inside the items list — handles both same-phase reorder
-  // and same-scope cross-phase moves. The target phase id sits as the
-  // drop zone's sortable id, decorated below.
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -395,13 +703,11 @@ function PhaseCard({
   const onItemDragEnd = async (e: DragEndEvent) => {
     const { active, over } = e;
     if (!over || active.id === over.id) return;
-    // Cross-phase move: the drop target is another PhaseCard's body.
     const overPhaseId = allPhaseIds.find((id) => id === over.id);
     if (overPhaseId && overPhaseId !== phase.id) {
       await onItemMoveOut(String(active.id), overPhaseId);
       return;
     }
-    // Same-phase reorder.
     const oldIndex = items.findIndex((i) => i.id === active.id);
     const newIndex = items.findIndex((i) => i.id === over.id);
     if (oldIndex < 0 || newIndex < 0) return;
@@ -486,19 +792,13 @@ function PhaseCard({
           items={items.map((i) => i.id)}
           strategy={verticalListSortingStrategy}
         >
-          <Stack
-            spacing={0}
-            sx={{ p: 1 }}
-            // Sortable's "self" drop target: when an item from another
-            // phase is dragged here, the DnD lib matches against any
-            // sortable id in this card's context. We add the phase id
-            // as a synthetic id below.
-          >
+          <Stack spacing={0} sx={{ p: 1 }}>
             <PhaseDropTarget phaseId={phase.id} />
             {items.map((item) => (
               <ItemRow
                 key={item.id}
                 item={item}
+                engagementTypes={engagementTypes}
                 onPatch={(body) => onPatchItem(item.id, body)}
                 onDelete={() => onDeleteItem(item.id)}
               />
@@ -542,9 +842,6 @@ function PhaseCard({
   );
 }
 
-// Invisible-ish drop target keyed by the phase id. When an item is
-// dragged from another phase, the cross-phase handler in onItemDragEnd
-// fires because over.id === this phase's id.
 function PhaseDropTarget({ phaseId }: { phaseId: string }) {
   const { setNodeRef, isOver } = useSortable({ id: phaseId, disabled: true });
   return (
@@ -562,10 +859,12 @@ function PhaseDropTarget({ phaseId }: { phaseId: string }) {
 
 function ItemRow({
   item,
+  engagementTypes,
   onPatch,
   onDelete,
 }: {
   item: Item;
+  engagementTypes: EngagementType[];
   onPatch: (body: Record<string, unknown>) => void;
   onDelete: () => void;
 }) {
@@ -574,6 +873,15 @@ function ItemRow({
   const [expanded, setExpanded] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+  const memberships = new Set(item.engagement_type_ids);
+  const toggleType = (typeId: string) => {
+    const next = new Set(memberships);
+    if (next.has(typeId)) next.delete(typeId);
+    else next.add(typeId);
+    onPatch({ engagement_type_ids: Array.from(next) });
+  };
+
   return (
     <Box
       ref={setNodeRef}
@@ -613,8 +921,24 @@ function ItemRow({
             {item.title}
           </Typography>
         )}
+        <Stack direction="row" spacing={0.5} flexWrap="wrap" sx={{ gap: 0.5 }}>
+          {engagementTypes.map((t) => {
+            const on = memberships.has(t.id);
+            return (
+              <Chip
+                key={t.id}
+                label={t.label}
+                size="small"
+                clickable
+                onClick={() => toggleType(t.id)}
+                variant={on ? "filled" : "outlined"}
+                color={on ? "primary" : "default"}
+              />
+            );
+          })}
+        </Stack>
         {item.default_est_hours && (
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" color="text.secondary" sx={{ minWidth: 56, textAlign: "right" }}>
             {item.default_est_hours}h est
           </Typography>
         )}
@@ -757,8 +1081,6 @@ function ItemDetails({
   );
 }
 
-/** TextField that holds local state while typing and commits on blur.
- *  Avoids PATCHing every keystroke for the title / description fields. */
 function BlurField({
   label,
   initial,
@@ -789,7 +1111,6 @@ function BlurField({
   );
 }
 
-/** Inline editable title — enter to commit, escape to cancel. */
 function InlineEdit({
   initial,
   onCommit,
@@ -818,13 +1139,11 @@ function InlineEdit({
 
 function AddPhaseDialog({
   open,
-  scope,
   nextSortOrder,
   onClose,
   onCreated,
 }: {
   open: boolean;
-  scope: CatalogScope;
   nextSortOrder: number;
   onClose: () => void;
   onCreated: () => void;
@@ -836,7 +1155,7 @@ function AddPhaseDialog({
     mutationFn: async () => {
       const { error } = await api.POST("/api/catalog/phases", {
         body: {
-          scope,
+          scope: DEFAULT_PHASE_SCOPE,
           title: title.trim(),
           description: description.trim() || null,
           sort_order: nextSortOrder,
@@ -857,7 +1176,7 @@ function AddPhaseDialog({
   });
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Add phase ({scope})</DialogTitle>
+      <DialogTitle>Add phase</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 1 }}>
           <TextField
@@ -895,17 +1214,22 @@ function AddPhaseDialog({
 function AddItemDialog({
   phaseId,
   nextSortOrder,
+  engagementTypes,
   onClose,
   onCreated,
 }: {
   phaseId: string | null;
   nextSortOrder: number;
+  engagementTypes: EngagementType[];
   onClose: () => void;
   onCreated: () => void;
 }) {
   const snackbar = useSnackbar();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  // Pre-select every engagement type so new activities are usable
+  // immediately. The chips on the row can flip individual ones off.
+  const [typeIds, setTypeIds] = useState<string[]>(() => engagementTypes.map((t) => t.id));
   const create = useMutation({
     mutationFn: async () => {
       if (!phaseId) return;
@@ -916,6 +1240,7 @@ function AddItemDialog({
           description: description.trim() || null,
           sort_order: nextSortOrder,
           default_billable: true,
+          engagement_type_ids: typeIds,
         } as never,
       });
       if (error) {
@@ -926,10 +1251,16 @@ function AddItemDialog({
     onSuccess: () => {
       setTitle("");
       setDescription("");
+      setTypeIds(engagementTypes.map((t) => t.id));
       onCreated();
     },
     onError: (e: Error) => snackbar.show(e.message, "error"),
   });
+  const toggle = (id: string) => {
+    setTypeIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  };
   return (
     <Dialog open={!!phaseId} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>Add activity</DialogTitle>
@@ -951,6 +1282,27 @@ function AddItemDialog({
             value={description}
             onChange={(e) => setDescription(e.target.value)}
           />
+          <Box>
+            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.5 }}>
+              Engagement types this activity belongs to
+            </Typography>
+            <Stack direction="row" spacing={0.5} flexWrap="wrap" sx={{ gap: 0.5 }}>
+              {engagementTypes.map((t) => {
+                const on = typeIds.includes(t.id);
+                return (
+                  <Chip
+                    key={t.id}
+                    label={t.label}
+                    size="small"
+                    clickable
+                    onClick={() => toggle(t.id)}
+                    variant={on ? "filled" : "outlined"}
+                    color={on ? "primary" : "default"}
+                  />
+                );
+              })}
+            </Stack>
+          </Box>
         </Stack>
       </DialogContent>
       <DialogActions>
