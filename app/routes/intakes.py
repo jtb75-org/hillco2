@@ -2,15 +2,19 @@
 or more engagements. See migration 0006 for the schema; one intake →
 many engagements (e.g., a separate engagement per child)."""
 from datetime import date
+from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from ..auth import require_user
 from ..db import get_conn
 
 router = APIRouter(prefix="/api", tags=["intakes"])
+
+
+StatusFilter = Literal["active", "completed", "all"]
 
 
 class IntakeCreate(BaseModel):
@@ -38,16 +42,27 @@ async def _intake_or_404(conn, intake_id: UUID):
 
 @router.get("/intakes")
 async def list_intakes(
+    status: StatusFilter = Query(
+        "active",
+        description="active = completed_at IS NULL; completed; all",
+    ),
     _user=Depends(require_user),
     conn=Depends(get_conn),
 ):
     """All intakes across the practice, newest first. Includes the
     family household name and consultant display name so the SPA's
     list view can render each row without per-row roundtrips."""
+    if status == "active":
+        clause = "AND i.completed_at IS NULL"
+    elif status == "completed":
+        clause = "AND i.completed_at IS NOT NULL"
+    else:
+        clause = ""
+
     rows = await conn.fetch(
-        """
+        f"""
         SELECT i.id, i.family_id, i.intake_date, i.consultant_id, i.notes,
-               i.created_at, i.updated_at,
+               i.completed_at, i.created_at, i.updated_at,
                f.household_name,
                TRIM(BOTH ' ' FROM
                  COALESCE(p.first_name, '') ||
@@ -57,7 +72,7 @@ async def list_intakes(
         FROM intakes i
         JOIN families f ON f.id = i.family_id AND f.deleted_at IS NULL
         LEFT JOIN people p ON p.id = i.consultant_id
-        WHERE i.deleted_at IS NULL
+        WHERE i.deleted_at IS NULL {clause}
         ORDER BY i.intake_date DESC, i.created_at DESC
         """
     )
@@ -146,6 +161,42 @@ async def update_intake(
         f"UPDATE intakes SET {set_sql} WHERE id = $1 RETURNING *",
         intake_id,
         *fields.values(),
+    )
+    return dict(row)
+
+
+@router.post("/intakes/{intake_id}/complete")
+async def complete_intake(
+    intake_id: UUID,
+    _user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    """Stamp `completed_at = NOW()`. Idempotent — re-completing an
+    already-complete intake leaves the original timestamp in place."""
+    await _intake_or_404(conn, intake_id)
+    row = await conn.fetchrow(
+        """
+        UPDATE intakes
+        SET completed_at = COALESCE(completed_at, NOW())
+        WHERE id = $1
+        RETURNING *
+        """,
+        intake_id,
+    )
+    return dict(row)
+
+
+@router.post("/intakes/{intake_id}/reopen")
+async def reopen_intake(
+    intake_id: UUID,
+    _user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    """Clear `completed_at`. No-op if it's already null."""
+    await _intake_or_404(conn, intake_id)
+    row = await conn.fetchrow(
+        "UPDATE intakes SET completed_at = NULL WHERE id = $1 RETURNING *",
+        intake_id,
     )
     return dict(row)
 

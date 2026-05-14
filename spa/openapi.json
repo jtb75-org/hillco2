@@ -3462,12 +3462,41 @@
         "summary": "List Intakes",
         "description": "All intakes across the practice, newest first. Includes the\nfamily household name and consultant display name so the SPA's\nlist view can render each row without per-row roundtrips.",
         "operationId": "list_intakes_api_intakes_get",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "active",
+                "completed",
+                "all"
+              ],
+              "type": "string",
+              "description": "active = completed_at IS NULL; completed; all",
+              "default": "active",
+              "title": "Status"
+            },
+            "description": "active = completed_at IS NULL; completed; all"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
               }
             }
           }
@@ -3480,14 +3509,14 @@
         "summary": "Create Intake",
         "operationId": "create_intake_api_intakes_post",
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/IntakeCreate"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "201": {
@@ -3652,6 +3681,90 @@
               "type": "string",
               "format": "uuid",
               "title": "Family Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/intakes/{intake_id}/complete": {
+      "post": {
+        "tags": [
+          "intakes"
+        ],
+        "summary": "Complete Intake",
+        "description": "Stamp `completed_at = NOW()`. Idempotent \u2014 re-completing an\nalready-complete intake leaves the original timestamp in place.",
+        "operationId": "complete_intake_api_intakes__intake_id__complete_post",
+        "parameters": [
+          {
+            "name": "intake_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Intake Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/intakes/{intake_id}/reopen": {
+      "post": {
+        "tags": [
+          "intakes"
+        ],
+        "summary": "Reopen Intake",
+        "description": "Clear `completed_at`. No-op if it's already null.",
+        "operationId": "reopen_intake_api_intakes__intake_id__reopen_post",
+        "parameters": [
+          {
+            "name": "intake_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Intake Id"
             }
           }
         ],
