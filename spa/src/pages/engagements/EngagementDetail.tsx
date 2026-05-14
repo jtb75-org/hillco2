@@ -35,6 +35,7 @@ import { Link as RouterLink, useNavigate, useParams } from "react-router-dom";
 import { api } from "../../api/client";
 import { useSnackbar } from "../../components/Snackbar";
 import { StatusChip } from "../../components/StatusChip";
+import { useEngagementTypes } from "../../hooks/useEngagementTypes";
 
 // /api/engagements/{id} returns a plain dict (no OpenAPI response_model).
 // Hand-typed here for the bits we render.
@@ -135,6 +136,7 @@ export function EngagementDetail() {
   // catalog have loaded. Guarded by a ref so a user who clicks "All
   // phases" doesn't immediately get re-routed back to the next phase.
   const autoSelectedRef = useRef(false);
+  const { labelFor: labelForType } = useEngagementTypes();
 
   const engagement = useQuery<EngagementDetail, Error>({
     queryKey: ["engagements", id],
@@ -351,6 +353,7 @@ function DangerZoneCard({ engagement }: { engagement: EngagementDetail }) {
 }
 
 function HeaderStrip({ engagement }: { engagement: EngagementDetail }) {
+  const { labelFor: labelForType } = useEngagementTypes();
   return (
     <Paper variant="outlined" sx={{ p: 2.5 }}>
       <Stack direction="row" alignItems="baseline" spacing={2} sx={{ mb: 1, flexWrap: "wrap" }}>
@@ -884,6 +887,7 @@ function NoTasksState({
   const qc = useQueryClient();
   const snackbar = useSnackbar();
   const navigate = useNavigate();
+  const { labelFor: labelForType } = useEngagementTypes();
   void navigate;
 
   const seed = useMutation({
@@ -1321,13 +1325,3 @@ function Value({ children }: { children: React.ReactNode }) {
   return <Typography variant="body2">{children}</Typography>;
 }
 
-function labelForType(t: string): string {
-  switch (t) {
-    case "assessment":
-      return "Assessment";
-    case "full_placement":
-      return "Full placement";
-    default:
-      return t.replace(/_/g, " ");
-  }
-}

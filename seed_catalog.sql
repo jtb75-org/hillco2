@@ -52,17 +52,19 @@ INSERT INTO catalog_phases (scope, sort_order, title, description, est_hours, de
      'Draft, present, and refine the recommendation report.',
      NULL, TRUE),
 
-    -- Placement (4 phases — only run when engagement_type = 'full_placement')
-    ('placement', 100, 'Campus Visits',
+    -- Placement (4 phases — only run when engagement_type = 'full_placement').
+    -- Sort orders start at 1100 so placement phases come after assessment
+    -- (100..700) in a flat catalog listing without collisions.
+    ('placement', 1100, 'Campus Visits',
      'Pre-visit prep, the visit itself, and post-visit debrief.',
      NULL, TRUE),
-    ('placement', 200, 'Interview Prep',
+    ('placement', 1200, 'Interview Prep',
      'Get the family ready for school interviews — coaching and mock runs.',
      NULL, TRUE),
-    ('placement', 300, 'School Submissions',
+    ('placement', 1300, 'School Submissions',
      'Application support, packet prep, and admissions decision processing — repeats per school.',
      NULL, TRUE),
-    ('placement', 400, 'School Selection',
+    ('placement', 1400, 'School Selection',
      'Final decision and transition strategy.',
      NULL, TRUE);
 
