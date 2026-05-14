@@ -42,6 +42,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link as RouterLink, useNavigate, useParams } from "react-router-dom";
 
 import { api } from "../../api/client";
+import { LabeledField } from "../../components/LabeledField";
 import { PageHeader } from "../../components/PageHeader";
 import { RichTextEditor } from "../../components/RichTextEditor";
 import { StatusChip } from "../../components/StatusChip";
@@ -623,37 +624,41 @@ function AddGuardianDialog({
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 1 }}>
           <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-            <TextField
-              autoFocus
-              size="small"
-              label="First name"
-              value={firstName}
-              onChange={(e) => setFirstName(e.target.value)}
-              fullWidth
-            />
-            <TextField
-              size="small"
-              label="Last name"
-              value={lastName}
-              onChange={(e) => setLastName(e.target.value)}
-              fullWidth
-            />
+            <LabeledField label="First name">
+              <TextField
+                autoFocus
+                size="small"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                fullWidth
+              />
+            </LabeledField>
+            <LabeledField label="Last name">
+              <TextField
+                size="small"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                fullWidth
+              />
+            </LabeledField>
           </Stack>
-          <TextField
-            size="small"
-            label="Phone"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            fullWidth
-          />
-          <TextField
-            size="small"
-            label="Email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            fullWidth
-          />
+          <LabeledField label="Phone">
+            <TextField
+              size="small"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              fullWidth
+            />
+          </LabeledField>
+          <LabeledField label="Email">
+            <TextField
+              size="small"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              fullWidth
+            />
+          </LabeledField>
         </Stack>
       </DialogContent>
       <DialogActions>
@@ -817,45 +822,49 @@ function AddStudentDialog({
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 1 }}>
           <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-            <TextField
-              autoFocus
-              required
-              size="small"
-              label="First name"
-              value={firstName}
-              onChange={(e) => setFirstName(e.target.value)}
-              fullWidth
-            />
-            <TextField
-              required
-              size="small"
-              label="Last name"
-              value={lastName}
-              onChange={(e) => setLastName(e.target.value)}
-              fullWidth
-            />
+            <LabeledField label="First name" required>
+              <TextField
+                autoFocus
+                required
+                size="small"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                fullWidth
+              />
+            </LabeledField>
+            <LabeledField label="Last name" required>
+              <TextField
+                required
+                size="small"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                fullWidth
+              />
+            </LabeledField>
           </Stack>
           <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-            <DatePicker
-              label="Date of birth"
-              value={dob}
-              onChange={(v) => setDob(v)}
-              // openTo=year lets you type the year first in the
-              // calendar popover; the textfield itself accepts a
-              // typed MM/DD/YYYY too without Safari's native
-              // year-rejection quirk.
-              openTo="year"
-              views={["year", "month", "day"]}
-              slotProps={{ textField: { size: "small", fullWidth: true } }}
-            />
-            <TextField
-              size="small"
-              label="Current grade"
-              placeholder='e.g. "8th"'
-              value={grade}
-              onChange={(e) => setGrade(e.target.value)}
-              fullWidth
-            />
+            <LabeledField label="Date of birth">
+              <DatePicker
+                value={dob}
+                onChange={(v) => setDob(v)}
+                // openTo=year lets you type the year first in the
+                // calendar popover; the textfield itself accepts a
+                // typed MM/DD/YYYY too without Safari's native
+                // year-rejection quirk.
+                openTo="year"
+                views={["year", "month", "day"]}
+                slotProps={{ textField: { size: "small", fullWidth: true } }}
+              />
+            </LabeledField>
+            <LabeledField label="Current grade">
+              <TextField
+                size="small"
+                placeholder='e.g. "8th"'
+                value={grade}
+                onChange={(e) => setGrade(e.target.value)}
+                fullWidth
+              />
+            </LabeledField>
           </Stack>
           <Typography variant="caption" color="text.disabled">
             Diagnoses, current school, and other clinical fields are
