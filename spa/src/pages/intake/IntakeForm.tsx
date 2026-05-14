@@ -7,6 +7,9 @@ import {
   Box,
   Breadcrumbs,
   Button,
+  Card,
+  CardActionArea,
+  CardContent,
   Chip,
   CircularProgress,
   Dialog,
@@ -14,6 +17,7 @@ import {
   DialogContent,
   DialogTitle,
   Divider,
+  Grid,
   Link as MuiLink,
   Paper,
   Stack,
@@ -35,6 +39,8 @@ import { PageHeader } from "../../components/PageHeader";
 import { RichTextEditor } from "../../components/RichTextEditor";
 import { StatusChip } from "../../components/StatusChip";
 import { useSnackbar } from "../../components/Snackbar";
+import { ParentDrawer } from "../families/ParentDrawer";
+import type { ParentDrawerTarget } from "../families/ParentDrawer";
 
 // /api/intakes/:id returns a plain dict; hand-typed here.
 interface Intake {
@@ -56,6 +62,8 @@ interface GuardianRow {
   role: string;
   is_primary_contact: boolean;
   is_billing_contact: boolean;
+  mailing_address: string | null;
+  billing_address: string | null;
 }
 
 interface StudentRow {
@@ -344,7 +352,15 @@ function GuardiansSection({
 }) {
   const qc = useQueryClient();
   const [addOpen, setAddOpen] = useState(false);
+  // Drawer target — open == not-null. We pass the row straight from
+  // the family-detail query; the drawer fetches its own structured
+  // mailing/billing fields internally.
+  const [drawerGuardian, setDrawerGuardian] = useState<ParentDrawerTarget | null>(null);
   const guardians = family?.parents ?? [];
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["families", "intake-detail", family?.id] });
+    qc.invalidateQueries({ queryKey: ["families", "intake-picker"] });
+  };
 
   return (
     <Accordion variant="outlined" defaultExpanded disableGutters>
@@ -383,29 +399,16 @@ function GuardiansSection({
             No guardians on file yet.
           </Typography>
         ) : (
-          <Stack divider={<Divider flexItem />} spacing={0}>
+          <Grid container spacing={2}>
             {guardians.map((g) => (
-              <Stack key={g.id} direction="row" alignItems="center" spacing={1} sx={{ py: 1 }}>
-                <Box sx={{ flex: 1, minWidth: 0 }}>
-                  <Stack direction="row" spacing={0.5} alignItems="baseline" sx={{ mb: 0.25 }}>
-                    <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                      {g.name || "(no name)"}
-                    </Typography>
-                    {g.is_primary_contact && (
-                      <Chip size="small" label="primary" color="primary" variant="outlined" />
-                    )}
-                    {g.is_billing_contact && (
-                      <Chip size="small" label="billing" color="success" variant="outlined" />
-                    )}
-                  </Stack>
-                  <Stack direction="row" spacing={1.5} sx={{ color: "text.secondary", fontSize: 12 }}>
-                    {g.email && <Box component="span">{g.email}</Box>}
-                    {g.phone && <Box component="span">{g.phone}</Box>}
-                  </Stack>
-                </Box>
-              </Stack>
+              <Grid key={g.id} item xs={12} md={6}>
+                <GuardianCard
+                  guardian={g}
+                  onOpen={() => setDrawerGuardian(g)}
+                />
+              </Grid>
             ))}
-          </Stack>
+          </Grid>
         )}
 
         <AddGuardianDialog
@@ -415,12 +418,113 @@ function GuardiansSection({
           onClose={() => setAddOpen(false)}
           onCreated={() => {
             setAddOpen(false);
-            qc.invalidateQueries({ queryKey: ["families", "intake-detail", family?.id] });
-            qc.invalidateQueries({ queryKey: ["families", "intake-picker"] });
+            invalidate();
+          }}
+        />
+        <ParentDrawer
+          open={!!drawerGuardian}
+          // Keep the drawer in sync with the refetched family detail
+          // so edits made inside it are reflected on close.
+          parent={
+            drawerGuardian
+              ? guardians.find((g) => g.id === drawerGuardian.id) ?? drawerGuardian
+              : null
+          }
+          onClose={() => setDrawerGuardian(null)}
+          onChanged={invalidate}
+          onRemoved={() => {
+            setDrawerGuardian(null);
+            invalidate();
           }}
         />
       </AccordionDetails>
     </Accordion>
+  );
+}
+
+/** Single guardian as a clickable card. Surfaces the contact info the
+ *  consultant uses live (name, role, email, phone, mailing address);
+ *  full editing opens in the right-side ParentDrawer on click. */
+function GuardianCard({
+  guardian,
+  onOpen,
+}: {
+  guardian: GuardianRow;
+  onOpen: () => void;
+}) {
+  const role = guardian.role && guardian.role !== "other" ? guardian.role : null;
+  return (
+    <Card
+      variant="outlined"
+      sx={{
+        height: "100%",
+        transition: (t) => t.transitions.create(["border-color", "background-color"]),
+        "&:hover": { borderColor: "primary.light", bgcolor: "action.hover" },
+      }}
+    >
+      <CardActionArea onClick={onOpen} sx={{ height: "100%" }}>
+        <CardContent>
+          <Stack direction="row" spacing={0.5} sx={{ mb: 0.75, minHeight: 24 }}>
+            {guardian.is_primary_contact && (
+              <Chip size="small" label="primary" color="primary" variant="outlined" />
+            )}
+            {guardian.is_billing_contact && (
+              <Chip size="small" label="billing" color="success" variant="outlined" />
+            )}
+            {role && (
+              <Chip
+                size="small"
+                label={role.replace(/_/g, " ")}
+                variant="outlined"
+                sx={{ textTransform: "capitalize" }}
+              />
+            )}
+          </Stack>
+          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+            {guardian.name || "(no name)"}
+          </Typography>
+          {guardian.email && (
+            <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+              {guardian.email}
+            </Typography>
+          )}
+          {guardian.phone && (
+            <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+              {guardian.phone}
+            </Typography>
+          )}
+          {guardian.mailing_address && (
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{
+                display: "block",
+                whiteSpace: "pre-line",
+                mt: 0.75,
+              }}
+            >
+              {guardian.mailing_address}
+            </Typography>
+          )}
+          {guardian.is_billing_contact &&
+            guardian.billing_address &&
+            guardian.billing_address !== guardian.mailing_address && (
+              <Box sx={{ mt: 0.75 }}>
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, display: "block" }}>
+                  Billing address
+                </Typography>
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ display: "block", whiteSpace: "pre-line" }}
+                >
+                  {guardian.billing_address}
+                </Typography>
+              </Box>
+            )}
+        </CardContent>
+      </CardActionArea>
+    </Card>
   );
 }
 
