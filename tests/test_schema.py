@@ -14,14 +14,23 @@ async def test_catalog_seed_counts(db_pool):
     assert item_count == 28, f"expected 28 service_items from seed_catalog.sql, got {item_count}"
 
 
-async def test_phase_scopes(db_pool):
-    """7 assessment phases + 4 placement phases."""
+async def test_engagement_type_memberships(db_pool):
+    """Backfill from seed_catalog.sql: 19 service items belong to the
+    `assessment` engagement type (one membership each) and all 28
+    belong to `full_placement` (assessment items + placement items).
+    If this drifts, bulk-from-catalog and the SPA catalog page render
+    the wrong things."""
     async with db_pool.acquire() as conn:
         rows = await conn.fetch(
-            "SELECT scope, COUNT(*) AS n FROM catalog_phases GROUP BY scope"
+            """
+            SELECT et.code, COUNT(*) AS n
+            FROM service_item_engagement_types siet
+            JOIN engagement_types et ON et.id = siet.engagement_type_id
+            GROUP BY et.code
+            """
         )
-    counts = {r["scope"]: r["n"] for r in rows}
-    assert counts == {"assessment": 7, "placement": 4}
+    counts = {r["code"]: r["n"] for r in rows}
+    assert counts == {"assessment": 19, "full_placement": 28}
 
 
 async def test_audit_functions_pin_search_path(db_pool):

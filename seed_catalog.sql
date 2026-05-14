@@ -28,43 +28,43 @@ END $$;
 -- Phases
 -- ============================================================
 
-INSERT INTO catalog_phases (scope, sort_order, title, description, est_hours, default_billable) VALUES
-    -- Assessment (7 phases — the assessment-only engagement covers these)
-    ('assessment', 100, 'Client Intake',
+-- Phase sort_orders: assessment 100..700, placement 1100..1400 so a
+-- flat catalog listing orders correctly without per-scope tiebreakers.
+INSERT INTO catalog_phases (sort_order, title, description, est_hours, default_billable) VALUES
+    -- Assessment phases (covered by the assessment engagement type).
+    (100, 'Client Intake',
      'Initial fact-finding: who the family is, the student''s current school and diagnostic background, and what they''re hoping to achieve.',
      1.0, TRUE),
-    ('assessment', 200, 'Parent Interview',
+    (200, 'Parent Interview',
      'Requirement-gathering conversation with caregivers: budget, location, and other constraints that shape the school landscape.',
      1.0, TRUE),
-    ('assessment', 300, 'Document Intake',
+    (300, 'Document Intake',
      'Paperwork and records collection: service agreement, releases, and inbound health/education records.',
      NULL, TRUE),
-    ('assessment', 400, 'Document Review',
+    (400, 'Document Review',
      'Substantive review of the records: accommodations, services, medical, psychoeducational, and progress data.',
      NULL, TRUE),
-    ('assessment', 500, 'Profile Synthesis',
+    (500, 'Profile Synthesis',
      'Distill records and conversations into a learning profile that drives school matching.',
      NULL, TRUE),
-    ('assessment', 600, 'School Research',
+    (600, 'School Research',
      'Map the learning profile to candidate schools and coordinate with school contacts.',
      NULL, TRUE),
-    ('assessment', 700, 'Recommendation',
+    (700, 'Recommendation',
      'Draft, present, and refine the recommendation report.',
      NULL, TRUE),
 
-    -- Placement (4 phases — only run when engagement_type = 'full_placement').
-    -- Sort orders start at 1100 so placement phases come after assessment
-    -- (100..700) in a flat catalog listing without collisions.
-    ('placement', 1100, 'Campus Visits',
+    -- Placement-only phases (only covered by the full_placement type).
+    (1100, 'Campus Visits',
      'Pre-visit prep, the visit itself, and post-visit debrief.',
      NULL, TRUE),
-    ('placement', 1200, 'Interview Prep',
+    (1200, 'Interview Prep',
      'Get the family ready for school interviews — coaching and mock runs.',
      NULL, TRUE),
-    ('placement', 1300, 'School Submissions',
+    (1300, 'School Submissions',
      'Application support, packet prep, and admissions decision processing — repeats per school.',
      NULL, TRUE),
-    ('placement', 1400, 'School Selection',
+    (1400, 'School Selection',
      'Final decision and transition strategy.',
      NULL, TRUE);
 
@@ -218,22 +218,22 @@ JOIN (VALUES
      'School transition strategy session',
      'Final decision support and a strategy for transitioning to the chosen school.',
      1.5::numeric(5,2), TRUE, NULL, 'consultant'::owner_role)
-) AS items(scope, phase_title, sort_order, title, description, est_hours, billable, deliverable, owner_role)
-ON cp.scope = items.scope::catalog_scope AND cp.title = items.phase_title;
+) AS items(kind, phase_title, sort_order, title, description, est_hours, billable, deliverable, owner_role)
+ON cp.title = items.phase_title;
 
 -- ============================================================
 -- Engagement-type memberships
 -- ============================================================
--- Backfill the service_item_engagement_types M2M from the phase scope
--- so the seeded catalog behaves like the pre-PR-A model: assessment
--- items appear in BOTH engagement types (full_placement is a superset
--- of assessment); placement items appear in full_placement only.
+-- Drive the service_item_engagement_types M2M from each item's `kind`
+-- tag in the VALUES list above. Assessment-kind items appear in BOTH
+-- engagement types (full_placement is a superset); placement-kind
+-- items appear in full_placement only.
 INSERT INTO service_item_engagement_types (service_item_id, engagement_type_id)
 SELECT si.id, et.id
   FROM service_items si
   JOIN catalog_phases cp ON cp.id = si.phase_id
   CROSS JOIN engagement_types et
- WHERE cp.scope = 'assessment'
+ WHERE cp.sort_order < 1000
    AND et.code IN ('assessment', 'full_placement')
 ON CONFLICT DO NOTHING;
 
@@ -242,5 +242,5 @@ SELECT si.id, et.id
   FROM service_items si
   JOIN catalog_phases cp ON cp.id = si.phase_id
   JOIN engagement_types et ON et.code = 'full_placement'
- WHERE cp.scope = 'placement'
+ WHERE cp.sort_order >= 1000
 ON CONFLICT DO NOTHING;

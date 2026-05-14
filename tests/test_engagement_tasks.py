@@ -40,43 +40,52 @@ async def _make_engagement_of_type(db_pool, user_id, engagement_type: str):
     return engagement_id
 
 
-async def test_assessment_engagement_sees_assessment_scope_only(authed_client, db_pool, test_user):
+async def test_assessment_engagement_sees_assessment_items(authed_client, db_pool, test_user):
+    """assessment engagements pull only items tagged with the
+    `assessment` engagement type — 7 phases in the seed."""
     engagement_id = await _make_engagement_of_type(db_pool, test_user["id"], "assessment")
     r = await authed_client.get(f"/api/engagements/{engagement_id}/catalog")
     assert r.status_code == 200
     phases = r.json()
-    scopes = {p["scope"] for p in phases}
-    assert scopes == {"assessment"}, f"assessment engagement saw scopes {scopes}"
+    assert len(phases) == 7, f"assessment engagement saw {len(phases)} phases"
 
 
-async def test_full_placement_sees_both_scopes(authed_client, db_pool, test_user):
+async def test_full_placement_sees_all_phases(authed_client, db_pool, test_user):
+    """full_placement engagements pull items from every phase — 11
+    phases (7 assessment + 4 placement) in the seed."""
     engagement_id = await _make_engagement_of_type(db_pool, test_user["id"], "full_placement")
     r = await authed_client.get(f"/api/engagements/{engagement_id}/catalog")
     assert r.status_code == 200
     phases = r.json()
-    scopes = {p["scope"] for p in phases}
-    assert scopes == {"assessment", "placement"}, (
-        f"full_placement engagement saw scopes {scopes}"
-    )
+    assert len(phases) == 11, f"full_placement engagement saw {len(phases)} phases"
 
 
-async def test_bulk_from_catalog_drops_out_of_scope_items(authed_client, db_pool, test_user):
-    """Pass placement-scoped service_item_ids to an assessment engagement;
-    matched_applicable should be 0, no tasks created. Defends against a
-    SPA bug where the user picks placement items for an assessment engagement."""
+async def test_bulk_from_catalog_drops_non_member_items(authed_client, db_pool, test_user):
+    """Pass items that aren't members of the engagement's type and the
+    bulk endpoint should match 0 of them. Uses placement-only items
+    (members of full_placement only, not assessment) seeded by
+    seed_catalog.sql."""
     engagement_id = await _make_engagement_of_type(db_pool, test_user["id"], "assessment")
     async with db_pool.acquire() as conn:
-        placement_ids = await conn.fetch(
+        placement_only_ids = await conn.fetch(
             """
             SELECT si.id
             FROM service_items si
-            JOIN catalog_phases cp ON cp.id = si.phase_id
-            WHERE cp.scope = 'placement'
+            WHERE EXISTS (
+              SELECT 1 FROM service_item_engagement_types siet
+              JOIN engagement_types et ON et.id = siet.engagement_type_id
+              WHERE siet.service_item_id = si.id AND et.code = 'full_placement'
+            )
+              AND NOT EXISTS (
+              SELECT 1 FROM service_item_engagement_types siet
+              JOIN engagement_types et ON et.id = siet.engagement_type_id
+              WHERE siet.service_item_id = si.id AND et.code = 'assessment'
+            )
             LIMIT 3
             """
         )
-    payload_ids = [str(r["id"]) for r in placement_ids]
-    assert len(payload_ids) > 0, "fixture data should include placement items from seed"
+    payload_ids = [str(r["id"]) for r in placement_only_ids]
+    assert len(payload_ids) > 0, "fixture data should include placement-only items"
 
     r = await authed_client.post(
         f"/api/engagements/{engagement_id}/tasks/bulk-from-catalog",
@@ -89,15 +98,16 @@ async def test_bulk_from_catalog_drops_out_of_scope_items(authed_client, db_pool
     assert body["created"] == 0
 
 
-async def test_bulk_from_catalog_creates_tasks_for_in_scope_items(authed_client, db_pool, test_user):
+async def test_bulk_from_catalog_creates_tasks_for_member_items(authed_client, db_pool, test_user):
     engagement_id = await _make_engagement_of_type(db_pool, test_user["id"], "assessment")
     async with db_pool.acquire() as conn:
         rows = await conn.fetch(
             """
             SELECT si.id
             FROM service_items si
-            JOIN catalog_phases cp ON cp.id = si.phase_id
-            WHERE cp.scope = 'assessment'
+            JOIN service_item_engagement_types siet ON siet.service_item_id = si.id
+            JOIN engagement_types et ON et.id = siet.engagement_type_id
+            WHERE et.code = 'assessment'
             LIMIT 3
             """
         )

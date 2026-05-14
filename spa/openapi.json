@@ -3936,46 +3936,14 @@
           "catalog"
         ],
         "summary": "List Phases",
-        "description": "List phases with their item counts. Filter by scope when set.",
+        "description": "List phases with their item counts, in sort order.",
         "operationId": "list_phases_api_catalog_phases_get",
-        "parameters": [
-          {
-            "name": "scope",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "enum": [
-                    "assessment",
-                    "placement"
-                  ],
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Scope"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
               }
             }
           }
@@ -3988,14 +3956,14 @@
         "summary": "Create Phase",
         "operationId": "create_phase_api_catalog_phases_post",
         "requestBody": {
-          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/PhaseCreate"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "201": {
@@ -4167,26 +4135,6 @@
                 }
               ],
               "title": "Phase Id"
-            }
-          },
-          {
-            "name": "scope",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "enum": [
-                    "assessment",
-                    "placement"
-                  ],
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Scope"
             }
           },
           {
@@ -9951,14 +9899,6 @@
       },
       "PhaseCreate": {
         "properties": {
-          "scope": {
-            "type": "string",
-            "enum": [
-              "assessment",
-              "placement"
-            ],
-            "title": "Scope"
-          },
           "sort_order": {
             "type": "integer",
             "title": "Sort Order",
@@ -10004,28 +9944,12 @@
         },
         "type": "object",
         "required": [
-          "scope",
           "title"
         ],
         "title": "PhaseCreate"
       },
       "PhaseUpdate": {
         "properties": {
-          "scope": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "assessment",
-                  "placement"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Scope"
-          },
           "sort_order": {
             "anyOf": [
               {

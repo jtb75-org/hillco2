@@ -91,7 +91,6 @@ interface CatalogServiceItem {
 
 interface CatalogPhase {
   id: string;
-  scope: string;
   sort_order: number;
   title: string;
   description: string | null;
@@ -727,8 +726,12 @@ function PhaseChecklist({
           const total = phaseTasks.length;
           const done = phaseTasks.filter((t) => t.status === "completed").length;
           const na = phaseTasks.filter((t) => t.status === "not_applicable").length;
-          const isClientIntake =
-            phase?.scope === "assessment" && phase?.title === "Client Intake";
+          // The Client Intake phase gets a structured intake panel
+          // (names/school/diagnoses/needs) instead of a plain task
+          // list. Matched by title because scope is gone post-PR-C
+          // and there's no stable "kind" field; the title is the only
+          // anchor. Renaming the seed phase opts out of the panel.
+          const isClientIntake = phase?.title === "Client Intake";
           return (
             <Box key={phaseId ?? "orphan"}>
               <Stack direction="row" alignItems="baseline" spacing={1} sx={{ mb: 1 }}>
