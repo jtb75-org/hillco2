@@ -25,7 +25,8 @@ import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ReplayIcon from "@mui/icons-material/Replay";
-import dayjs from "dayjs";
+import { DatePicker } from "@mui/x-date-pickers";
+import dayjs, { type Dayjs } from "dayjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link as RouterLink, useNavigate, useParams } from "react-router-dom";
 
@@ -640,7 +641,7 @@ function AddStudentDialog({
   const snackbar = useSnackbar();
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
-  const [dob, setDob] = useState("");
+  const [dob, setDob] = useState<Dayjs | null>(null);
   const [grade, setGrade] = useState("");
 
   const create = useMutation({
@@ -653,7 +654,7 @@ function AddStudentDialog({
           body: {
             first_name: firstName.trim() || null,
             last_name: lastName.trim() || null,
-            dob: dob || null,
+            dob: dob && dob.isValid() ? dob.format("YYYY-MM-DD") : null,
             current_grade: grade.trim() || null,
           } as never,
         },
@@ -704,14 +705,17 @@ function AddStudentDialog({
             />
           </Stack>
           <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-            <TextField
-              size="small"
+            <DatePicker
               label="Date of birth"
-              type="date"
               value={dob}
-              onChange={(e) => setDob(e.target.value)}
-              InputLabelProps={{ shrink: true }}
-              fullWidth
+              onChange={(v) => setDob(v)}
+              // openTo=year lets you type the year first in the
+              // calendar popover; the textfield itself accepts a
+              // typed MM/DD/YYYY too without Safari's native
+              // year-rejection quirk.
+              openTo="year"
+              views={["year", "month", "day"]}
+              slotProps={{ textField: { size: "small", fullWidth: true } }}
             />
             <TextField
               size="small"
