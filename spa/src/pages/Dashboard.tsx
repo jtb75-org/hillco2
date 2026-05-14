@@ -10,6 +10,7 @@ import {
   Stack,
 } from "@mui/material";
 import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutline";
+import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import { useQuery } from "@tanstack/react-query";
@@ -70,15 +71,24 @@ export function Dashboard() {
         title={`Welcome${user ? `, ${user.name.split(" ")[0]}` : ""}.`}
         subtitle={dayjs().format("dddd, MMMM D, YYYY")}
         actions={
-          <Button
-            component={RouterLink}
-            to="/intake"
-            variant="contained"
-            startIcon={<AddCircleOutlineIcon />}
-            sx={{ flexShrink: 0 }}
-          >
-            Start an intake
-          </Button>
+          <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
+            <Button
+              component={RouterLink}
+              to="/intake"
+              variant="contained"
+              startIcon={<AddCircleOutlineIcon />}
+            >
+              Start an intake
+            </Button>
+            <Button
+              component={RouterLink}
+              to="/intake-form"
+              variant="outlined"
+              startIcon={<DescriptionOutlinedIcon />}
+            >
+              Intake form
+            </Button>
+          </Stack>
         }
       />
 

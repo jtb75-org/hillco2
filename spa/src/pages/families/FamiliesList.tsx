@@ -331,7 +331,7 @@ export function FamiliesList() {
       <AddFamilyDialog
         open={addOpen}
         onClose={() => setAddOpen(false)}
-        onCreated={refetch}
+        onCreated={() => refetch()}
       />
       <ArchiveFamilyDialog
         target={archiveTarget}

@@ -25,6 +25,7 @@ from .routes import expenses as expenses_routes
 from .routes import families as families_routes
 from .routes import followups as followups_routes
 from .routes import health as health_routes
+from .routes import intakes as intakes_routes
 from .routes import invoices as invoices_routes
 from .routes import learning_profiles as learning_profiles_routes
 from .routes import learning_supports as learning_supports_routes
@@ -185,6 +186,7 @@ app.include_router(school_visits_routes.router)
 app.include_router(recommendations_routes.router)
 app.include_router(engagement_tasks_routes.router)
 app.include_router(engagement_types_routes.router)
+app.include_router(intakes_routes.router)
 app.include_router(learning_profiles_routes.router)
 app.include_router(learning_supports_routes.router)
 app.include_router(catalog_routes.router)
