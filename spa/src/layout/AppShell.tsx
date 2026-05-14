@@ -20,6 +20,7 @@ import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
 import AssignmentOutlinedIcon from "@mui/icons-material/AssignmentOutlined";
 import AutoStoriesOutlinedIcon from "@mui/icons-material/AutoStoriesOutlined";
 import ContactsIcon from "@mui/icons-material/Contacts";
+import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 import GroupsIcon from "@mui/icons-material/Groups";
 import HomeIcon from "@mui/icons-material/Home";
 import LogoutIcon from "@mui/icons-material/Logout";
@@ -32,6 +33,7 @@ const DRAWER_WIDTH = 240;
 const NAV_ITEMS: ReadonlyArray<{ to: string; label: string; icon: JSX.Element }> = [
   { to: "/", label: "Home", icon: <HomeIcon /> },
   { to: "/families", label: "Families", icon: <GroupsIcon /> },
+  { to: "/intakes", label: "Intakes", icon: <DescriptionOutlinedIcon /> },
   { to: "/engagements", label: "Engagements", icon: <AssignmentOutlinedIcon /> },
   { to: "/contacts", label: "Contacts", icon: <ContactsIcon /> },
   { to: "/catalog", label: "Catalog", icon: <AutoStoriesOutlinedIcon /> },

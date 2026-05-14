@@ -36,6 +36,34 @@ async def _intake_or_404(conn, intake_id: UUID):
     return row
 
 
+@router.get("/intakes")
+async def list_intakes(
+    _user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    """All intakes across the practice, newest first. Includes the
+    family household name and consultant display name so the SPA's
+    list view can render each row without per-row roundtrips."""
+    rows = await conn.fetch(
+        """
+        SELECT i.id, i.family_id, i.intake_date, i.consultant_id, i.notes,
+               i.created_at, i.updated_at,
+               f.household_name,
+               TRIM(BOTH ' ' FROM
+                 COALESCE(p.first_name, '') ||
+                 CASE WHEN p.last_name IS NOT NULL AND p.last_name <> ''
+                      THEN ' ' || p.last_name ELSE '' END
+               ) AS consultant_name
+        FROM intakes i
+        JOIN families f ON f.id = i.family_id AND f.deleted_at IS NULL
+        LEFT JOIN people p ON p.id = i.consultant_id
+        WHERE i.deleted_at IS NULL
+        ORDER BY i.intake_date DESC, i.created_at DESC
+        """
+    )
+    return [dict(r) for r in rows]
+
+
 @router.post("/intakes", status_code=201)
 async def create_intake(
     body: IntakeCreate,

@@ -13,8 +13,9 @@ import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutline";
 import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
-import { useQuery } from "@tanstack/react-query";
-import { Link as RouterLink } from "react-router-dom";
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link as RouterLink, useNavigate } from "react-router-dom";
 
 import { api } from "../api/client";
 import type { components } from "../api/schema";
@@ -23,6 +24,8 @@ import { MetricCard } from "../components/MetricCard";
 import { PageHeader } from "../components/PageHeader";
 import { SectionPanel } from "../components/SectionPanel";
 import { StatusChip } from "../components/StatusChip";
+import { useSnackbar } from "../components/Snackbar";
+import { PickOrCreateFamilyDialog } from "./intake/PickOrCreateFamilyDialog";
 
 dayjs.extend(relativeTime);
 
@@ -49,6 +52,11 @@ function formatDueDate(d: string, today: string): { label: string; overdue: bool
 
 export function Dashboard() {
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const snackbar = useSnackbar();
+  const [pickOpen, setPickOpen] = useState(false);
+
   const { data, isPending, error } = useQuery<DashboardData, Error>({
     queryKey: ["dashboard"],
     queryFn: async () => {
@@ -56,6 +64,28 @@ export function Dashboard() {
       if (respError || !data) throw new Error("dashboard fetch failed");
       return data;
     },
+  });
+
+  // Same flow as IntakesList's "New intake" button: pick or create a
+  // family in the modal, then POST a new intake and route to it.
+  const createIntake = useMutation({
+    mutationFn: async (familyId: string) => {
+      const { data, error } = await api.POST("/api/intakes", {
+        body: { family_id: familyId } as never,
+      });
+      if (error || !data) {
+        const msg =
+          (error as { detail?: string } | undefined)?.detail ??
+          "Failed to create intake.";
+        throw new Error(msg);
+      }
+      return data as { id: string };
+    },
+    onSuccess: (intake) => {
+      qc.invalidateQueries({ queryKey: ["intakes", "list"] });
+      navigate(`/intakes/${intake.id}`);
+    },
+    onError: (e: Error) => snackbar.show(e.message, "error"),
   });
 
   if (error) {
@@ -81,15 +111,25 @@ export function Dashboard() {
               Start an intake
             </Button>
             <Button
-              component={RouterLink}
-              to="/intake-form"
               variant="outlined"
               startIcon={<DescriptionOutlinedIcon />}
+              onClick={() => setPickOpen(true)}
             >
               Intake form
             </Button>
           </Stack>
         }
+      />
+
+      <PickOrCreateFamilyDialog
+        open={pickOpen}
+        title="Start intake"
+        continueLabel={createIntake.isPending ? "Creating…" : "Continue"}
+        onClose={() => setPickOpen(false)}
+        onContinue={(familyId) => {
+          setPickOpen(false);
+          createIntake.mutate(familyId);
+        }}
       />
 
       {/* Stats row */}
