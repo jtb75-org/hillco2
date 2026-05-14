@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Box, IconButton, Stack, Tooltip } from "@mui/material";
 import FormatBoldIcon from "@mui/icons-material/FormatBold";
 import FormatItalicIcon from "@mui/icons-material/FormatItalic";
@@ -21,14 +21,22 @@ export function RichTextEditor({
   placeholder?: string;
   minRows?: number;
 }) {
+  // Track the raw HTML we last emitted to the consumer. The sync
+  // effect below uses this to tell "the parent is just echoing back
+  // our own value" (skip) from "the parent has a different value to
+  // apply" (push it into the editor). Without this, the effect
+  // re-applies content on every keystroke and the cursor jumps.
+  const lastEmittedRef = useRef<string>(value);
+
   const editor = useEditor({
     extensions: [StarterKit],
     content: value,
     onUpdate: ({ editor }) => {
+      const raw = editor.getHTML();
+      lastEmittedRef.current = raw;
       // Treat "<p></p>" as empty so the consumer can do a simple
       // truthiness check before saving.
-      const html = editor.isEmpty ? "" : editor.getHTML();
-      onChange(html);
+      onChange(editor.isEmpty ? "" : raw);
     },
     editorProps: {
       attributes: {
@@ -41,11 +49,16 @@ export function RichTextEditor({
   });
 
   // If the prop changes externally (e.g., form reset), push it into
-  // the editor without recreating the instance.
+  // the editor without recreating the instance — but never while the
+  // user is focused/typing, and never to re-apply a value we just
+  // emitted (which would reset the cursor mid-keystroke).
   useEffect(() => {
     if (!editor) return;
+    if (editor.isFocused) return;
+    if (value === lastEmittedRef.current) return;
     if (editor.getHTML() === value) return;
     editor.commands.setContent(value || "", { emitUpdate: false });
+    lastEmittedRef.current = value;
   }, [value, editor]);
 
   return (
