@@ -383,6 +383,57 @@ function IntakeNotesSection({
   );
 }
 
+/** Pseudo-button rendered as <span role="button"> so it can sit
+ *  inside an AccordionSummary (which is itself a <button>) without
+ *  the validateDOMNesting warning. Behaves like a small text button
+ *  with an Add icon. stopPropagation on the click + Enter/Space
+ *  keeps the accordion from toggling underneath. */
+function AddAction({
+  label,
+  disabled,
+  onClick,
+}: {
+  label: string;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  const handle = (e: React.SyntheticEvent) => {
+    e.stopPropagation();
+    if (!disabled) onClick();
+  };
+  return (
+    <Box
+      component="span"
+      role="button"
+      tabIndex={disabled ? -1 : 0}
+      aria-disabled={disabled || undefined}
+      onClick={handle}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") handle(e);
+      }}
+      sx={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 0.5,
+        px: 1,
+        py: 0.5,
+        fontSize: 13,
+        fontWeight: 500,
+        borderRadius: 1,
+        color: disabled ? "text.disabled" : "primary.main",
+        cursor: disabled ? "default" : "pointer",
+        userSelect: "none",
+        "&:hover": {
+          bgcolor: disabled ? "transparent" : "action.hover",
+        },
+      }}
+    >
+      <AddIcon fontSize="small" />
+      {label}
+    </Box>
+  );
+}
+
 // ---- Guardians section -----------------------------------------------------
 
 function GuardiansSection({
@@ -407,31 +458,33 @@ function GuardiansSection({
   return (
     <Accordion variant="outlined" disableGutters>
       <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-        {/* No interactive element in here — AccordionSummary already
-            renders as a <button>, and nesting another button is
-            invalid HTML. The Add control lives at the top of the
-            expanded panel instead. */}
-        <Typography variant="overline" color="text.secondary" sx={{ flex: 1 }}>
-          Family guardians
-          {!loading && family && (
-            <Box component="span" sx={{ ml: 1, color: "text.disabled", fontWeight: 400 }}>
-              ({guardians.length})
-            </Box>
-          )}
-        </Typography>
-      </AccordionSummary>
-      <AccordionDetails>
-        <Stack direction="row" justifyContent="flex-end" sx={{ mb: 1 }}>
-          <Button
-            size="small"
-            variant="text"
-            startIcon={<AddIcon fontSize="small" />}
+        <Stack
+          direction="row"
+          alignItems="center"
+          spacing={1}
+          sx={{ width: "100%" }}
+        >
+          <Typography variant="overline" color="text.secondary" sx={{ flex: 1 }}>
+            Family guardians
+            {!loading && family && (
+              <Box component="span" sx={{ ml: 1, color: "text.disabled", fontWeight: 400 }}>
+                ({guardians.length})
+              </Box>
+            )}
+          </Typography>
+          {/* Pseudo-button: AccordionSummary already renders a <button>
+              for the toggle, so nesting an MUI Button here would
+              fail validateDOMNesting. A Box with role="button" stays
+              valid HTML and stopPropagation keeps the click from
+              toggling the accordion. */}
+          <AddAction
+            label="Add guardian"
             disabled={!family}
             onClick={() => setAddOpen(true)}
-          >
-            Add guardian
-          </Button>
+          />
         </Stack>
+      </AccordionSummary>
+      <AccordionDetails>
         {loading || !family ? (
           <Box sx={{ display: "flex", justifyContent: "center", py: 2 }}>
             <CircularProgress size={20} />
@@ -894,29 +947,28 @@ function StudentsSection({
   return (
     <Accordion variant="outlined" disableGutters>
       <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-        {/* Add button lives in the expanded panel — nesting a Button
-            inside AccordionSummary's button is invalid HTML. */}
-        <Typography variant="overline" color="text.secondary" sx={{ flex: 1 }}>
-          Students
-          {!loading && family && (
-            <Box component="span" sx={{ ml: 1, color: "text.disabled", fontWeight: 400 }}>
-              ({students.length})
-            </Box>
-          )}
-        </Typography>
-      </AccordionSummary>
-      <AccordionDetails>
-        <Stack direction="row" justifyContent="flex-end" sx={{ mb: 1 }}>
-          <Button
-            size="small"
-            variant="text"
-            startIcon={<AddIcon fontSize="small" />}
+        <Stack
+          direction="row"
+          alignItems="center"
+          spacing={1}
+          sx={{ width: "100%" }}
+        >
+          <Typography variant="overline" color="text.secondary" sx={{ flex: 1 }}>
+            Students
+            {!loading && family && (
+              <Box component="span" sx={{ ml: 1, color: "text.disabled", fontWeight: 400 }}>
+                ({students.length})
+              </Box>
+            )}
+          </Typography>
+          <AddAction
+            label="Add student"
             disabled={!family}
             onClick={() => setAddOpen(true)}
-          >
-            Add student
-          </Button>
+          />
         </Stack>
+      </AccordionSummary>
+      <AccordionDetails>
         {loading || !family ? (
           <Box sx={{ display: "flex", justifyContent: "center", py: 2 }}>
             <CircularProgress size={20} />
