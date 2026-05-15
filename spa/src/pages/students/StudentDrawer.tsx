@@ -10,6 +10,7 @@ import CloseIcon from "@mui/icons-material/Close";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import { Link as RouterLink } from "react-router-dom";
 
+import { useResizableDrawerWidth } from "../../components/useResizableDrawerWidth";
 import { StudentEditor } from "./StudentEditor";
 
 /** Right-slide drawer that opens the StudentEditor for inline editing
@@ -34,12 +35,9 @@ export function StudentDrawer({
    *  the drawer closes itself. */
   onRemoved?: () => void;
 }) {
-  // The editor uses a stable query key (["students", id]) so any
-  // PATCH it fires invalidates that query — the family / intake
-  // pages can listen on the same key, but most just refetch their
-  // own list query. We expose onChanged via a simple bridge: TanStack
-  // Query's invalidation cascades on its own; the bridge is mainly
-  // for "close the drawer" semantics.
+  const { width, handle } = useResizableDrawerWidth("student-drawer", {
+    initial: 560,
+  });
   return (
     <Drawer
       anchor="right"
@@ -50,9 +48,10 @@ export function StudentDrawer({
       // onto the previous student's local edits.
       ModalProps={{ keepMounted: false }}
       PaperProps={{
-        sx: { width: { xs: "100%", sm: 560 }, p: 0 },
+        sx: { width, maxWidth: "100%", p: 0, position: "relative" },
       }}
     >
+      {handle}
       {studentId && (
         <Stack sx={{ height: "100%" }}>
           <Stack
