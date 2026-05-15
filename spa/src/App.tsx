@@ -16,6 +16,7 @@ import { EngagementsList } from "./pages/engagements/EngagementsList";
 import { CatalogPage } from "./pages/catalog/CatalogPage";
 import { IntakeWizard } from "./pages/intake/IntakeWizard";
 import { IntakeForm } from "./pages/intake/IntakeForm";
+import { IntakeDiscoveryMockup } from "./pages/intake/IntakeDiscoveryMockup";
 import { IntakesList } from "./pages/intake/IntakesList";
 import { StudentDetail } from "./pages/students/StudentDetail";
 
@@ -66,6 +67,7 @@ export function App() {
             <Route path="/intake" element={<IntakeWizard />} />
             <Route path="/intakes" element={<IntakesList />} />
             <Route path="/intakes/:id" element={<IntakeForm />} />
+            <Route path="/mockup/intake-discovery" element={<IntakeDiscoveryMockup />} />
             <Route path="/contacts" element={<ContactsList />} />
             <Route path="/catalog" element={<CatalogPage />} />
             <Route path="/admin" element={<AdminLayout />}>
