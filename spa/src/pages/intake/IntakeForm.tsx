@@ -703,7 +703,11 @@ function AddGuardianDialog({
   // linked twice (the backend would 409). Surfacing them in the
   // search results would just look broken.
   const baseOptions: GuardianEntry[] = (people.data ?? [])
-    .filter((p) => p.family_id !== familyId)
+    // Per product call: only show existing people already on this
+    // family. The dialog's search acts as a roster-find tool; the
+    // only way to add a brand-new person is the "+ Add new" path.
+    // Linking someone from another family isn't reachable from here.
+    .filter((p) => !!familyId && p.family_id === familyId)
     .map((p) => ({ kind: "person", person: p }));
 
   const link = useMutation({
@@ -774,12 +778,14 @@ function AddGuardianDialog({
     `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim() || "(no name)";
 
   const pending = link.isPending || create.isPending;
+  // Picked rows are always in-family (the filter ensures it), so
+  // submitting them would 409 on the backend. Only the "+ Add new"
+  // path is a real add; submit is gated on that.
   const canSubmit =
     !!familyId &&
     !pending &&
-    (picked
-      ? true
-      : creating && (firstName.trim() !== "" || lastName.trim() !== ""));
+    creating &&
+    (firstName.trim() !== "" || lastName.trim() !== "");
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
@@ -917,8 +923,9 @@ function AddGuardianDialog({
 
           {picked && (
             <Typography variant="caption" color="text.secondary">
-              Linking <strong>{personLabel(picked)}</strong> to this family.
-              Their record stays the source of truth.
+              <strong>{personLabel(picked)}</strong> is already on this
+              family. Clear the search and pick "+ Add new" to add
+              someone else.
             </Typography>
           )}
         </Stack>
@@ -931,11 +938,10 @@ function AddGuardianDialog({
           variant="contained"
           disabled={!canSubmit}
           onClick={() => {
-            if (picked) link.mutate(picked.id);
-            else if (creating) create.mutate();
+            if (creating) create.mutate();
           }}
         >
-          {pending ? "Adding…" : picked ? "Link" : "Add"}
+          {pending ? "Adding…" : "Add"}
         </Button>
       </DialogActions>
     </Dialog>
@@ -1141,7 +1147,11 @@ function AddStudentDialog({
   // Hide students already on this family — backend would 409 on
   // re-linking, and seeing them here would just look broken.
   const baseOptions: StudentEntry[] = (people.data ?? [])
-    .filter((p) => p.family_id !== familyId)
+    // Per product call: only show existing people already on this
+    // family. The dialog's search acts as a roster-find tool; the
+    // only way to add a brand-new person is the "+ Add new" path.
+    // Linking someone from another family isn't reachable from here.
+    .filter((p) => !!familyId && p.family_id === familyId)
     .map((p) => ({ kind: "person", person: p }));
 
   const link = useMutation({
@@ -1209,12 +1219,14 @@ function AddStudentDialog({
     `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim() || "(no name)";
 
   const pending = link.isPending || create.isPending;
+  // Picked rows are always already on this family per the filter
+  // above; only "+ Add new" produces a real add action.
   const canSubmit =
     !!familyId &&
     !pending &&
-    (picked
-      ? true
-      : creating && !!firstName.trim() && !!lastName.trim());
+    creating &&
+    !!firstName.trim() &&
+    !!lastName.trim();
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
@@ -1357,8 +1369,9 @@ function AddStudentDialog({
 
           {picked && (
             <Typography variant="caption" color="text.secondary">
-              Linking <strong>{personLabel(picked)}</strong> to this family.
-              Their record stays the source of truth.
+              <strong>{personLabel(picked)}</strong> is already on this
+              family. Clear the search and pick "+ Add new" to add
+              someone else.
             </Typography>
           )}
         </Stack>
@@ -1371,11 +1384,10 @@ function AddStudentDialog({
           variant="contained"
           disabled={!canSubmit}
           onClick={() => {
-            if (picked) link.mutate(picked.id);
-            else if (creating) create.mutate();
+            if (creating) create.mutate();
           }}
         >
-          {pending ? "Adding…" : picked ? "Link" : "Add"}
+          {pending ? "Adding…" : "Add"}
         </Button>
       </DialogActions>
     </Dialog>
