@@ -28,6 +28,7 @@ import { SectionPanel } from "../../components/SectionPanel";
 import { AddParentDialog } from "./AddParentDialog";
 import { AddStudentDialog } from "./AddStudentDialog";
 import { ParentDrawer } from "./ParentDrawer";
+import { StudentDrawer } from "../students/StudentDrawer";
 
 // /api/families/{id} returns a plain dict in the route — its OpenAPI
 // response schema is empty. Hand-typed for the parts we render; the
@@ -285,6 +286,7 @@ function StudentsCard({
   onChanged: () => void;
 }) {
   const [addOpen, setAddOpen] = useState(false);
+  const [drawerId, setDrawerId] = useState<string | null>(null);
 
   return (
     <SectionPanel title="Students">
@@ -306,8 +308,7 @@ function StudentsCard({
                 }}
               >
                 <CardActionArea
-                  component={RouterLink}
-                  to={`/students/${s.id}`}
+                  onClick={() => setDrawerId(s.id)}
                   sx={{ height: "100%" }}
                 >
                   <CardContent>
@@ -337,6 +338,13 @@ function StudentsCard({
         familyId={familyId}
         onClose={() => setAddOpen(false)}
         onCreated={onChanged}
+      />
+      <StudentDrawer
+        open={!!drawerId}
+        studentId={drawerId}
+        onClose={() => setDrawerId(null)}
+        onChanged={onChanged}
+        onRemoved={onChanged}
       />
       </Box>
     </SectionPanel>
