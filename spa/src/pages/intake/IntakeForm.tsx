@@ -33,6 +33,7 @@ import {
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
+import CloseIcon from "@mui/icons-material/Close";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
@@ -61,6 +62,11 @@ interface Intake {
   completed_at: string | null;
   created_at: string;
   updated_at: string;
+  // Per-intake roster — the curated subset of the family that's on
+  // this intake meeting. May be empty even when the family has
+  // members; user selects via Add guardian / Add student.
+  guardians: GuardianRow[];
+  students: StudentRow[];
 }
 
 interface GuardianRow {
@@ -314,8 +320,20 @@ export function IntakeForm() {
           consultant can capture them once, fold them away, and have
           the notes editor span the full width for the rest of the
           meeting. */}
-      <GuardiansSection family={family.data ?? null} loading={family.isPending} />
-      <StudentsSection family={family.data ?? null} loading={family.isPending} />
+      <GuardiansSection
+        intakeId={intake.data.id}
+        familyId={intake.data.family_id}
+        intakeGuardians={intake.data.guardians ?? []}
+        familyGuardians={family.data?.parents ?? []}
+        loading={family.isPending}
+      />
+      <StudentsSection
+        intakeId={intake.data.id}
+        familyId={intake.data.family_id}
+        intakeStudents={intake.data.students ?? []}
+        familyStudents={family.data?.students ?? []}
+        loading={family.isPending}
+      />
 
       <IntakeNotesSection
         initial={intake.data.notes ?? ""}
@@ -444,23 +462,48 @@ function AddAction({
 // ---- Guardians section -----------------------------------------------------
 
 function GuardiansSection({
-  family,
+  intakeId,
+  familyId,
+  intakeGuardians,
+  familyGuardians,
   loading,
 }: {
-  family: FamilyDetail | null;
+  intakeId: string;
+  familyId: string;
+  intakeGuardians: GuardianRow[];
+  familyGuardians: GuardianRow[];
   loading: boolean;
 }) {
   const qc = useQueryClient();
+  const snackbar = useSnackbar();
   const [addOpen, setAddOpen] = useState(false);
-  // Drawer target — open == not-null. We pass the row straight from
-  // the family-detail query; the drawer fetches its own structured
-  // mailing/billing fields internally.
   const [drawerGuardian, setDrawerGuardian] = useState<ParentDrawerTarget | null>(null);
-  const guardians = family?.parents ?? [];
+
   const invalidate = () => {
-    qc.invalidateQueries({ queryKey: ["families", "intake-detail", family?.id] });
+    qc.invalidateQueries({ queryKey: ["intakes", intakeId] });
+    qc.invalidateQueries({ queryKey: ["families", "intake-detail", familyId] });
     qc.invalidateQueries({ queryKey: ["families", "intake-picker"] });
   };
+
+  const unlink = useMutation({
+    mutationFn: async (personId: string) => {
+      const { error } = await api.DELETE(
+        "/api/intakes/{intake_id}/guardians/{person_id}",
+        {
+          params: { path: { intake_id: intakeId, person_id: personId } as never },
+        },
+      );
+      if (error) {
+        const msg = (error as { detail?: string }).detail ?? "Remove failed.";
+        throw new Error(msg);
+      }
+    },
+    onSuccess: () => {
+      snackbar.show("Removed from intake");
+      invalidate();
+    },
+    onError: (e: Error) => snackbar.show(e.message, "error"),
+  });
 
   return (
     <Accordion variant="outlined" disableGutters>
@@ -473,44 +516,36 @@ function GuardiansSection({
         >
           <Typography variant="overline" color="text.secondary" sx={{ flex: 1 }}>
             Family guardians
-            {!loading && family && (
+            {!loading && (
               <Box component="span" sx={{ ml: 1, color: "text.disabled", fontWeight: 400 }}>
-                ({guardians.length})
+                ({intakeGuardians.length})
               </Box>
             )}
           </Typography>
-          {/* Pseudo-button: AccordionSummary already renders a <button>
-              for the toggle, so nesting an MUI Button here would
-              fail validateDOMNesting. A Box with role="button" stays
-              valid HTML and stopPropagation keeps the click from
-              toggling the accordion. */}
           <AddAction
             label="Add guardian"
-            disabled={!family}
             onClick={() => setAddOpen(true)}
           />
         </Stack>
       </AccordionSummary>
       <AccordionDetails>
-        {loading || !family ? (
+        {loading ? (
           <Box sx={{ display: "flex", justifyContent: "center", py: 2 }}>
             <CircularProgress size={20} />
           </Box>
-        ) : guardians.length === 0 ? (
+        ) : intakeGuardians.length === 0 ? (
           <Typography variant="body2" color="text.disabled">
-            No guardians on file yet.
+            No guardians on this intake yet.
           </Typography>
         ) : (
-          // Flex-wrap layout with a sane card width so a single
-          // guardian doesn't stretch across the full panel. Each
-          // card has a ~300px target and never exceeds 360px;
-          // multiples wrap naturally.
           <Stack direction="row" useFlexGap flexWrap="wrap" sx={{ gap: 2 }}>
-            {guardians.map((g) => (
+            {intakeGuardians.map((g) => (
               <Box key={g.id} sx={{ flex: "1 1 300px", maxWidth: 360 }}>
                 <GuardianCard
                   guardian={g}
                   onOpen={() => setDrawerGuardian(g)}
+                  onRemove={() => unlink.mutate(g.id)}
+                  removing={unlink.isPending}
                 />
               </Box>
             ))}
@@ -518,9 +553,12 @@ function GuardiansSection({
         )}
 
         <AddGuardianDialog
-          key={addOpen ? `add-${family?.id}` : "closed"}
+          key={addOpen ? `add-${intakeId}` : "closed"}
           open={addOpen}
-          familyId={family?.id ?? null}
+          intakeId={intakeId}
+          familyId={familyId}
+          familyGuardians={familyGuardians}
+          intakeGuardians={intakeGuardians}
           onClose={() => setAddOpen(false)}
           onCreated={() => {
             setAddOpen(false);
@@ -529,11 +567,9 @@ function GuardiansSection({
         />
         <ParentDrawer
           open={!!drawerGuardian}
-          // Keep the drawer in sync with the refetched family detail
-          // so edits made inside it are reflected on close.
           parent={
             drawerGuardian
-              ? guardians.find((g) => g.id === drawerGuardian.id) ?? drawerGuardian
+              ? intakeGuardians.find((g) => g.id === drawerGuardian.id) ?? drawerGuardian
               : null
           }
           onClose={() => setDrawerGuardian(null)}
@@ -554,9 +590,13 @@ function GuardiansSection({
 function GuardianCard({
   guardian,
   onOpen,
+  onRemove,
+  removing,
 }: {
   guardian: GuardianRow;
   onOpen: () => void;
+  onRemove?: () => void;
+  removing?: boolean;
 }) {
   const role = guardian.role && guardian.role !== "other" ? guardian.role : null;
   return (
@@ -564,13 +604,38 @@ function GuardianCard({
       variant="outlined"
       sx={{
         height: "100%",
+        position: "relative",
         transition: (t) => t.transitions.create(["border-color", "background-color"]),
         "&:hover": { borderColor: "primary.light", bgcolor: "action.hover" },
       }}
     >
+      {onRemove && (
+        <Tooltip title="Remove from intake">
+          <IconButton
+            size="small"
+            aria-label="Remove from intake"
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              onRemove();
+            }}
+            disabled={removing}
+            sx={{
+              position: "absolute",
+              top: 4,
+              right: 4,
+              zIndex: 1,
+              color: "text.disabled",
+              "&:hover": { color: "error.main" },
+            }}
+          >
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+      )}
       <CardActionArea onClick={onOpen} sx={{ height: "100%" }}>
         <CardContent>
-          <Stack direction="row" spacing={0.5} sx={{ mb: 0.75, minHeight: 24 }}>
+          <Stack direction="row" spacing={0.5} sx={{ mb: 0.75, minHeight: 24, pr: 4 }}>
             {guardian.is_primary_contact && (
               <Chip size="small" label="primary" color="primary" variant="outlined" />
             )}
@@ -634,110 +699,79 @@ function GuardianCard({
   );
 }
 
-interface GuardianPersonOption {
-  id: string;
-  first_name: string | null;
-  last_name: string | null;
-  email: string | null;
-  phone: string | null;
-  family_id: string | null;
-  family_household_name: string | null;
-}
-
 type GuardianEntry =
-  | { kind: "person"; person: GuardianPersonOption }
+  | { kind: "guardian"; guardian: GuardianRow }
   | { kind: "add"; label: string };
 
 const filterGuardians = createFilterOptions<GuardianEntry>({
-  stringify: (entry) => {
-    if (entry.kind === "add") return entry.label;
-    const p = entry.person;
-    return [
-      p.first_name ?? "",
-      p.last_name ?? "",
-      p.email ?? "",
-      p.family_household_name ?? "",
-    ].join(" ");
-  },
+  stringify: (entry) =>
+    entry.kind === "add"
+      ? entry.label
+      : [entry.guardian.name, entry.guardian.email ?? ""].join(" "),
 });
 
-/** Two-stage dialog. First, search for an existing guardian by name
- *  or email — that's the common path when a parent has reached out
- *  before. Picking a row links them to this family via person_id.
- *  Falling back to "+ Add new" reveals the create form for a brand-
- *  new person. */
+/** Add guardian to this intake. Two paths:
+ *  - Pick an existing family guardian who isn't on the intake yet,
+ *    → POST /api/intakes/:id/guardians.
+ *  - "+ Add new": create on the family (POST /api/families/:id/parents)
+ *    AND immediately link to the intake. The family roster grows + the
+ *    new person lands on this intake in one click. */
 function AddGuardianDialog({
   open,
+  intakeId,
   familyId,
+  familyGuardians,
+  intakeGuardians,
   onClose,
   onCreated,
 }: {
   open: boolean;
-  familyId: string | null;
+  intakeId: string;
+  familyId: string;
+  familyGuardians: GuardianRow[];
+  intakeGuardians: GuardianRow[];
   onClose: () => void;
   onCreated: () => void;
 }) {
   const snackbar = useSnackbar();
   const [search, setSearch] = useState("");
-  const [picked, setPicked] = useState<GuardianPersonOption | null>(null);
+  const [picked, setPicked] = useState<GuardianRow | null>(null);
   const [creating, setCreating] = useState(false);
-  // Form fields for the "+ Add new" path.
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
 
-  const people = useQuery<GuardianPersonOption[], Error>({
-    queryKey: ["people", "guardian", search],
-    enabled: open,
-    queryFn: async () => {
-      const { data, error } = await api.GET("/api/people", {
-        params: { query: { kind: "guardian", search } },
-      });
-      if (error || !data) throw new Error("Failed to load guardians.");
-      return data as unknown as GuardianPersonOption[];
-    },
-  });
+  // Family roster minus those already on this intake.
+  const onIntake = new Set(intakeGuardians.map((g) => g.id));
+  const baseOptions: GuardianEntry[] = familyGuardians
+    .filter((g) => !onIntake.has(g.id))
+    .map((g) => ({ kind: "guardian", guardian: g }));
 
-  // Hide guardians that already belong to THIS family — they can't be
-  // linked twice (the backend would 409). Surfacing them in the
-  // search results would just look broken.
-  const baseOptions: GuardianEntry[] = (people.data ?? [])
-    // Per product call: only show existing people already on this
-    // family. The dialog's search acts as a roster-find tool; the
-    // only way to add a brand-new person is the "+ Add new" path.
-    // Linking someone from another family isn't reachable from here.
-    .filter((p) => !!familyId && p.family_id === familyId)
-    .map((p) => ({ kind: "person", person: p }));
-
-  const link = useMutation({
+  const linkOnly = useMutation({
     mutationFn: async (personId: string) => {
-      if (!familyId) throw new Error("No family selected.");
       const { error } = await api.POST(
-        "/api/families/{family_id}/parents",
+        "/api/intakes/{intake_id}/guardians",
         {
-          params: { path: { family_id: familyId } },
+          params: { path: { intake_id: intakeId } },
           body: { person_id: personId } as never,
         },
       );
       if (error) {
-        const msg =
-          (error as { detail?: string } | undefined)?.detail ??
-          "Failed to link guardian.";
+        const msg = (error as { detail?: string }).detail ?? "Failed to add to intake.";
         throw new Error(msg);
       }
     },
     onSuccess: () => {
-      snackbar.show("Guardian added");
+      snackbar.show("Guardian added to intake");
       onCreated();
     },
     onError: (e: Error) => snackbar.show(e.message, "error"),
   });
 
-  const create = useMutation({
+  const createAndLink = useMutation({
     mutationFn: async () => {
-      if (!familyId) throw new Error("No family selected.");
-      const { error } = await api.POST(
+      const created = await api.POST(
         "/api/families/{family_id}/parents",
         {
           params: { path: { family_id: familyId } },
@@ -749,10 +783,24 @@ function AddGuardianDialog({
           } as never,
         },
       );
-      if (error) {
+      if (created.error || !created.data) {
         const msg =
-          (error as { detail?: string } | undefined)?.detail ??
+          (created.error as { detail?: string } | undefined)?.detail ??
           "Failed to add guardian.";
+        throw new Error(msg);
+      }
+      const newPerson = created.data as unknown as { id: string };
+      const linked = await api.POST(
+        "/api/intakes/{intake_id}/guardians",
+        {
+          params: { path: { intake_id: intakeId } },
+          body: { person_id: newPerson.id } as never,
+        },
+      );
+      if (linked.error) {
+        const msg =
+          (linked.error as { detail?: string } | undefined)?.detail ??
+          "Created the guardian but failed to link them to the intake.";
         throw new Error(msg);
       }
     },
@@ -763,9 +811,6 @@ function AddGuardianDialog({
     onError: (e: Error) => snackbar.show(e.message, "error"),
   });
 
-  // When the user picks "+ Add new" with typed text, prefill the
-  // form by splitting on the first whitespace so a single-token name
-  // becomes the first name (and the user can fill the rest).
   const startCreating = (label: string) => {
     const [first, ...rest] = label.trim().split(/\s+/);
     setFirstName(first ?? "");
@@ -774,18 +819,12 @@ function AddGuardianDialog({
     setPicked(null);
   };
 
-  const personLabel = (p: GuardianPersonOption) =>
-    `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim() || "(no name)";
-
-  const pending = link.isPending || create.isPending;
-  // Picked rows are always in-family (the filter ensures it), so
-  // submitting them would 409 on the backend. Only the "+ Add new"
-  // path is a real add; submit is gated on that.
+  const pending = linkOnly.isPending || createAndLink.isPending;
   const canSubmit =
-    !!familyId &&
     !pending &&
-    creating &&
-    (firstName.trim() !== "" || lastName.trim() !== "");
+    (picked
+      ? true
+      : creating && (firstName.trim() !== "" || lastName.trim() !== ""));
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
@@ -802,8 +841,7 @@ function AddGuardianDialog({
             <Autocomplete<GuardianEntry, false, false, false>
               size="small"
               options={baseOptions}
-              loading={people.isPending}
-              value={picked ? { kind: "person", person: picked } : null}
+              value={picked ? { kind: "guardian", guardian: picked } : null}
               inputValue={search}
               onInputChange={(_e, v, reason) => {
                 if (reason !== "reset") setSearch(v);
@@ -813,21 +851,21 @@ function AddGuardianDialog({
                   setPicked(null);
                   return;
                 }
-                if (entry.kind === "person") {
-                  setPicked(entry.person);
+                if (entry.kind === "guardian") {
+                  setPicked(entry.guardian);
                   setCreating(false);
-                  setSearch(personLabel(entry.person));
+                  setSearch(entry.guardian.name);
                   return;
                 }
                 startCreating(entry.label);
               }}
               getOptionLabel={(entry) =>
-                entry.kind === "person" ? personLabel(entry.person) : entry.label
+                entry.kind === "guardian" ? entry.guardian.name : entry.label
               }
               isOptionEqualToValue={(a, b) =>
-                a.kind === "person" &&
-                b.kind === "person" &&
-                a.person.id === b.person.id
+                a.kind === "guardian" &&
+                b.kind === "guardian" &&
+                a.guardian.id === b.guardian.id
               }
               filterOptions={(opts, state) => {
                 const filtered = filterGuardians(opts, state);
@@ -835,6 +873,7 @@ function AddGuardianDialog({
                 if (q) filtered.push({ kind: "add", label: q });
                 return filtered;
               }}
+              noOptionsText="No more family guardians — use + Add new."
               renderOption={(props, entry) => {
                 if (entry.kind === "add") {
                   return (
@@ -845,26 +884,20 @@ function AddGuardianDialog({
                     </li>
                   );
                 }
-                const p = entry.person;
+                const g = entry.guardian;
                 return (
-                  <li {...props} key={p.id}>
+                  <li {...props} key={g.id}>
                     <Stack spacing={0.25} sx={{ py: 0.25 }}>
                       <Box component="span" sx={{ fontWeight: 500 }}>
-                        {personLabel(p)}
+                        {g.name}
                       </Box>
                       <Box
                         component="span"
                         sx={{ color: "text.secondary", fontSize: 12 }}
                       >
-                        {p.email && <span>{p.email}</span>}
-                        {p.email && p.phone && <span> · </span>}
-                        {p.phone && <span>{p.phone}</span>}
-                        {(p.email || p.phone) && p.family_household_name && (
-                          <span> · </span>
-                        )}
-                        {p.family_household_name && (
-                          <span>also on {p.family_household_name}</span>
-                        )}
+                        {g.email && <span>{g.email}</span>}
+                        {g.email && g.phone && <span> · </span>}
+                        {g.phone && <span>{g.phone}</span>}
                       </Box>
                     </Stack>
                   </li>
@@ -923,9 +956,9 @@ function AddGuardianDialog({
 
           {picked && (
             <Typography variant="caption" color="text.secondary">
-              <strong>{personLabel(picked)}</strong> is already on this
-              family. Clear the search and pick "+ Add new" to add
-              someone else.
+              Linking <strong>{picked.name}</strong> to this intake. They
+              already exist on the family — this just attaches them to
+              the meeting.
             </Typography>
           )}
         </Stack>
@@ -938,7 +971,8 @@ function AddGuardianDialog({
           variant="contained"
           disabled={!canSubmit}
           onClick={() => {
-            if (creating) create.mutate();
+            if (picked) linkOnly.mutate(picked.id);
+            else if (creating) createAndLink.mutate();
           }}
         >
           {pending ? "Adding…" : "Add"}
@@ -951,15 +985,47 @@ function AddGuardianDialog({
 // ---- Students section -----------------------------------------------------
 
 function StudentsSection({
-  family,
+  intakeId,
+  familyId,
+  intakeStudents,
+  familyStudents,
   loading,
 }: {
-  family: FamilyDetail | null;
+  intakeId: string;
+  familyId: string;
+  intakeStudents: StudentRow[];
+  familyStudents: StudentRow[];
   loading: boolean;
 }) {
   const qc = useQueryClient();
+  const snackbar = useSnackbar();
   const [addOpen, setAddOpen] = useState(false);
-  const students = family?.students ?? [];
+
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["intakes", intakeId] });
+    qc.invalidateQueries({ queryKey: ["families", "intake-detail", familyId] });
+    qc.invalidateQueries({ queryKey: ["families", "intake-picker"] });
+  };
+
+  const unlink = useMutation({
+    mutationFn: async (personId: string) => {
+      const { error } = await api.DELETE(
+        "/api/intakes/{intake_id}/students/{person_id}",
+        {
+          params: { path: { intake_id: intakeId, person_id: personId } as never },
+        },
+      );
+      if (error) {
+        const msg = (error as { detail?: string }).detail ?? "Remove failed.";
+        throw new Error(msg);
+      }
+    },
+    onSuccess: () => {
+      snackbar.show("Removed from intake");
+      invalidate();
+    },
+    onError: (e: Error) => snackbar.show(e.message, "error"),
+  });
 
   return (
     <Accordion variant="outlined" disableGutters>
@@ -972,48 +1038,52 @@ function StudentsSection({
         >
           <Typography variant="overline" color="text.secondary" sx={{ flex: 1 }}>
             Students
-            {!loading && family && (
+            {!loading && (
               <Box component="span" sx={{ ml: 1, color: "text.disabled", fontWeight: 400 }}>
-                ({students.length})
+                ({intakeStudents.length})
               </Box>
             )}
           </Typography>
           <AddAction
             label="Add student"
-            disabled={!family}
             onClick={() => setAddOpen(true)}
           />
         </Stack>
       </AccordionSummary>
       <AccordionDetails>
-        {loading || !family ? (
+        {loading ? (
           <Box sx={{ display: "flex", justifyContent: "center", py: 2 }}>
             <CircularProgress size={20} />
           </Box>
-        ) : students.length === 0 ? (
+        ) : intakeStudents.length === 0 ? (
           <Typography variant="body2" color="text.disabled">
-            No students on file yet.
+            No students on this intake yet.
           </Typography>
         ) : (
           <Stack direction="row" useFlexGap flexWrap="wrap" sx={{ gap: 2 }}>
-            {students.map((s) => (
+            {intakeStudents.map((s) => (
               <Box key={s.id} sx={{ flex: "1 1 300px", maxWidth: 360 }}>
-                <StudentCard student={s} />
+                <StudentCard
+                  student={s}
+                  onRemove={() => unlink.mutate(s.id)}
+                  removing={unlink.isPending}
+                />
               </Box>
             ))}
           </Stack>
         )}
 
         <AddStudentDialog
-          // Remount per open so useState starts blank each time.
-          key={addOpen ? `add-${family?.id}` : "closed"}
+          key={addOpen ? `add-${intakeId}` : "closed"}
           open={addOpen}
-          familyId={family?.id ?? null}
+          intakeId={intakeId}
+          familyId={familyId}
+          familyStudents={familyStudents}
+          intakeStudents={intakeStudents}
           onClose={() => setAddOpen(false)}
           onCreated={() => {
             setAddOpen(false);
-            qc.invalidateQueries({ queryKey: ["families", "intake-detail", family?.id] });
-            qc.invalidateQueries({ queryKey: ["families", "intake-picker"] });
+            invalidate();
           }}
         />
       </AccordionDetails>
@@ -1026,7 +1096,15 @@ function StudentsSection({
  *  diagnosis chips when any flags are set. Click navigates to the
  *  student detail page for full editing — that page already owns
  *  every clinical field, so no inline drawer needed yet. */
-function StudentCard({ student }: { student: StudentRow }) {
+function StudentCard({
+  student,
+  onRemove,
+  removing,
+}: {
+  student: StudentRow;
+  onRemove?: () => void;
+  removing?: boolean;
+}) {
   const chips: string[] = [];
   if (student.has_504) chips.push("504");
   if (student.has_iep) chips.push("IEP");
@@ -1042,17 +1120,42 @@ function StudentCard({ student }: { student: StudentRow }) {
       variant="outlined"
       sx={{
         height: "100%",
+        position: "relative",
         transition: (t) => t.transitions.create(["border-color", "background-color"]),
         "&:hover": { borderColor: "primary.light", bgcolor: "action.hover" },
       }}
     >
+      {onRemove && (
+        <Tooltip title="Remove from intake">
+          <IconButton
+            size="small"
+            aria-label="Remove from intake"
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              onRemove();
+            }}
+            disabled={removing}
+            sx={{
+              position: "absolute",
+              top: 4,
+              right: 4,
+              zIndex: 1,
+              color: "text.disabled",
+              "&:hover": { color: "error.main" },
+            }}
+          >
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+      )}
       <CardActionArea
         component={RouterLink}
         to={`/students/${student.id}`}
         sx={{ height: "100%" }}
       >
         <CardContent>
-          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 600, pr: 4 }}>
             {student.name || "(no name)"}
           </Typography>
           <Stack
@@ -1082,106 +1185,73 @@ function StudentCard({ student }: { student: StudentRow }) {
   );
 }
 
-interface StudentPersonOption {
-  id: string;
-  first_name: string | null;
-  last_name: string | null;
-  current_grade: string | null;
-  family_id: string | null;
-  family_household_name: string | null;
-}
-
 type StudentEntry =
-  | { kind: "person"; person: StudentPersonOption }
+  | { kind: "student"; student: StudentRow }
   | { kind: "add"; label: string };
 
 const filterStudents = createFilterOptions<StudentEntry>({
-  stringify: (entry) => {
-    if (entry.kind === "add") return entry.label;
-    const p = entry.person;
-    return [
-      p.first_name ?? "",
-      p.last_name ?? "",
-      p.family_household_name ?? "",
-    ].join(" ");
-  },
+  stringify: (entry) =>
+    entry.kind === "add" ? entry.label : entry.student.name,
 });
 
-/** Two-stage dialog mirroring AddGuardianDialog. Search existing
- *  students by name first — handy when a sibling is already in the
- *  system on another family or no family. Picking links via
- *  person_id; "+ Add new" reveals the create form prefilled from the
- *  typed text. */
+/** Add student to this intake. Pick from family roster (minus those
+ *  already on this intake) → POST /api/intakes/:id/students. Or
+ *  "+ Add new" → create on family + auto-link to intake. */
 function AddStudentDialog({
   open,
+  intakeId,
   familyId,
+  familyStudents,
+  intakeStudents,
   onClose,
   onCreated,
 }: {
   open: boolean;
-  familyId: string | null;
+  intakeId: string;
+  familyId: string;
+  familyStudents: StudentRow[];
+  intakeStudents: StudentRow[];
   onClose: () => void;
   onCreated: () => void;
 }) {
   const snackbar = useSnackbar();
   const [search, setSearch] = useState("");
-  const [picked, setPicked] = useState<StudentPersonOption | null>(null);
+  const [picked, setPicked] = useState<StudentRow | null>(null);
   const [creating, setCreating] = useState(false);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [dob, setDob] = useState<Dayjs | null>(null);
   const [grade, setGrade] = useState("");
 
-  const people = useQuery<StudentPersonOption[], Error>({
-    queryKey: ["people", "student", search],
-    enabled: open,
-    queryFn: async () => {
-      const { data, error } = await api.GET("/api/people", {
-        params: { query: { kind: "student", search } },
-      });
-      if (error || !data) throw new Error("Failed to load students.");
-      return data as unknown as StudentPersonOption[];
-    },
-  });
+  const onIntake = new Set(intakeStudents.map((s) => s.id));
+  const baseOptions: StudentEntry[] = familyStudents
+    .filter((s) => !onIntake.has(s.id))
+    .map((s) => ({ kind: "student", student: s }));
 
-  // Hide students already on this family — backend would 409 on
-  // re-linking, and seeing them here would just look broken.
-  const baseOptions: StudentEntry[] = (people.data ?? [])
-    // Per product call: only show existing people already on this
-    // family. The dialog's search acts as a roster-find tool; the
-    // only way to add a brand-new person is the "+ Add new" path.
-    // Linking someone from another family isn't reachable from here.
-    .filter((p) => !!familyId && p.family_id === familyId)
-    .map((p) => ({ kind: "person", person: p }));
-
-  const link = useMutation({
+  const linkOnly = useMutation({
     mutationFn: async (personId: string) => {
-      if (!familyId) throw new Error("No family selected.");
       const { error } = await api.POST(
-        "/api/families/{family_id}/students",
+        "/api/intakes/{intake_id}/students",
         {
-          params: { path: { family_id: familyId } },
+          params: { path: { intake_id: intakeId } },
           body: { person_id: personId } as never,
         },
       );
       if (error) {
-        const msg =
-          (error as { detail?: string } | undefined)?.detail ??
-          "Failed to link student.";
+        const msg = (error as { detail?: string }).detail ?? "Failed to add to intake.";
         throw new Error(msg);
       }
     },
     onSuccess: () => {
-      snackbar.show("Student added");
+      snackbar.show("Student added to intake");
       onCreated();
     },
     onError: (e: Error) => snackbar.show(e.message, "error"),
   });
 
-  const create = useMutation({
+  const createAndLink = useMutation({
     mutationFn: async () => {
-      if (!familyId) throw new Error("No family selected.");
-      const { error } = await api.POST(
+      const created = await api.POST(
         "/api/families/{family_id}/students",
         {
           params: { path: { family_id: familyId } },
@@ -1193,10 +1263,24 @@ function AddStudentDialog({
           } as never,
         },
       );
-      if (error) {
+      if (created.error || !created.data) {
         const msg =
-          (error as { detail?: string } | undefined)?.detail ??
+          (created.error as { detail?: string } | undefined)?.detail ??
           "Failed to add student.";
+        throw new Error(msg);
+      }
+      const newPerson = created.data as unknown as { id: string };
+      const linked = await api.POST(
+        "/api/intakes/{intake_id}/students",
+        {
+          params: { path: { intake_id: intakeId } },
+          body: { person_id: newPerson.id } as never,
+        },
+      );
+      if (linked.error) {
+        const msg =
+          (linked.error as { detail?: string } | undefined)?.detail ??
+          "Created the student but failed to link them to the intake.";
         throw new Error(msg);
       }
     },
@@ -1215,18 +1299,12 @@ function AddStudentDialog({
     setPicked(null);
   };
 
-  const personLabel = (p: StudentPersonOption) =>
-    `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim() || "(no name)";
-
-  const pending = link.isPending || create.isPending;
-  // Picked rows are always already on this family per the filter
-  // above; only "+ Add new" produces a real add action.
+  const pending = linkOnly.isPending || createAndLink.isPending;
   const canSubmit =
-    !!familyId &&
     !pending &&
-    creating &&
-    !!firstName.trim() &&
-    !!lastName.trim();
+    (picked
+      ? true
+      : creating && !!firstName.trim() && !!lastName.trim());
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
@@ -1243,8 +1321,7 @@ function AddStudentDialog({
             <Autocomplete<StudentEntry, false, false, false>
               size="small"
               options={baseOptions}
-              loading={people.isPending}
-              value={picked ? { kind: "person", person: picked } : null}
+              value={picked ? { kind: "student", student: picked } : null}
               inputValue={search}
               onInputChange={(_e, v, reason) => {
                 if (reason !== "reset") setSearch(v);
@@ -1254,21 +1331,21 @@ function AddStudentDialog({
                   setPicked(null);
                   return;
                 }
-                if (entry.kind === "person") {
-                  setPicked(entry.person);
+                if (entry.kind === "student") {
+                  setPicked(entry.student);
                   setCreating(false);
-                  setSearch(personLabel(entry.person));
+                  setSearch(entry.student.name);
                   return;
                 }
                 startCreating(entry.label);
               }}
               getOptionLabel={(entry) =>
-                entry.kind === "person" ? personLabel(entry.person) : entry.label
+                entry.kind === "student" ? entry.student.name : entry.label
               }
               isOptionEqualToValue={(a, b) =>
-                a.kind === "person" &&
-                b.kind === "person" &&
-                a.person.id === b.person.id
+                a.kind === "student" &&
+                b.kind === "student" &&
+                a.student.id === b.student.id
               }
               filterOptions={(opts, state) => {
                 const filtered = filterStudents(opts, state);
@@ -1276,6 +1353,7 @@ function AddStudentDialog({
                 if (q) filtered.push({ kind: "add", label: q });
                 return filtered;
               }}
+              noOptionsText="No more family students — use + Add new."
               renderOption={(props, entry) => {
                 if (entry.kind === "add") {
                   return (
@@ -1286,21 +1364,21 @@ function AddStudentDialog({
                     </li>
                   );
                 }
-                const p = entry.person;
+                const s = entry.student;
                 return (
-                  <li {...props} key={p.id}>
+                  <li {...props} key={s.id}>
                     <Stack spacing={0.25} sx={{ py: 0.25 }}>
                       <Box component="span" sx={{ fontWeight: 500 }}>
-                        {personLabel(p)}
+                        {s.name}
                       </Box>
                       <Box
                         component="span"
                         sx={{ color: "text.secondary", fontSize: 12 }}
                       >
-                        {p.current_grade && <span>Grade {p.current_grade}</span>}
-                        {p.current_grade && p.family_household_name && <span> · </span>}
-                        {p.family_household_name && (
-                          <span>also on {p.family_household_name}</span>
+                        {s.current_grade && <span>Grade {s.current_grade}</span>}
+                        {s.current_grade && s.dob && <span> · </span>}
+                        {s.dob && (
+                          <span>DOB {dayjs(s.dob).format("MMM D, YYYY")}</span>
                         )}
                       </Box>
                     </Stack>
@@ -1369,9 +1447,9 @@ function AddStudentDialog({
 
           {picked && (
             <Typography variant="caption" color="text.secondary">
-              <strong>{personLabel(picked)}</strong> is already on this
-              family. Clear the search and pick "+ Add new" to add
-              someone else.
+              Linking <strong>{picked.name}</strong> to this intake. They
+              already exist on the family — this just attaches them to
+              the meeting.
             </Typography>
           )}
         </Stack>
@@ -1384,7 +1462,8 @@ function AddStudentDialog({
           variant="contained"
           disabled={!canSubmit}
           onClick={() => {
-            if (creating) create.mutate();
+            if (picked) linkOnly.mutate(picked.id);
+            else if (creating) createAndLink.mutate();
           }}
         >
           {pending ? "Adding…" : "Add"}
