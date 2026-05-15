@@ -700,7 +700,7 @@ function GuardianCard({
 }
 
 type GuardianEntry =
-  | { kind: "guardian"; guardian: GuardianRow }
+  | { kind: "guardian"; guardian: GuardianRow; alreadyOnIntake: boolean }
   | { kind: "add"; label: string };
 
 const filterGuardians = createFilterOptions<GuardianEntry>({
@@ -742,11 +742,16 @@ function AddGuardianDialog({
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
 
-  // Family roster minus those already on this intake.
+  // Show the family's full guardian roster; we mark already-on-intake
+  // entries as disabled so the user sees them but can't re-link.
+  // Hiding them silently made the search look broken when the user
+  // typed a name that matched someone already on the intake.
   const onIntake = new Set(intakeGuardians.map((g) => g.id));
-  const baseOptions: GuardianEntry[] = familyGuardians
-    .filter((g) => !onIntake.has(g.id))
-    .map((g) => ({ kind: "guardian", guardian: g }));
+  const baseOptions: GuardianEntry[] = familyGuardians.map((g) => ({
+    kind: "guardian",
+    guardian: g,
+    alreadyOnIntake: onIntake.has(g.id),
+  }));
 
   const linkOnly = useMutation({
     mutationFn: async (personId: string) => {
@@ -841,7 +846,7 @@ function AddGuardianDialog({
             <Autocomplete<GuardianEntry, false, false, false>
               size="small"
               options={baseOptions}
-              value={picked ? { kind: "guardian", guardian: picked } : null}
+              value={picked ? { kind: "guardian", guardian: picked, alreadyOnIntake: false } : null}
               inputValue={search}
               onInputChange={(_e, v, reason) => {
                 if (reason !== "reset") setSearch(v);
@@ -861,6 +866,9 @@ function AddGuardianDialog({
               }}
               getOptionLabel={(entry) =>
                 entry.kind === "guardian" ? entry.guardian.name : entry.label
+              }
+              getOptionDisabled={(entry) =>
+                entry.kind === "guardian" && entry.alreadyOnIntake
               }
               isOptionEqualToValue={(a, b) =>
                 a.kind === "guardian" &&
@@ -891,10 +899,25 @@ function AddGuardianDialog({
                 const g = entry.guardian;
                 return (
                   <li {...props} key={g.id}>
-                    <Stack spacing={0.25} sx={{ py: 0.25 }}>
-                      <Box component="span" sx={{ fontWeight: 500 }}>
-                        {g.name}
-                      </Box>
+                    <Stack spacing={0.25} sx={{ py: 0.25, width: "100%" }}>
+                      <Stack
+                        direction="row"
+                        alignItems="center"
+                        spacing={1}
+                        sx={{ width: "100%" }}
+                      >
+                        <Box component="span" sx={{ fontWeight: 500, flex: 1 }}>
+                          {g.name}
+                        </Box>
+                        {entry.alreadyOnIntake && (
+                          <Chip
+                            size="small"
+                            label="on intake"
+                            variant="outlined"
+                            sx={{ height: 20 }}
+                          />
+                        )}
+                      </Stack>
                       <Box
                         component="span"
                         sx={{ color: "text.secondary", fontSize: 12 }}
@@ -1190,7 +1213,7 @@ function StudentCard({
 }
 
 type StudentEntry =
-  | { kind: "student"; student: StudentRow }
+  | { kind: "student"; student: StudentRow; alreadyOnIntake: boolean }
   | { kind: "add"; label: string };
 
 const filterStudents = createFilterOptions<StudentEntry>({
@@ -1227,10 +1250,15 @@ function AddStudentDialog({
   const [dob, setDob] = useState<Dayjs | null>(null);
   const [grade, setGrade] = useState("");
 
+  // Mirror the guardian dialog: show all family students; mark
+  // already-on-intake entries as disabled so the user understands
+  // why they can't be picked instead of seeing an empty list.
   const onIntake = new Set(intakeStudents.map((s) => s.id));
-  const baseOptions: StudentEntry[] = familyStudents
-    .filter((s) => !onIntake.has(s.id))
-    .map((s) => ({ kind: "student", student: s }));
+  const baseOptions: StudentEntry[] = familyStudents.map((s) => ({
+    kind: "student",
+    student: s,
+    alreadyOnIntake: onIntake.has(s.id),
+  }));
 
   const linkOnly = useMutation({
     mutationFn: async (personId: string) => {
@@ -1325,7 +1353,7 @@ function AddStudentDialog({
             <Autocomplete<StudentEntry, false, false, false>
               size="small"
               options={baseOptions}
-              value={picked ? { kind: "student", student: picked } : null}
+              value={picked ? { kind: "student", student: picked, alreadyOnIntake: false } : null}
               inputValue={search}
               onInputChange={(_e, v, reason) => {
                 if (reason !== "reset") setSearch(v);
@@ -1345,6 +1373,9 @@ function AddStudentDialog({
               }}
               getOptionLabel={(entry) =>
                 entry.kind === "student" ? entry.student.name : entry.label
+              }
+              getOptionDisabled={(entry) =>
+                entry.kind === "student" && entry.alreadyOnIntake
               }
               isOptionEqualToValue={(a, b) =>
                 a.kind === "student" &&
@@ -1374,10 +1405,25 @@ function AddStudentDialog({
                 const s = entry.student;
                 return (
                   <li {...props} key={s.id}>
-                    <Stack spacing={0.25} sx={{ py: 0.25 }}>
-                      <Box component="span" sx={{ fontWeight: 500 }}>
-                        {s.name}
-                      </Box>
+                    <Stack spacing={0.25} sx={{ py: 0.25, width: "100%" }}>
+                      <Stack
+                        direction="row"
+                        alignItems="center"
+                        spacing={1}
+                        sx={{ width: "100%" }}
+                      >
+                        <Box component="span" sx={{ fontWeight: 500, flex: 1 }}>
+                          {s.name}
+                        </Box>
+                        {entry.alreadyOnIntake && (
+                          <Chip
+                            size="small"
+                            label="on intake"
+                            variant="outlined"
+                            sx={{ height: 20 }}
+                          />
+                        )}
+                      </Stack>
                       <Box
                         component="span"
                         sx={{ color: "text.secondary", fontSize: 12 }}
