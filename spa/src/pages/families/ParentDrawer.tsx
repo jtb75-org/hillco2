@@ -241,7 +241,7 @@ export function ParentDrawer({
       open={open && !!parent}
       onClose={() => !patch.isPending && !remove.isPending && onClose()}
       PaperProps={{
-        sx: { width, maxWidth: "100%", position: "relative" },
+        sx: { width, maxWidth: "100%" },
       }}
     >
       {handle}

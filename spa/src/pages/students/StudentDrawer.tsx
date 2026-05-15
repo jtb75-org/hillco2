@@ -48,7 +48,7 @@ export function StudentDrawer({
       // onto the previous student's local edits.
       ModalProps={{ keepMounted: false }}
       PaperProps={{
-        sx: { width, maxWidth: "100%", p: 0, position: "relative" },
+        sx: { width, maxWidth: "100%", p: 0 },
       }}
     >
       {handle}
