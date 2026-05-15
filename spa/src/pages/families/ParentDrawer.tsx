@@ -23,6 +23,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { api } from "../../api/client";
 import type { components } from "../../api/schema";
 import { LabeledField } from "../../components/LabeledField";
+import { useResizableDrawerWidth } from "../../components/useResizableDrawerWidth";
 
 type ParentUpdate = components["schemas"]["ParentUpdate"];
 type PersonDetail = components["schemas"]["PersonDetail"];
@@ -78,6 +79,10 @@ export function ParentDrawer({
   const [billingState, setBillingState] = useState("");
   const [billingPostalCode, setBillingPostalCode] = useState("");
   const [confirmingRemove, setConfirmingRemove] = useState(false);
+
+  const { width, handle } = useResizableDrawerWidth("parent-drawer", {
+    initial: 460,
+  });
 
   // Fetch the structured mailing + billing columns for pre-fill.
   // ParentDrawerTarget only has the composed blobs (mailing_address,
@@ -235,8 +240,11 @@ export function ParentDrawer({
       anchor="right"
       open={open && !!parent}
       onClose={() => !patch.isPending && !remove.isPending && onClose()}
-      PaperProps={{ sx: { width: { xs: "100%", sm: 460 } } }}
+      PaperProps={{
+        sx: { width, maxWidth: "100%", position: "relative" },
+      }}
     >
+      {handle}
       {/* Spacer matching the fixed AppBar — keeps the drawer content
           out from under the toolbar without bumping z-index. */}
       <Toolbar />

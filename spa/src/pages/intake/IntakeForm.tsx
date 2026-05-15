@@ -50,6 +50,7 @@ import { StatusChip } from "../../components/StatusChip";
 import { useSnackbar } from "../../components/Snackbar";
 import { ParentDrawer } from "../families/ParentDrawer";
 import type { ParentDrawerTarget } from "../families/ParentDrawer";
+import { StudentDrawer } from "../students/StudentDrawer";
 
 // /api/intakes/:id returns a plain dict; hand-typed here.
 interface Intake {
@@ -1030,6 +1031,7 @@ function StudentsSection({
   const qc = useQueryClient();
   const snackbar = useSnackbar();
   const [addOpen, setAddOpen] = useState(false);
+  const [drawerId, setDrawerId] = useState<string | null>(null);
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["intakes", intakeId] });
@@ -1095,6 +1097,7 @@ function StudentsSection({
               <Box key={s.id} sx={{ flex: "1 1 300px", maxWidth: 360 }}>
                 <StudentCard
                   student={s}
+                  onOpen={() => setDrawerId(s.id)}
                   onRemove={() => unlink.mutate(s.id)}
                   removing={unlink.isPending}
                 />
@@ -1116,6 +1119,13 @@ function StudentsSection({
             invalidate();
           }}
         />
+        <StudentDrawer
+          open={!!drawerId}
+          studentId={drawerId}
+          onClose={() => setDrawerId(null)}
+          onChanged={invalidate}
+          onRemoved={invalidate}
+        />
       </AccordionDetails>
     </Accordion>
   );
@@ -1123,15 +1133,16 @@ function StudentsSection({
 
 /** Single student as a clickable card. Surfaces the basics the
  *  consultant uses at a glance (name, grade, DOB) plus a row of
- *  diagnosis chips when any flags are set. Click navigates to the
- *  student detail page for full editing — that page already owns
- *  every clinical field, so no inline drawer needed yet. */
+ *  diagnosis chips when any flags are set. Click opens the
+ *  StudentDrawer for inline editing without leaving the intake. */
 function StudentCard({
   student,
+  onOpen,
   onRemove,
   removing,
 }: {
   student: StudentRow;
+  onOpen: () => void;
   onRemove?: () => void;
   removing?: boolean;
 }) {
@@ -1179,11 +1190,7 @@ function StudentCard({
           </IconButton>
         </Tooltip>
       )}
-      <CardActionArea
-        component={RouterLink}
-        to={`/students/${student.id}`}
-        sx={{ height: "100%" }}
-      >
+      <CardActionArea onClick={onOpen} sx={{ height: "100%" }}>
         <CardContent>
           <Typography variant="subtitle1" sx={{ fontWeight: 600, pr: 4 }}>
             {student.name || "(no name)"}
