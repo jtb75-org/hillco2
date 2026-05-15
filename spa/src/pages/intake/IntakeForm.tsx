@@ -1076,6 +1076,36 @@ function StudentCard({ student }: { student: StudentRow }) {
   );
 }
 
+interface StudentPersonOption {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  current_grade: string | null;
+  family_id: string | null;
+  family_household_name: string | null;
+}
+
+type StudentEntry =
+  | { kind: "person"; person: StudentPersonOption }
+  | { kind: "add"; label: string };
+
+const filterStudents = createFilterOptions<StudentEntry>({
+  stringify: (entry) => {
+    if (entry.kind === "add") return entry.label;
+    const p = entry.person;
+    return [
+      p.first_name ?? "",
+      p.last_name ?? "",
+      p.family_household_name ?? "",
+    ].join(" ");
+  },
+});
+
+/** Two-stage dialog mirroring AddGuardianDialog. Search existing
+ *  students by name first — handy when a sibling is already in the
+ *  system on another family or no family. Picking links via
+ *  person_id; "+ Add new" reveals the create form prefilled from the
+ *  typed text. */
 function AddStudentDialog({
   open,
   familyId,
@@ -1088,15 +1118,60 @@ function AddStudentDialog({
   onCreated: () => void;
 }) {
   const snackbar = useSnackbar();
+  const [search, setSearch] = useState("");
+  const [picked, setPicked] = useState<StudentPersonOption | null>(null);
+  const [creating, setCreating] = useState(false);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [dob, setDob] = useState<Dayjs | null>(null);
   const [grade, setGrade] = useState("");
 
+  const people = useQuery<StudentPersonOption[], Error>({
+    queryKey: ["people", "student", search],
+    enabled: open,
+    queryFn: async () => {
+      const { data, error } = await api.GET("/api/people", {
+        params: { query: { kind: "student", search } },
+      });
+      if (error || !data) throw new Error("Failed to load students.");
+      return data as unknown as StudentPersonOption[];
+    },
+  });
+
+  // Hide students already on this family — backend would 409 on
+  // re-linking, and seeing them here would just look broken.
+  const baseOptions: StudentEntry[] = (people.data ?? [])
+    .filter((p) => p.family_id !== familyId)
+    .map((p) => ({ kind: "person", person: p }));
+
+  const link = useMutation({
+    mutationFn: async (personId: string) => {
+      if (!familyId) throw new Error("No family selected.");
+      const { error } = await api.POST(
+        "/api/families/{family_id}/students",
+        {
+          params: { path: { family_id: familyId } },
+          body: { person_id: personId } as never,
+        },
+      );
+      if (error) {
+        const msg =
+          (error as { detail?: string } | undefined)?.detail ??
+          "Failed to link student.";
+        throw new Error(msg);
+      }
+    },
+    onSuccess: () => {
+      snackbar.show("Student added");
+      onCreated();
+    },
+    onError: (e: Error) => snackbar.show(e.message, "error"),
+  });
+
   const create = useMutation({
     mutationFn: async () => {
       if (!familyId) throw new Error("No family selected.");
-      const { data, error } = await api.POST(
+      const { error } = await api.POST(
         "/api/families/{family_id}/students",
         {
           params: { path: { family_id: familyId } },
@@ -1108,13 +1183,12 @@ function AddStudentDialog({
           } as never,
         },
       );
-      if (error || !data) {
+      if (error) {
         const msg =
           (error as { detail?: string } | undefined)?.detail ??
           "Failed to add student.";
         throw new Error(msg);
       }
-      return data;
     },
     onSuccess: () => {
       snackbar.show("Student added");
@@ -1123,78 +1197,185 @@ function AddStudentDialog({
     onError: (e: Error) => snackbar.show(e.message, "error"),
   });
 
+  const startCreating = (label: string) => {
+    const [first, ...rest] = label.trim().split(/\s+/);
+    setFirstName(first ?? "");
+    setLastName(rest.join(" "));
+    setCreating(true);
+    setPicked(null);
+  };
+
+  const personLabel = (p: StudentPersonOption) =>
+    `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim() || "(no name)";
+
+  const pending = link.isPending || create.isPending;
   const canSubmit =
     !!familyId &&
-    !create.isPending &&
-    !!firstName.trim() &&
-    !!lastName.trim();
+    !pending &&
+    (picked
+      ? true
+      : creating && !!firstName.trim() && !!lastName.trim());
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>Add student</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 1 }}>
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-            <LabeledField label="First name" required>
-              <TextField
-                autoFocus
-                required
-                size="small"
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
-                fullWidth
-              />
-            </LabeledField>
-            <LabeledField label="Last name" required>
-              <TextField
-                required
-                size="small"
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-                fullWidth
-              />
-            </LabeledField>
-          </Stack>
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-            <LabeledField label="Date of birth">
-              <DatePicker
-                value={dob}
-                onChange={(v) => setDob(v)}
-                // openTo=year lets you type the year first in the
-                // calendar popover; the textfield itself accepts a
-                // typed MM/DD/YYYY too without Safari's native
-                // year-rejection quirk.
-                openTo="year"
-                views={["year", "month", "day"]}
-                slotProps={{ textField: { size: "small", fullWidth: true } }}
-              />
-            </LabeledField>
-            <LabeledField label="Current grade">
-              <TextField
-                size="small"
-                placeholder='e.g. "8th"'
-                value={grade}
-                onChange={(e) => setGrade(e.target.value)}
-                fullWidth
-              />
-            </LabeledField>
-          </Stack>
-          <Typography variant="caption" color="text.disabled">
-            Diagnoses, current school, and other clinical fields are
-            edited from the student detail page once the row exists.
-          </Typography>
+          <Box>
+            <Typography
+              variant="body2"
+              sx={{ mb: 0.5, color: "text.secondary", fontWeight: 500 }}
+            >
+              Search existing students
+            </Typography>
+            <Autocomplete<StudentEntry, false, false, false>
+              size="small"
+              options={baseOptions}
+              loading={people.isPending}
+              value={picked ? { kind: "person", person: picked } : null}
+              inputValue={search}
+              onInputChange={(_e, v, reason) => {
+                if (reason !== "reset") setSearch(v);
+              }}
+              onChange={(_e, entry) => {
+                if (!entry) {
+                  setPicked(null);
+                  return;
+                }
+                if (entry.kind === "person") {
+                  setPicked(entry.person);
+                  setCreating(false);
+                  setSearch(personLabel(entry.person));
+                  return;
+                }
+                startCreating(entry.label);
+              }}
+              getOptionLabel={(entry) =>
+                entry.kind === "person" ? personLabel(entry.person) : entry.label
+              }
+              isOptionEqualToValue={(a, b) =>
+                a.kind === "person" &&
+                b.kind === "person" &&
+                a.person.id === b.person.id
+              }
+              filterOptions={(opts, state) => {
+                const filtered = filterStudents(opts, state);
+                const q = state.inputValue.trim();
+                if (q) filtered.push({ kind: "add", label: q });
+                return filtered;
+              }}
+              renderOption={(props, entry) => {
+                if (entry.kind === "add") {
+                  return (
+                    <li {...props} key="__add__">
+                      <Typography variant="body2" color="primary">
+                        + Add "{entry.label}" as a new student
+                      </Typography>
+                    </li>
+                  );
+                }
+                const p = entry.person;
+                return (
+                  <li {...props} key={p.id}>
+                    <Stack spacing={0.25} sx={{ py: 0.25 }}>
+                      <Box component="span" sx={{ fontWeight: 500 }}>
+                        {personLabel(p)}
+                      </Box>
+                      <Box
+                        component="span"
+                        sx={{ color: "text.secondary", fontSize: 12 }}
+                      >
+                        {p.current_grade && <span>Grade {p.current_grade}</span>}
+                        {p.current_grade && p.family_household_name && <span> · </span>}
+                        {p.family_household_name && (
+                          <span>also on {p.family_household_name}</span>
+                        )}
+                      </Box>
+                    </Stack>
+                  </li>
+                );
+              }}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  autoFocus
+                  placeholder="Name"
+                />
+              )}
+            />
+          </Box>
+
+          {creating && (
+            <>
+              <Divider flexItem>or fill in a new student</Divider>
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                <LabeledField label="First name" required>
+                  <TextField
+                    required
+                    size="small"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    fullWidth
+                  />
+                </LabeledField>
+                <LabeledField label="Last name" required>
+                  <TextField
+                    required
+                    size="small"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    fullWidth
+                  />
+                </LabeledField>
+              </Stack>
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                <LabeledField label="Date of birth">
+                  <DatePicker
+                    value={dob}
+                    onChange={(v) => setDob(v)}
+                    openTo="year"
+                    views={["year", "month", "day"]}
+                    slotProps={{ textField: { size: "small", fullWidth: true } }}
+                  />
+                </LabeledField>
+                <LabeledField label="Current grade">
+                  <TextField
+                    size="small"
+                    placeholder='e.g. "8th"'
+                    value={grade}
+                    onChange={(e) => setGrade(e.target.value)}
+                    fullWidth
+                  />
+                </LabeledField>
+              </Stack>
+              <Typography variant="caption" color="text.disabled">
+                Diagnoses, current school, and other clinical fields are
+                edited from the student detail page once the row exists.
+              </Typography>
+            </>
+          )}
+
+          {picked && (
+            <Typography variant="caption" color="text.secondary">
+              Linking <strong>{personLabel(picked)}</strong> to this family.
+              Their record stays the source of truth.
+            </Typography>
+          )}
         </Stack>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose} disabled={create.isPending}>
+        <Button onClick={onClose} disabled={pending}>
           Cancel
         </Button>
         <Button
           variant="contained"
           disabled={!canSubmit}
-          onClick={() => create.mutate()}
+          onClick={() => {
+            if (picked) link.mutate(picked.id);
+            else if (creating) create.mutate();
+          }}
         >
-          {create.isPending ? "Adding…" : "Add"}
+          {pending ? "Adding…" : picked ? "Link" : "Add"}
         </Button>
       </DialogActions>
     </Dialog>
