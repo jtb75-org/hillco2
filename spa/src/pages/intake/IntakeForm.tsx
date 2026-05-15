@@ -869,17 +869,21 @@ function AddGuardianDialog({
               }
               filterOptions={(opts, state) => {
                 const filtered = filterGuardians(opts, state);
-                const q = state.inputValue.trim();
-                if (q) filtered.push({ kind: "add", label: q });
+                // Always offer "+ Add new" at the bottom, even with no
+                // typed text — when the family roster is exhausted
+                // there's no other entry to act on, and gating on
+                // input was hiding the only way forward.
+                filtered.push({ kind: "add", label: state.inputValue.trim() });
                 return filtered;
               }}
-              noOptionsText="No more family guardians — use + Add new."
               renderOption={(props, entry) => {
                 if (entry.kind === "add") {
                   return (
                     <li {...props} key="__add__">
                       <Typography variant="body2" color="primary">
-                        + Add "{entry.label}" as a new guardian
+                        {entry.label
+                          ? `+ Add "${entry.label}" as a new guardian`
+                          : "+ Add a new guardian"}
                       </Typography>
                     </li>
                   );
@@ -1349,17 +1353,20 @@ function AddStudentDialog({
               }
               filterOptions={(opts, state) => {
                 const filtered = filterStudents(opts, state);
-                const q = state.inputValue.trim();
-                if (q) filtered.push({ kind: "add", label: q });
+                // Same as guardians: always offer "+ Add new" at the
+                // bottom so an empty roster doesn't leave the user
+                // stuck.
+                filtered.push({ kind: "add", label: state.inputValue.trim() });
                 return filtered;
               }}
-              noOptionsText="No more family students — use + Add new."
               renderOption={(props, entry) => {
                 if (entry.kind === "add") {
                   return (
                     <li {...props} key="__add__">
                       <Typography variant="body2" color="primary">
-                        + Add "{entry.label}" as a new student
+                        {entry.label
+                          ? `+ Add "${entry.label}" as a new student`
+                          : "+ Add a new student"}
                       </Typography>
                     </li>
                   );
