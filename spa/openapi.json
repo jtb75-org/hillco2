@@ -3665,6 +3665,200 @@
         }
       }
     },
+    "/api/intakes/{intake_id}/guardians": {
+      "post": {
+        "tags": [
+          "intakes"
+        ],
+        "summary": "Link Intake Guardian",
+        "operationId": "link_intake_guardian_api_intakes__intake_id__guardians_post",
+        "parameters": [
+          {
+            "name": "intake_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Intake Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberLink"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/intakes/{intake_id}/guardians/{person_id}": {
+      "delete": {
+        "tags": [
+          "intakes"
+        ],
+        "summary": "Unlink Intake Guardian",
+        "operationId": "unlink_intake_guardian_api_intakes__intake_id__guardians__person_id__delete",
+        "parameters": [
+          {
+            "name": "intake_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Intake Id"
+            }
+          },
+          {
+            "name": "person_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Person Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/intakes/{intake_id}/students": {
+      "post": {
+        "tags": [
+          "intakes"
+        ],
+        "summary": "Link Intake Student",
+        "operationId": "link_intake_student_api_intakes__intake_id__students_post",
+        "parameters": [
+          {
+            "name": "intake_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Intake Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberLink"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/intakes/{intake_id}/students/{person_id}": {
+      "delete": {
+        "tags": [
+          "intakes"
+        ],
+        "summary": "Unlink Intake Student",
+        "operationId": "unlink_intake_student_api_intakes__intake_id__students__person_id__delete",
+        "parameters": [
+          {
+            "name": "intake_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Intake Id"
+            }
+          },
+          {
+            "name": "person_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Person Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/families/{family_id}/intakes": {
       "get": {
         "tags": [
@@ -8951,6 +9145,20 @@
         },
         "type": "object",
         "title": "MarkPaid"
+      },
+      "MemberLink": {
+        "properties": {
+          "person_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Person Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "person_id"
+        ],
+        "title": "MemberLink"
       },
       "NoteCreate": {
         "properties": {
