@@ -94,8 +94,6 @@ export function IntakeDiscoveryMockup() {
           health_impairment_notes: null,
           emotional_disturbance_notes: null,
           diagnosis_other: null,
-          needs_goals:
-            "Build organizational routines. Find a peer group where he can lead. Continue social-skills group.",
         }}
       />
       <StudentDiscoveryCard
@@ -124,8 +122,6 @@ export function IntakeDiscoveryMockup() {
           health_impairment_notes: null,
           emotional_disturbance_notes: null,
           diagnosis_other: null,
-          needs_goals:
-            "Wants more rigor. Strong reader; under-challenged in math. Looking for honors track.",
         }}
       />
 
@@ -260,23 +256,12 @@ interface DecisionMaker {
   id: string;
   name: string;
   relation: string;
-  role: string;
 }
 
 function DecisionMakersAccordion() {
   const [people, setPeople] = useState<DecisionMaker[]>([
-    {
-      id: "1",
-      name: "Kevin Ballard",
-      relation: "Dad",
-      role: "Primary placement decision",
-    },
-    {
-      id: "2",
-      name: "Lisa Ballard",
-      relation: "Mom",
-      role: "Co-decides on placement",
-    },
+    { id: "1", name: "Kevin Ballard", relation: "Dad" },
+    { id: "2", name: "Lisa Ballard", relation: "Mom" },
   ]);
   return (
     <Accordion variant="outlined" disableGutters defaultExpanded>
@@ -366,9 +351,6 @@ function DecisionMakerCard({
         <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
           {person.relation}
         </Typography>
-        <Typography variant="body2" sx={{ mt: 1 }}>
-          {person.role}
-        </Typography>
       </CardContent>
     </Card>
   );
@@ -393,7 +375,6 @@ interface StudentFlagState {
   health_impairment_notes: string | null;
   emotional_disturbance_notes: string | null;
   diagnosis_other: string | null;
-  needs_goals: string;
 }
 
 /** Static replica of the StudentDrawer/StudentEditor surface, wrapped
@@ -424,7 +405,7 @@ function StudentEditorAccordion({
         <Typography variant="overline" color="text.secondary">
           Edit student details
           <Box component="span" sx={{ ml: 1, color: "text.disabled", fontWeight: 400 }}>
-            (name, DOB, school, at-a-glance, needs &amp; goals)
+            (name, DOB, school, at-a-glance)
           </Box>
         </Typography>
       </AccordionSummary>
@@ -439,22 +420,6 @@ function StudentEditorAccordion({
             reach={reach}
           />
           <MockAtAGlance flags={flags} />
-          <Paper variant="outlined" sx={{ p: 2.5 }}>
-            <Typography
-              variant="overline"
-              color="text.secondary"
-              sx={{ display: "block", mb: 1.5 }}
-            >
-              Needs &amp; goals
-            </Typography>
-            <TextField
-              fullWidth
-              size="small"
-              multiline
-              minRows={4}
-              defaultValue={flags.needs_goals}
-            />
-          </Paper>
         </Stack>
       </AccordionDetails>
     </Accordion>
