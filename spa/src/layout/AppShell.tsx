@@ -30,14 +30,23 @@ import { signOut, useAuth } from "../auth";
 
 const DRAWER_WIDTH = 240;
 
-const NAV_ITEMS: ReadonlyArray<{ to: string; label: string; icon: JSX.Element }> = [
-  { to: "/", label: "Home", icon: <HomeIcon /> },
-  { to: "/families", label: "Families", icon: <GroupsIcon /> },
-  { to: "/intakes", label: "Intakes", icon: <DescriptionOutlinedIcon /> },
-  { to: "/engagements", label: "Engagements", icon: <AssignmentOutlinedIcon /> },
-  { to: "/contacts", label: "Contacts", icon: <ContactsIcon /> },
-  { to: "/catalog", label: "Catalog", icon: <AutoStoriesOutlinedIcon /> },
-  { to: "/admin", label: "Admin", icon: <AdminPanelSettingsIcon /> },
+type NavEntry =
+  | { kind: "item"; to: string; label: string; icon: JSX.Element }
+  | { kind: "separator" };
+
+const NAV_ITEMS: ReadonlyArray<NavEntry> = [
+  // Top: Home + the active work surfaces.
+  { kind: "item", to: "/", label: "Home", icon: <HomeIcon /> },
+  { kind: "item", to: "/intakes", label: "Intakes", icon: <DescriptionOutlinedIcon /> },
+  { kind: "item", to: "/engagements", label: "Engagements", icon: <AssignmentOutlinedIcon /> },
+  // Reference data — who and what we're working with.
+  { kind: "separator" },
+  { kind: "item", to: "/families", label: "Families", icon: <GroupsIcon /> },
+  { kind: "item", to: "/contacts", label: "Contacts", icon: <ContactsIcon /> },
+  { kind: "item", to: "/catalog", label: "Catalog", icon: <AutoStoriesOutlinedIcon /> },
+  // Practice configuration.
+  { kind: "separator" },
+  { kind: "item", to: "/admin", label: "Admin", icon: <AdminPanelSettingsIcon /> },
 ];
 
 export function AppShell() {
@@ -113,16 +122,24 @@ export function AppShell() {
         <Toolbar />
         <Box sx={{ overflow: "auto", px: 1.25, py: 1.5 }}>
           <List sx={{ display: "grid", gap: 0.25 }}>
-            {NAV_ITEMS.map((item) => {
+            {NAV_ITEMS.map((entry, idx) => {
+              if (entry.kind === "separator") {
+                return (
+                  <Divider
+                    key={`sep-${idx}`}
+                    sx={{ my: 0.75, mx: 1, borderColor: "divider" }}
+                  />
+                );
+              }
               const selected =
-                item.to === "/"
+                entry.to === "/"
                   ? pathname === "/"
-                  : pathname.startsWith(item.to);
+                  : pathname.startsWith(entry.to);
               return (
-                <ListItem key={item.to} disablePadding>
+                <ListItem key={entry.to} disablePadding>
                   <ListItemButton
                     component={Link}
-                    to={item.to}
+                    to={entry.to}
                     selected={selected}
                     sx={{
                       borderRadius: 1,
@@ -142,10 +159,10 @@ export function AppShell() {
                         color: selected ? "primary.dark" : "text.secondary",
                       }}
                     >
-                      {item.icon}
+                      {entry.icon}
                     </ListItemIcon>
                     <ListItemText
-                      primary={item.label}
+                      primary={entry.label}
                       primaryTypographyProps={{ fontSize: 14, fontWeight: selected ? 650 : 500 }}
                     />
                   </ListItemButton>
