@@ -18,7 +18,6 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  Divider,
   IconButton,
   Link as MuiLink,
   ListItemIcon,
@@ -836,6 +835,7 @@ function AddGuardianDialog({
       <DialogTitle>Add guardian</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 1 }}>
+          {!creating && (
           <Box>
             <Typography
               variant="body2"
@@ -939,10 +939,13 @@ function AddGuardianDialog({
               )}
             />
           </Box>
+          )}
 
           {creating && (
             <>
-              <Divider flexItem>or fill in a new guardian</Divider>
+              {/* Divider only makes sense as a separator when the
+                  search is still above; in create-only mode it's
+                  redundant. */}
               <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
                 <LabeledField label="First name">
                   <TextField
@@ -1343,6 +1346,7 @@ function AddStudentDialog({
       <DialogTitle>Add student</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 1 }}>
+          {!creating && (
           <Box>
             <Typography
               variant="body2"
@@ -1447,10 +1451,10 @@ function AddStudentDialog({
               )}
             />
           </Box>
+          )}
 
           {creating && (
             <>
-              <Divider flexItem>or fill in a new student</Divider>
               <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
                 <LabeledField label="First name" required>
                   <TextField
