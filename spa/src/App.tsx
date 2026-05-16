@@ -12,6 +12,7 @@ import { ContactsList } from "./pages/contacts/ContactsList";
 import { FamiliesList } from "./pages/families/FamiliesList";
 import { FamilyDetail } from "./pages/families/FamilyDetail";
 import { EngagementDetail } from "./pages/engagements/EngagementDetail";
+import { EngagementMockup } from "./pages/engagements/EngagementMockup";
 import { EngagementsList } from "./pages/engagements/EngagementsList";
 import { CatalogPage } from "./pages/catalog/CatalogPage";
 import { SchoolsList } from "./pages/schools/SchoolsList";
@@ -84,6 +85,7 @@ export function App() {
             <Route path="/students/:id" element={<StudentDetail />} />
             <Route path="/engagements" element={<EngagementsList />} />
             <Route path="/engagements/:id" element={<EngagementDetail />} />
+            <Route path="/mockup/engagement-detail" element={<EngagementMockup />} />
             <Route path="/intakes" element={<IntakesList />} />
             <Route path="/intakes/:id" element={<IntakeForm />} />
             <Route path="/contacts" element={<ContactsList />} />
