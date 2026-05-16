@@ -1,7 +1,6 @@
 import { useState } from "react";
 import {
   Alert,
-  Box,
   Button,
   Dialog,
   DialogActions,
@@ -11,29 +10,24 @@ import {
   Stack,
   TextField,
 } from "@mui/material";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 
 import { api } from "../../api/client";
-import type { components } from "../../api/schema";
 import { LabeledField } from "../../components/LabeledField";
 
-type PersonCreate = components["schemas"]["PersonCreate"];
-type Kind = PersonCreate["kind"];
-
-const KIND_OPTIONS: Array<{ value: Kind; label: string; hint?: string }> = [
-  { value: "other", label: "Other", hint: "Just an address-book entry, unaffiliated." },
-  { value: "guardian", label: "Guardian", hint: "Link to a family later from the family page." },
-  { value: "student", label: "Student", hint: "Link to a family later from the family page." },
-];
+interface SchoolOption {
+  id: string;
+  name: string;
+}
 
 /**
- * Minimal "new contact" form. Backed by POST /api/people, which creates
- * the people row and the kind-specific supporting row (student_details
- * for students). Mailing address is structured (street + city/state/zip);
- * the operator can fill in more from the contact drawer afterward.
+ * Add a school-affiliated contact (school worker). Picks a school
+ * from the catalog — the POST /api/contacts route auto-classifies as
+ * kind='school_worker' when school_id is present.
  *
- * school_worker isn't an option here — school_worker_details requires
- * a school_id, so those get created from the school flow instead.
+ * Guardians and students aren't created here — they get added from
+ * the family page. Platform users (consultants/admins) are managed
+ * under Admin → Users.
  */
 export function AddContactDialog({
   open,
@@ -46,20 +40,33 @@ export function AddContactDialog({
 }) {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
-  const [kind, setKind] = useState<Kind>("other");
+  const [schoolId, setSchoolId] = useState("");
+  const [role, setRole] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
 
+  const schools = useQuery<SchoolOption[], Error>({
+    queryKey: ["schools", "list", "add-contact"],
+    enabled: open,
+    queryFn: async () => {
+      const res = await fetch("/api/schools", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load schools.");
+      return (await res.json()) as SchoolOption[];
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
   const create = useMutation({
     mutationFn: async (): Promise<{ id: string }> => {
-      const { data, error: respError } = await api.POST("/api/people", {
+      const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
+      const { data, error: respError } = await api.POST("/api/contacts", {
         body: {
-          first_name: firstName.trim(),
-          last_name: lastName.trim(),
-          kind,
+          name: fullName,
+          school_id: schoolId || null,
+          role: role.trim() || null,
           email: email.trim() || null,
           phone: phone.trim() || null,
-        },
+        } as never,
       });
       if (respError || !data) {
         const msg =
@@ -79,7 +86,8 @@ export function AddContactDialog({
   const reset = () => {
     setFirstName("");
     setLastName("");
-    setKind("other");
+    setSchoolId("");
+    setRole("");
     setEmail("");
     setPhone("");
     create.reset();
@@ -91,8 +99,6 @@ export function AddContactDialog({
     onClose();
   };
 
-  // Mirror the backend pattern validation so the user catches the
-  // typo before submit.
   const emailTrimmed = email.trim();
   const emailLooksValid =
     !emailTrimmed || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrimmed);
@@ -100,9 +106,8 @@ export function AddContactDialog({
     create.isPending ||
     !firstName.trim() ||
     !lastName.trim() ||
+    !schoolId ||
     !emailLooksValid;
-
-  const kindHint = KIND_OPTIONS.find((o) => o.value === kind)?.hint;
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="xs" fullWidth>
@@ -136,19 +141,32 @@ export function AddContactDialog({
                 />
               </LabeledField>
             </Stack>
-            <LabeledField label="Kind" helperText={kindHint}>
+            <LabeledField label="School" required>
               <TextField
                 select
-                value={kind}
-                onChange={(e) => setKind(e.target.value as Kind)}
+                required
+                value={schoolId}
+                onChange={(e) => setSchoolId(e.target.value)}
                 fullWidth
+                disabled={schools.isPending}
+                helperText={
+                  schools.isPending ? "Loading schools…" : undefined
+                }
               >
-                {KIND_OPTIONS.map((o) => (
-                  <MenuItem key={o.value} value={o.value}>
-                    {o.label}
+                {(schools.data ?? []).map((s) => (
+                  <MenuItem key={s.id} value={s.id}>
+                    {s.name}
                   </MenuItem>
                 ))}
               </TextField>
+            </LabeledField>
+            <LabeledField label="Role">
+              <TextField
+                value={role}
+                onChange={(e) => setRole(e.target.value)}
+                fullWidth
+                placeholder="Counselor, learning specialist, principal, …"
+              />
             </LabeledField>
             <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
               <LabeledField label="Email">
@@ -169,21 +187,15 @@ export function AddContactDialog({
                 />
               </LabeledField>
             </Stack>
-            <Box>
-              <Stack spacing={0.5}>
-                <Box component="span" sx={{ fontSize: 12, color: "text.secondary" }}>
-                  Address, family link, and additional details can be filled in
-                  from the contact's drawer once they're created.
-                </Box>
-              </Stack>
-            </Box>
             {create.error && (
               <Alert severity="error">{create.error.message}</Alert>
             )}
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleClose} disabled={create.isPending}>Cancel</Button>
+          <Button onClick={handleClose} disabled={create.isPending}>
+            Cancel
+          </Button>
           <Button type="submit" variant="contained" disabled={submitDisabled}>
             {create.isPending ? "Saving…" : "Add"}
           </Button>
