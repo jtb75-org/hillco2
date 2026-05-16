@@ -15,7 +15,6 @@ import { EngagementDetail } from "./pages/engagements/EngagementDetail";
 import { EngagementsList } from "./pages/engagements/EngagementsList";
 import { CatalogPage } from "./pages/catalog/CatalogPage";
 import { SchoolsList } from "./pages/schools/SchoolsList";
-import { IntakeWizard } from "./pages/intake/IntakeWizard";
 import { IntakeForm } from "./pages/intake/IntakeForm";
 import { IntakesList } from "./pages/intake/IntakesList";
 import { StudentDetail } from "./pages/students/StudentDetail";
@@ -85,7 +84,6 @@ export function App() {
             <Route path="/students/:id" element={<StudentDetail />} />
             <Route path="/engagements" element={<EngagementsList />} />
             <Route path="/engagements/:id" element={<EngagementDetail />} />
-            <Route path="/intake" element={<IntakeWizard />} />
             <Route path="/intakes" element={<IntakesList />} />
             <Route path="/intakes/:id" element={<IntakeForm />} />
             <Route path="/contacts" element={<ContactsList />} />
