@@ -79,7 +79,8 @@ _CONTACT_KIND_FILTER = "p.kind IN ('school_worker'::person_kind, 'other'::person
 async def _contact_or_404(conn, contact_id: UUID):
     row = await conn.fetchrow(
         _LEGACY_SHAPE_SELECT
-        + f" WHERE p.id = $1 AND p.deleted_at IS NULL AND {_CONTACT_KIND_FILTER}",
+        + f" WHERE p.id = $1 AND p.deleted_at IS NULL AND {_CONTACT_KIND_FILTER}"
+        + " AND NOT EXISTS (SELECT 1 FROM auth_identities ai WHERE ai.person_id = p.id)",
         contact_id,
     )
     if not row:
@@ -128,7 +129,14 @@ async def list_contacts(
     _user=Depends(require_user),
     conn=Depends(get_conn),
 ):
-    clauses = ["p.deleted_at IS NULL", _CONTACT_KIND_FILTER]
+    # Exclude staff accounts (anyone with an auth_identities row).
+    # They're consultants/admins, not "contacts" — managing them
+    # belongs on the Admin → Users page, not here.
+    clauses = [
+        "p.deleted_at IS NULL",
+        _CONTACT_KIND_FILTER,
+        "NOT EXISTS (SELECT 1 FROM auth_identities ai WHERE ai.person_id = p.id)",
+    ]
     args: list = []
     q = q.strip()
     if q:
