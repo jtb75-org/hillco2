@@ -17,13 +17,13 @@ Backfill: any existing row with a non-empty `value` is treated as
 'received' (the row only existed because the consultant captured
 the artifact). Rows with NULL/empty value default to 'needed'.
 
-Revision ID: 0013_engagement_requirements_extend
+Revision ID: 0013_requirements_extend
 Revises: 0012_agreements_sent_at
 Create Date: 2026-05-17
 """
 from alembic import op
 
-revision: str = "0013_engagement_requirements_extend"
+revision: str = "0013_requirements_extend"
 down_revision = "0012_agreements_sent_at"
 branch_labels = None
 depends_on = None
