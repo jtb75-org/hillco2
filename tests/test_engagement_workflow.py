@@ -958,52 +958,174 @@ async def test_bulk_from_catalog_idempotent_on_engagement_id_service_item_id(
 # ---- Agreements + requirements ------------------------------------------
 
 
-@pending_backend
-async def test_agreement_create_starts_in_draft_no_sent_at():
+async def test_agreement_create_starts_in_draft_no_sent_at(
+    authed_client, db_pool, test_user
+):
     """Agreement creation starts draft with sent_at unset."""
-    pytest.skip("TODO: POST agreement and assert draft/null sent_at.")
+    engagement = await _make_engagement(db_pool, test_user["id"])
+
+    r = await authed_client.post(
+        f"/api/engagements/{engagement['id']}/agreements",
+        json={"type": "services_contract", "amount": "5000.00"},
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["status"] == "draft"
+    assert body["sent_at"] is None
 
 
-@pending_backend
-async def test_agreement_mark_sent_stamps_sent_at_status_stays_draft():
+async def test_agreement_mark_sent_stamps_sent_at_status_stays_draft(
+    authed_client, db_pool, test_user
+):
     """Mark-sent stamps sent_at without leaving draft status."""
-    pytest.skip("TODO: call mark-sent and assert sent_at plus draft status.")
+    engagement = await _make_engagement(db_pool, test_user["id"])
+    agreement_id = (
+        await authed_client.post(
+            f"/api/engagements/{engagement['id']}/agreements",
+            json={"type": "services_contract"},
+        )
+    ).json()["id"]
+
+    first = await authed_client.post(f"/api/agreements/{agreement_id}/mark-sent")
+    second = await authed_client.post(f"/api/agreements/{agreement_id}/mark-sent")
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200, second.text
+    assert first.json()["status"] == "draft"
+    assert first.json()["sent_at"] is not None
+    assert second.json()["sent_at"] == first.json()["sent_at"]
 
 
-@pending_backend
-async def test_agreement_upload_signed_attaches_document_flips_to_active():
+async def test_agreement_upload_signed_attaches_document_flips_to_active(
+    authed_client, db_pool, test_user, monkeypatch
+):
     """Upload-signed creates document link and activates the agreement."""
-    pytest.skip("TODO: multipart upload and assert document_id/signed_at/status.")
+    from app import s3  # noqa: PLC0415
+
+    uploaded = {}
+
+    def fake_put(key, fileobj, content_type=None):
+        uploaded["key"] = key
+        uploaded["content_type"] = content_type
+        uploaded["bytes"] = fileobj.read()
+        fileobj.seek(0)
+
+    monkeypatch.setattr(s3, "put", fake_put)
+    engagement = await _make_engagement(db_pool, test_user["id"])
+    agreement_id = (
+        await authed_client.post(
+            f"/api/engagements/{engagement['id']}/agreements",
+            json={"type": "services_contract"},
+        )
+    ).json()["id"]
+
+    r = await authed_client.post(
+        f"/api/agreements/{agreement_id}/upload-signed",
+        files={"file": ("signed.pdf", b"%PDF-1.4 signed", "application/pdf")},
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    agreement = body["agreement"]
+    document = body["document"]
+    assert agreement["status"] == "active"
+    assert agreement["document_id"] == document["id"]
+    assert agreement["signed_at"] is not None
+    assert document["owner_type"] == "agreement"
+    assert document["owner_id"] == agreement_id
+    assert uploaded["bytes"] == b"%PDF-1.4 signed"
 
 
-@pending_backend
-async def test_agreement_supersede_flips_to_superseded():
+async def test_agreement_supersede_flips_to_superseded(
+    authed_client, db_pool, test_user
+):
     """Superseding an agreement flips status to superseded."""
-    pytest.skip("TODO: exercise supersede path once route lands.")
+    engagement = await _make_engagement(db_pool, test_user["id"])
+    agreement_id = (
+        await authed_client.post(
+            f"/api/engagements/{engagement['id']}/agreements",
+            json={"type": "services_contract", "amount": "5000.00"},
+        )
+    ).json()["id"]
+
+    r = await authed_client.post(
+        f"/api/agreements/{agreement_id}/supersede",
+        json={"amount": "6500.00"},
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["supersedes_id"] == agreement_id
+    pred = await authed_client.get(f"/api/agreements/{agreement_id}")
+    assert pred.status_code == 200, pred.text
+    assert pred.json()["status"] == "superseded"
 
 
-@pending_backend
-async def test_requirement_patch_status_and_notes_round_trip():
+async def test_requirement_patch_status_and_notes_round_trip(
+    authed_client, db_pool, test_user
+):
     """Requirement PATCH persists status and notes."""
-    pytest.skip("TODO: patch requirement status/notes and refetch.")
+    engagement = await _make_engagement(db_pool, test_user["id"])
+    created = await authed_client.post(
+        f"/api/engagements/{engagement['id']}/requirements",
+        json={"kind": "records", "value": "IEP"},
+    )
+    assert created.status_code == 201, created.text
+
+    patched = await authed_client.patch(
+        f"/api/requirements/{created.json()['id']}",
+        json={"status": "requested", "notes": "Asked parent on May 16."},
+    )
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["status"] == "requested"
+    assert patched.json()["notes"] == "Asked parent on May 16."
+
+    listed = await authed_client.get(
+        f"/api/engagements/{engagement['id']}/requirements"
+    )
+    assert listed.status_code == 200, listed.text
+    row = next(r for r in listed.json() if r["id"] == created.json()["id"])
+    assert row["status"] == "requested"
+    assert row["notes"] == "Asked parent on May 16."
 
 
-@pending_backend
-async def test_requirement_status_check_constraint():
+async def test_requirement_status_check_constraint(authed_client, db_pool, test_user):
     """Invalid requirement status is rejected by the DB/API enum guard."""
-    pytest.skip("TODO: assert invalid status fails.")
+    engagement = await _make_engagement(db_pool, test_user["id"])
+    created = await authed_client.post(
+        f"/api/engagements/{engagement['id']}/requirements",
+        json={"kind": "records", "value": "Evaluation"},
+    )
+    assert created.status_code == 201, created.text
+
+    r = await authed_client.patch(
+        f"/api/requirements/{created.json()['id']}",
+        json={"status": "lost"},
+    )
+    assert r.status_code == 422
 
 
-@pending_backend
 async def test_requirements_backfill_value_present_sets_received():
     """Migration 0013 backfills value-bearing requirements as received."""
-    pytest.skip("TODO: assert migrated rows with value get status received.")
+    text = (
+        "alembic/versions/0013_engagement_requirements_extend.py"
+    )
+    from pathlib import Path  # noqa: PLC0415
+
+    migration = Path(text).read_text()
+    assert "SET status = 'received'" in migration
+    assert "WHERE value IS NOT NULL AND value <> ''" in migration
 
 
-@pending_backend
-async def test_agreements_sent_at_column_exists_and_nullable():
+async def test_agreements_sent_at_column_exists_and_nullable(db_pool):
     """Migration 0012 adds nullable agreements.sent_at."""
-    pytest.skip("TODO: introspect column or insert agreement without sent_at.")
+    async with db_pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT is_nullable, data_type
+            FROM information_schema.columns
+            WHERE table_name = 'agreements' AND column_name = 'sent_at'
+            """
+        )
+    assert row is not None
+    assert row["is_nullable"] == "YES"
+    assert row["data_type"] == "timestamp with time zone"
 
 
 # ---- Existing-behavior guards -------------------------------------------
