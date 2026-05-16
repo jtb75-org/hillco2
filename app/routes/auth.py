@@ -1,9 +1,14 @@
+import logging
+
+from authlib.integrations.base_client.errors import OAuthError
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse
 
 from ..auth import oauth
 from ..config import settings
 from ..db import request_conn
+
+log = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -21,7 +26,21 @@ async def auth_login(request: Request):
 
 @router.get("/auth/callback", name="auth_callback")
 async def auth_callback(request: Request):
-    token = await oauth.google.authorize_access_token(request)
+    try:
+        token = await oauth.google.authorize_access_token(request)
+    except OAuthError as exc:
+        # Typical cause: the authorization code was stale (callback URL
+        # reloaded, browser back/forward, or another tab consumed it
+        # first). Send the user back to /, where the SPA shows the
+        # Sign in button again, with a hint querystring instead of a
+        # 500.
+        log.warning("OAuth callback failed: %s", exc)
+        request.session.clear()
+        return RedirectResponse(
+            f"{POST_LOGIN_REDIRECT}?login_error=oauth_failed",
+            status_code=303,
+        )
+
     userinfo = token.get("userinfo")
     if not userinfo or not userinfo.get("email"):
         return RedirectResponse(f"{POST_LOGIN_REDIRECT}?login_error=no_userinfo", status_code=303)
