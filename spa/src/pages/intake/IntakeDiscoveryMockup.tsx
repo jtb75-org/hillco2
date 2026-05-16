@@ -436,6 +436,22 @@ function StudentEditorAccordion({
   );
 }
 
+// Ghost-input styling: looks like text at rest, hovers into an input,
+// fully outlined on focus. Applied to TextField, Select, and the
+// DatePicker's inner TextField alike. Keeps the meeting-time editing
+// fast while quieting the visual noise of always-on inputs.
+const ghostFieldSx = {
+  "& .MuiOutlinedInput-root": {
+    bgcolor: "transparent",
+    transition: "background-color 150ms, border-color 150ms",
+    "& fieldset": { borderColor: "transparent" },
+    "&:hover": { bgcolor: "action.hover" },
+    "&:hover fieldset": { borderColor: "divider" },
+    "&.Mui-focused": { bgcolor: "background.paper" },
+    "&.Mui-focused fieldset": { borderColor: "primary.main" },
+  },
+} as const;
+
 function MockHeaderStrip({
   firstName,
   lastName,
@@ -456,17 +472,69 @@ function MockHeaderStrip({
       <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
         <Box sx={{ flex: 1 }}>
           <LabeledField label="First name" required>
-            <TextField fullWidth size="small" defaultValue={firstName} />
+            <TextField
+              fullWidth
+              size="small"
+              defaultValue={firstName}
+              sx={ghostFieldSx}
+            />
           </LabeledField>
         </Box>
         <Box sx={{ flex: 1 }}>
           <LabeledField label="Last name" required>
-            <TextField fullWidth size="small" defaultValue={lastName} />
+            <TextField
+              fullWidth
+              size="small"
+              defaultValue={lastName}
+              sx={ghostFieldSx}
+            />
           </LabeledField>
         </Box>
         <Box sx={{ width: { xs: "100%", sm: 140 } }}>
           <LabeledField label="Grade">
-            <TextField fullWidth size="small" defaultValue={grade} />
+            <TextField
+              fullWidth
+              size="small"
+              defaultValue={grade}
+              sx={ghostFieldSx}
+            />
+          </LabeledField>
+        </Box>
+      </Stack>
+      <Stack
+        direction={{ xs: "column", sm: "row" }}
+        spacing={2}
+        sx={{ mt: 2 }}
+      >
+        <Box sx={{ flex: 1 }}>
+          <LabeledField label="DOB">
+            <DatePicker
+              value={dayjs(dobLabel)}
+              onChange={() => undefined}
+              slotProps={{
+                textField: {
+                  size: "small",
+                  fullWidth: true,
+                  sx: ghostFieldSx,
+                },
+              }}
+            />
+          </LabeledField>
+        </Box>
+        <Box sx={{ flex: 2 }}>
+          <LabeledField label="School">
+            <Select
+              size="small"
+              fullWidth
+              defaultValue={schoolLabel}
+              sx={ghostFieldSx}
+            >
+              <MenuItem value={schoolLabel}>{schoolLabel}</MenuItem>
+              <MenuItem value="Clayton Middle">Clayton Middle</MenuItem>
+              <MenuItem value="Crossroads High">Crossroads High</MenuItem>
+              <MenuItem value="Maplewood Academy">Maplewood Academy</MenuItem>
+              <MenuItem value="Other / not in list">Other / not in list</MenuItem>
+            </Select>
           </LabeledField>
         </Box>
       </Stack>
@@ -474,27 +542,21 @@ function MockHeaderStrip({
         sx={{
           mt: 2,
           display: "grid",
-          gridTemplateColumns: "auto 1fr auto 1fr",
+          gridTemplateColumns: "auto 1fr",
           columnGap: 2,
           rowGap: 1,
         }}
       >
-        <SmallLabel>DOB</SmallLabel>
-        <SmallValue>{dobLabel}</SmallValue>
-        <SmallLabel>School</SmallLabel>
-        <SmallValue>{schoolLabel}</SmallValue>
         <SmallLabel>Reach</SmallLabel>
-        <Box sx={{ gridColumn: "2 / 5" }}>
-          <Stack direction="row" spacing={2} flexWrap="wrap" alignItems="baseline">
-            <Typography variant="body2">{reach.name}</Typography>
-            <Typography variant="body2" color="text.secondary">
-              {reach.email}
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              {reach.phone}
-            </Typography>
-          </Stack>
-        </Box>
+        <Stack direction="row" spacing={2} flexWrap="wrap" alignItems="baseline">
+          <Typography variant="body2">{reach.name}</Typography>
+          <Typography variant="body2" color="text.secondary">
+            {reach.email}
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            {reach.phone}
+          </Typography>
+        </Stack>
       </Box>
     </Paper>
   );
@@ -846,10 +908,6 @@ function SmallLabel({ children }: { children: React.ReactNode }) {
       {children}
     </Typography>
   );
-}
-
-function SmallValue({ children }: { children: React.ReactNode }) {
-  return <Typography variant="body2">{children}</Typography>;
 }
 
 function StudentDiscoveryCard({
