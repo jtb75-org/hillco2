@@ -5,8 +5,6 @@ from uuid import uuid4
 import asyncpg
 import pytest
 
-from tests.test_engagement_spine import family_with_two_students  # noqa: F401
-
 pending_backend = pytest.mark.skip(
     reason="Engagement workflow backend slice has not landed yet."
 )
@@ -60,6 +58,43 @@ async def _make_engagement(db_pool, user_id, engagement_type="assessment"):
     }
 
 
+async def _make_family_with_two_students(db_pool):
+    async with db_pool.acquire() as conn:
+        family_id = await conn.fetchval(
+            "INSERT INTO families (household_name) VALUES ($1) RETURNING id",
+            f"Workflow family {uuid4()}",
+        )
+        s_a = await conn.fetchval(
+            """
+            INSERT INTO people (kind, first_name, last_name)
+            VALUES ('student', 'Workflow', 'A')
+            RETURNING id
+            """
+        )
+        s_b = await conn.fetchval(
+            """
+            INSERT INTO people (kind, first_name, last_name)
+            VALUES ('student', 'Workflow', 'B')
+            RETURNING id
+            """
+        )
+        await conn.execute(
+            """
+            INSERT INTO family_students (family_id, person_id)
+            VALUES ($1, $2), ($1, $3)
+            """,
+            family_id,
+            s_a,
+            s_b,
+        )
+        await conn.execute(
+            "INSERT INTO student_details (person_id) VALUES ($1), ($2)",
+            s_a,
+            s_b,
+        )
+    return {"family_id": family_id, "students": [s_a, s_b]}
+
+
 async def _create_task(authed_client, engagement_id, **overrides):
     payload = {
         "title": f"Workflow task {uuid4()}",
@@ -99,6 +134,108 @@ async def _insert_school(db_pool, *, name=None):
             "INSERT INTO schools (name) VALUES ($1) RETURNING id",
             name or f"Workflow school {uuid4()}",
         )
+
+
+async def _create_intake(authed_client, family_id, students=()):
+    r = await authed_client.post("/api/intakes", json={"family_id": str(family_id)})
+    assert r.status_code == 201, r.text
+    intake = r.json()
+    for student_id in students:
+        link = await authed_client.post(
+            f"/api/intakes/{intake['id']}/students",
+            json={"person_id": str(student_id)},
+        )
+        assert link.status_code == 201, link.text
+    return intake
+
+
+async def _prepare_converting_intake(
+    authed_client,
+    family,
+    *,
+    candidates=1,
+    engagement_type="assessment",
+):
+    intake = await _create_intake(
+        authed_client,
+        family["family_id"],
+        family["students"],
+    )
+    outcome = await authed_client.patch(
+        f"/api/intakes/{intake['id']}",
+        json={"outcome": "converting"},
+    )
+    assert outcome.status_code == 200, outcome.text
+    for student_id in family["students"][:candidates]:
+        patch = await authed_client.patch(
+            f"/api/intakes/{intake['id']}/students/{student_id}",
+            json={
+                "candidate": True,
+                "recommended_engagement_type": engagement_type,
+            },
+        )
+        assert patch.status_code == 200, patch.text
+    return intake
+
+
+async def _insert_catalog_item(
+    db_pool,
+    *,
+    engagement_type="assessment",
+    activity_kind="task",
+    title=None,
+):
+    async with db_pool.acquire() as conn:
+        phase_id = await conn.fetchval(
+            """
+            SELECT id
+            FROM catalog_phases
+            WHERE deleted_at IS NULL
+            ORDER BY sort_order
+            LIMIT 1
+            """
+        )
+        item_id = await conn.fetchval(
+            """
+            INSERT INTO service_items (
+              phase_id, title, sort_order, default_activity_kind
+            ) VALUES ($1, $2, 9999, $3::activity_kind)
+            RETURNING id
+            """,
+            phase_id,
+            title or f"Workflow catalog item {uuid4()}",
+            activity_kind,
+        )
+        engagement_type_id = await conn.fetchval(
+            "SELECT id FROM engagement_types WHERE code = $1",
+            engagement_type,
+        )
+        await conn.execute(
+            """
+            INSERT INTO service_item_engagement_types (
+              service_item_id, engagement_type_id
+            ) VALUES ($1, $2)
+            """,
+            item_id,
+            engagement_type_id,
+        )
+    return item_id
+
+
+async def _delete_catalog_item(db_pool, item_id):
+    async with db_pool.acquire() as conn:
+        await conn.execute(
+            "DELETE FROM engagement_tasks WHERE service_item_id = $1",
+            item_id,
+        )
+        await conn.execute(
+            """
+            DELETE FROM service_item_engagement_types
+            WHERE service_item_id = $1
+            """,
+            item_id,
+        )
+        await conn.execute("DELETE FROM service_items WHERE id = $1", item_id)
 
 
 # ---- Activity kind + structured content ---------------------------------
@@ -393,39 +530,12 @@ async def test_catalog_default_activity_kind_inherited_on_seed(
 ):
     """Catalog seeding copies service_items.default_activity_kind to tasks."""
     engagement = await _make_engagement(db_pool, test_user["id"], "full_placement")
-    item_id = None
-    async with db_pool.acquire() as conn:
-        phase_id = await conn.fetchval(
-            """
-            SELECT id
-            FROM catalog_phases
-            WHERE deleted_at IS NULL
-            ORDER BY sort_order
-            LIMIT 1
-            """
-        )
-        item_id = await conn.fetchval(
-            """
-            INSERT INTO service_items (
-              phase_id, title, sort_order, default_activity_kind
-            ) VALUES ($1, $2, 9999, 'feedback_meeting')
-            RETURNING id
-            """,
-            phase_id,
-            f"Workflow feedback meeting {uuid4()}",
-        )
-        engagement_type_id = await conn.fetchval(
-            "SELECT id FROM engagement_types WHERE code = 'full_placement'"
-        )
-        await conn.execute(
-            """
-            INSERT INTO service_item_engagement_types (
-              service_item_id, engagement_type_id
-            ) VALUES ($1, $2)
-            """,
-            item_id,
-            engagement_type_id,
-        )
+    item_id = await _insert_catalog_item(
+        db_pool,
+        engagement_type="full_placement",
+        activity_kind="feedback_meeting",
+        title=f"Workflow feedback meeting {uuid4()}",
+    )
 
     try:
         r = await authed_client.post(
@@ -440,20 +550,7 @@ async def test_catalog_default_activity_kind_inherited_on_seed(
         task = next(row for row in listed.json() if row["id"] == task_id)
         assert task["activity_kind"] == "feedback_meeting"
     finally:
-        if item_id is not None:
-            async with db_pool.acquire() as conn:
-                await conn.execute(
-                    "DELETE FROM engagement_tasks WHERE service_item_id = $1",
-                    item_id,
-                )
-                await conn.execute(
-                    """
-                    DELETE FROM service_item_engagement_types
-                    WHERE service_item_id = $1
-                    """,
-                    item_id,
-                )
-                await conn.execute("DELETE FROM service_items WHERE id = $1", item_id)
+        await _delete_catalog_item(db_pool, item_id)
 
 
 # ---- Visit/recommendation links -----------------------------------------
@@ -679,34 +776,183 @@ async def test_cross_engagement_task_link_rejected_by_api(
 # ---- Convert auto-seed ---------------------------------------------------
 
 
-@pending_backend
-async def test_convert_seeds_engagement_tasks_for_applicable_catalog_items():
+async def test_convert_seeds_engagement_tasks_for_applicable_catalog_items(
+    authed_client, db_pool
+):
     """Intake conversion seeds tasks for matching service catalog items."""
-    pytest.skip("TODO: convert intake and assert catalog tasks created.")
+    family = await _make_family_with_two_students(db_pool)
+    intake = await _prepare_converting_intake(authed_client, family)
+
+    r = await authed_client.post(f"/api/intakes/{intake['id']}/convert")
+    assert r.status_code == 200, r.text
+    engagement_id = r.json()["engagement_ids"][0]
+
+    async with db_pool.acquire() as conn:
+        expected = await conn.fetchval(
+            """
+            SELECT COUNT(*)
+            FROM service_items si
+            JOIN service_item_engagement_types siet ON siet.service_item_id = si.id
+            JOIN engagement_types et ON et.id = siet.engagement_type_id
+            JOIN catalog_phases cp ON cp.id = si.phase_id
+            WHERE si.deleted_at IS NULL
+              AND cp.deleted_at IS NULL
+              AND et.deleted_at IS NULL
+              AND et.code = 'assessment'
+            """
+        )
+        tasks = await conn.fetch(
+            """
+            SELECT service_item_id, title
+            FROM engagement_tasks
+            WHERE engagement_id = $1 AND service_item_id IS NOT NULL
+            ORDER BY sort_order, title
+            """,
+            engagement_id,
+        )
+    assert len(tasks) == expected
+    assert all(row["service_item_id"] for row in tasks)
 
 
-@pending_backend
-async def test_convert_seeded_tasks_inherit_default_activity_kind():
+async def test_convert_seeded_tasks_inherit_default_activity_kind(
+    authed_client, db_pool
+):
     """Tasks seeded during conversion inherit default_activity_kind."""
-    pytest.skip("TODO: assert converted task activity_kind matches service item.")
+    item_id = await _insert_catalog_item(
+        db_pool,
+        engagement_type="assessment",
+        activity_kind="feedback_meeting",
+        title=f"Workflow convert feedback {uuid4()}",
+    )
+    try:
+        intake = await _prepare_converting_intake(
+            authed_client,
+            await _make_family_with_two_students(db_pool),
+        )
+        r = await authed_client.post(f"/api/intakes/{intake['id']}/convert")
+        assert r.status_code == 200, r.text
+        engagement_id = r.json()["engagement_ids"][0]
+
+        async with db_pool.acquire() as conn:
+            kind = await conn.fetchval(
+                """
+                SELECT activity_kind::text
+                FROM engagement_tasks
+                WHERE engagement_id = $1 AND service_item_id = $2
+                """,
+                engagement_id,
+                item_id,
+            )
+        assert kind == "feedback_meeting"
+    finally:
+        await _delete_catalog_item(db_pool, item_id)
 
 
-@pending_backend
-async def test_convert_idempotent_via_converted_at():
+async def test_convert_idempotent_via_converted_at(
+    authed_client, db_pool
+):
     """Repeated intake conversion is guarded by converted_at."""
-    pytest.skip("TODO: call convert twice and assert no duplicate engagement/tasks.")
+    family = await _make_family_with_two_students(db_pool)
+    intake = await _prepare_converting_intake(authed_client, family)
+    first = await authed_client.post(f"/api/intakes/{intake['id']}/convert")
+    second = await authed_client.post(f"/api/intakes/{intake['id']}/convert")
+
+    assert first.status_code == 200, first.text
+    assert second.status_code == 409
+    engagement_id = first.json()["engagement_ids"][0]
+    async with db_pool.acquire() as conn:
+        engagement_count = await conn.fetchval(
+            """
+            SELECT COUNT(*)
+            FROM engagements
+            WHERE intake_id = $1 AND deleted_at IS NULL
+            """,
+            intake["id"],
+        )
+        task_pairs = await conn.fetchval(
+            """
+            SELECT COUNT(DISTINCT service_item_id)
+            FROM engagement_tasks
+            WHERE engagement_id = $1 AND service_item_id IS NOT NULL
+            """,
+            engagement_id,
+        )
+        task_count = await conn.fetchval(
+            """
+            SELECT COUNT(*)
+            FROM engagement_tasks
+            WHERE engagement_id = $1 AND service_item_id IS NOT NULL
+            """,
+            engagement_id,
+        )
+    assert engagement_count == 1
+    assert task_count == task_pairs
 
 
-@pending_backend
-async def test_manual_bulk_from_catalog_still_works_after_convert():
+async def test_manual_bulk_from_catalog_still_works_after_convert(
+    authed_client, db_pool
+):
     """Manual bulk-from-catalog remains usable after convert auto-seeding."""
-    pytest.skip("TODO: convert, then bulk seed another catalog item.")
+    family = await _make_family_with_two_students(db_pool)
+    intake = await _prepare_converting_intake(authed_client, family)
+    converted = await authed_client.post(f"/api/intakes/{intake['id']}/convert")
+    assert converted.status_code == 200, converted.text
+    engagement_id = converted.json()["engagement_ids"][0]
+
+    item_id = await _insert_catalog_item(
+        db_pool,
+        engagement_type="assessment",
+        title=f"Workflow post-convert catalog {uuid4()}",
+    )
+    try:
+        r = await authed_client.post(
+            f"/api/engagements/{engagement_id}/tasks/bulk-from-catalog",
+            json={"service_item_ids": [str(item_id)]},
+        )
+        assert r.status_code == 201, r.text
+        assert r.json()["created"] == 1
+        assert r.json()["task_ids"]
+    finally:
+        await _delete_catalog_item(db_pool, item_id)
 
 
-@pending_backend
-async def test_bulk_from_catalog_idempotent_on_engagement_id_service_item_id():
+async def test_bulk_from_catalog_idempotent_on_engagement_id_service_item_id(
+    authed_client, db_pool, test_user
+):
     """Bulk catalog seeding is idempotent on engagement_id plus service_item_id."""
-    pytest.skip("TODO: call bulk endpoint twice and assert one task per item.")
+    engagement = await _make_engagement(db_pool, test_user["id"], "assessment")
+    item_id = await _insert_catalog_item(
+        db_pool,
+        engagement_type="assessment",
+        title=f"Workflow idempotent catalog {uuid4()}",
+    )
+    try:
+        first = await authed_client.post(
+            f"/api/engagements/{engagement['id']}/tasks/bulk-from-catalog",
+            json={"service_item_ids": [str(item_id)]},
+        )
+        second = await authed_client.post(
+            f"/api/engagements/{engagement['id']}/tasks/bulk-from-catalog",
+            json={"service_item_ids": [str(item_id)]},
+        )
+        assert first.status_code == 201, first.text
+        assert second.status_code == 201, second.text
+        assert first.json()["created"] == 1
+        assert second.json()["created"] == 0
+
+        async with db_pool.acquire() as conn:
+            count = await conn.fetchval(
+                """
+                SELECT COUNT(*)
+                FROM engagement_tasks
+                WHERE engagement_id = $1 AND service_item_id = $2
+                """,
+                engagement["id"],
+                item_id,
+            )
+        assert count == 1
+    finally:
+        await _delete_catalog_item(db_pool, item_id)
 
 
 # ---- Agreements + requirements ------------------------------------------
