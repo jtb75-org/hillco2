@@ -4,11 +4,13 @@ import {
   AccordionDetails,
   AccordionSummary,
   Alert,
+  Autocomplete,
   Box,
   Button,
   Card,
   CardContent,
   Chip,
+  createFilterOptions,
   Dialog,
   DialogActions,
   DialogContent,
@@ -17,7 +19,6 @@ import {
   FormControlLabel,
   Grid,
   IconButton,
-  MenuItem,
   Stack,
   Switch,
   TextField,
@@ -359,6 +360,17 @@ function DecisionMakerCard({
   );
 }
 
+type DMEntry =
+  | { kind: "guardian"; guardian: IntakeGuardian; alreadyUsed: boolean }
+  | { kind: "add"; label: string };
+
+const filterDMEntries = createFilterOptions<DMEntry>({
+  stringify: (entry) =>
+    entry.kind === "add"
+      ? entry.label
+      : [entry.guardian.name, entry.guardian.email ?? ""].join(" "),
+});
+
 function AddDecisionMakerDialog({
   open,
   familyId,
@@ -375,32 +387,39 @@ function AddDecisionMakerDialog({
   onSubmit: (dm: DecisionMaker) => void;
 }) {
   const qc = useQueryClient();
-  const [pickerValue, setPickerValue] = useState<string>(""); // "" = create new, otherwise guardian.id
+  const [search, setSearch] = useState("");
+  const [picked, setPicked] = useState<IntakeGuardian | null>(null);
+  const [creating, setCreating] = useState(false);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
-  const [relation, setRelation] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [relation, setRelation] = useState("");
 
-  // Hide guardians who are already represented as decision-makers via
-  // person_id — keeps the list from getting weird.
+  // Mark already-used family guardians so the search shows them
+  // (so the user doesn't think the typeahead is broken) but disables
+  // the option.
   const usedIds = new Set(
     existing.map((d) => d.person_id).filter((x): x is string => !!x),
   );
-  const availableGuardians = guardians.filter((g) => !usedIds.has(g.id));
+  const baseOptions: DMEntry[] = guardians.map((g) => ({
+    kind: "guardian",
+    guardian: g,
+    alreadyUsed: usedIds.has(g.id),
+  }));
 
   const reset = () => {
-    setPickerValue("");
+    setSearch("");
+    setPicked(null);
+    setCreating(false);
     setFirstName("");
     setLastName("");
-    setRelation("");
     setEmail("");
     setPhone("");
+    setRelation("");
     createGuardian.reset();
   };
 
-  // Create a real family guardian when the user fills in the form.
-  // Linking an existing guardian doesn't hit this — just emits the DM.
   const createGuardian = useMutation({
     mutationFn: async () => {
       const rel = relation.toLowerCase();
@@ -415,7 +434,7 @@ function AddDecisionMakerDialog({
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          first_name: firstName.trim(),
+          first_name: firstName.trim() || null,
           last_name: lastName.trim() || null,
           email: email.trim() || null,
           phone: phone.trim() || null,
@@ -431,10 +450,6 @@ function AddDecisionMakerDialog({
       return (await res.json()) as { id: string };
     },
     onSuccess: (created) => {
-      // Bubble the linked decision-maker up. The parent PATCHes the
-      // intake's decision_makers array. We also invalidate families
-      // + contacts so the new guardian appears on those pages
-      // immediately.
       onSubmit({
         person_id: created.id,
         name: `${firstName.trim()} ${lastName.trim()}`.trim(),
@@ -446,83 +461,171 @@ function AddDecisionMakerDialog({
     },
   });
 
+  const startCreating = (label: string) => {
+    const trimmed = label.trim();
+    if (trimmed) {
+      const [first, ...rest] = trimmed.split(/\s+/);
+      setFirstName(first ?? "");
+      setLastName(rest.join(" "));
+    }
+    setPicked(null);
+    setCreating(true);
+  };
+
+  const linkExisting = (g: IntakeGuardian) => {
+    onSubmit({
+      person_id: g.id,
+      name: g.name,
+      relation: relation.trim() || g.role || "",
+    });
+    reset();
+  };
+
   const handleSubmit = () => {
-    if (pickerValue) {
-      // Link an existing guardian — no API call, no contact creation.
-      const g = guardians.find((x) => x.id === pickerValue);
-      if (!g) return;
-      onSubmit({
-        person_id: g.id,
-        name: g.name,
-        relation: relation || g.role || "",
-      });
-      reset();
-    } else {
-      if (!firstName.trim()) return;
+    if (picked) linkExisting(picked);
+    else if (creating) {
+      if (!firstName.trim() && !lastName.trim()) return;
       createGuardian.mutate();
     }
   };
 
-  const submitDisabled =
-    createGuardian.isPending ||
-    (!pickerValue && !firstName.trim());
+  const pending = createGuardian.isPending;
+  const canSubmit =
+    !pending &&
+    (picked
+      ? true
+      : creating && (firstName.trim() !== "" || lastName.trim() !== ""));
 
   return (
     <Dialog
       open={open}
       onClose={() => {
-        if (createGuardian.isPending) return;
+        if (pending) return;
         onClose();
         reset();
       }}
-      maxWidth="xs"
+      maxWidth="sm"
       fullWidth
     >
       <DialogTitle>Add decision-maker</DialogTitle>
       <DialogContent>
-        <Stack spacing={2} sx={{ pt: 0.5 }}>
-          <Typography variant="caption" color="text.secondary">
-            New decision-makers are added as family guardians so they show
-            up on the family page + in Contacts. Pick an existing guardian
-            to link instead of creating a new one.
-          </Typography>
-          {availableGuardians.length > 0 && (
-            <LabeledField label="From this family's guardians">
-              <TextField
-                select
-                size="small"
-                fullWidth
-                value={pickerValue}
-                onChange={(e) => {
-                  setPickerValue(e.target.value);
-                  if (e.target.value) {
-                    setFirstName("");
-                    setLastName("");
-                    setEmail("");
-                    setPhone("");
-                  }
-                }}
-                SelectProps={{ displayEmpty: true }}
+        <Stack spacing={2} sx={{ mt: 1 }}>
+          {!creating && (
+            <Box>
+              <Typography
+                variant="body2"
+                sx={{ mb: 0.5, color: "text.secondary", fontWeight: 500 }}
               >
-                <MenuItem value="">
-                  <em>— Create new below —</em>
-                </MenuItem>
-                {availableGuardians.map((g) => (
-                  <MenuItem key={g.id} value={g.id}>
-                    {g.name}
-                  </MenuItem>
-                ))}
-              </TextField>
-            </LabeledField>
+                Search existing guardians
+              </Typography>
+              <Autocomplete<DMEntry, false, false, false>
+                size="small"
+                options={baseOptions}
+                value={
+                  picked
+                    ? { kind: "guardian", guardian: picked, alreadyUsed: false }
+                    : null
+                }
+                inputValue={search}
+                onInputChange={(_e, v, reason) => {
+                  if (reason !== "reset") setSearch(v);
+                }}
+                onChange={(_e, entry) => {
+                  if (!entry) {
+                    setPicked(null);
+                    return;
+                  }
+                  if (entry.kind === "guardian") {
+                    setPicked(entry.guardian);
+                    setCreating(false);
+                    setSearch(entry.guardian.name);
+                    return;
+                  }
+                  startCreating(entry.label);
+                }}
+                getOptionLabel={(entry) =>
+                  entry.kind === "guardian" ? entry.guardian.name : entry.label
+                }
+                getOptionDisabled={(entry) =>
+                  entry.kind === "guardian" && entry.alreadyUsed
+                }
+                isOptionEqualToValue={(a, b) =>
+                  a.kind === "guardian" &&
+                  b.kind === "guardian" &&
+                  a.guardian.id === b.guardian.id
+                }
+                filterOptions={(opts, state) => {
+                  const filtered = filterDMEntries(opts, state);
+                  // Always offer "+ Add new" at the bottom — without
+                  // it the dialog is dead-end whenever the family
+                  // roster is empty.
+                  filtered.push({ kind: "add", label: state.inputValue.trim() });
+                  return filtered;
+                }}
+                renderOption={(props, entry) => {
+                  if (entry.kind === "add") {
+                    return (
+                      <li {...props} key="__add__">
+                        <Typography variant="body2" color="primary">
+                          {entry.label
+                            ? `+ Add "${entry.label}" as a new guardian`
+                            : "+ Add a new guardian"}
+                        </Typography>
+                      </li>
+                    );
+                  }
+                  const g = entry.guardian;
+                  return (
+                    <li {...props} key={g.id}>
+                      <Stack spacing={0.25} sx={{ py: 0.25, width: "100%" }}>
+                        <Stack
+                          direction="row"
+                          alignItems="center"
+                          spacing={1}
+                          sx={{ width: "100%" }}
+                        >
+                          <Box component="span" sx={{ fontWeight: 500, flex: 1 }}>
+                            {g.name}
+                          </Box>
+                          {entry.alreadyUsed && (
+                            <Chip
+                              size="small"
+                              label="already used"
+                              variant="outlined"
+                              sx={{ height: 20 }}
+                            />
+                          )}
+                        </Stack>
+                        <Box
+                          component="span"
+                          sx={{ color: "text.secondary", fontSize: 12 }}
+                        >
+                          {g.email && <span>{g.email}</span>}
+                          {g.email && g.phone && <span> · </span>}
+                          {g.phone && <span>{g.phone}</span>}
+                        </Box>
+                      </Stack>
+                    </li>
+                  );
+                }}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    autoFocus
+                    placeholder="Name or email"
+                  />
+                )}
+              />
+            </Box>
           )}
-          {!pickerValue && (
+
+          {creating && (
             <>
               <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-                <LabeledField label="First name" required>
+                <LabeledField label="First name">
                   <TextField
                     size="small"
                     fullWidth
-                    autoFocus
                     value={firstName}
                     onChange={(e) => setFirstName(e.target.value)}
                   />
@@ -557,15 +660,27 @@ function AddDecisionMakerDialog({
               </Stack>
             </>
           )}
-          <LabeledField label="Relation">
-            <TextField
-              size="small"
-              fullWidth
-              placeholder="Mom / Dad / Grandparent / etc."
-              value={relation}
-              onChange={(e) => setRelation(e.target.value)}
-            />
-          </LabeledField>
+
+          {(picked || creating) && (
+            <LabeledField label="Relation">
+              <TextField
+                size="small"
+                fullWidth
+                placeholder="Mom / Dad / Grandparent / etc."
+                value={relation}
+                onChange={(e) => setRelation(e.target.value)}
+              />
+            </LabeledField>
+          )}
+
+          {picked && (
+            <Typography variant="caption" color="text.secondary">
+              Linking <strong>{picked.name}</strong> as a decision-maker.
+              They already exist on the family — this just adds them to
+              the meeting's decision-maker list.
+            </Typography>
+          )}
+
           {createGuardian.error && (
             <Alert severity="error">{createGuardian.error.message}</Alert>
           )}
@@ -574,20 +689,16 @@ function AddDecisionMakerDialog({
       <DialogActions>
         <Button
           onClick={() => {
-            if (createGuardian.isPending) return;
+            if (pending) return;
             onClose();
             reset();
           }}
-          disabled={createGuardian.isPending}
+          disabled={pending}
         >
           Cancel
         </Button>
-        <Button
-          variant="contained"
-          onClick={handleSubmit}
-          disabled={submitDisabled}
-        >
-          {createGuardian.isPending ? "Adding…" : "Add"}
+        <Button variant="contained" disabled={!canSubmit} onClick={handleSubmit}>
+          {pending ? "Adding…" : "Add"}
         </Button>
       </DialogActions>
     </Dialog>
