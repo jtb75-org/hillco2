@@ -173,7 +173,12 @@ async def list_people(
     SPA's table virtualization-or-pagination question we don't need
     to answer yet."""
     args: list = []
-    where = ["p.deleted_at IS NULL"]
+    where = [
+        "p.deleted_at IS NULL",
+        # Exclude platform users — they're managed under Admin → Users.
+        # The /api/people list is the address-book surface.
+        "NOT EXISTS (SELECT 1 FROM auth_identities ai WHERE ai.person_id = p.id)",
+    ]
     if kind is not None:
         args.append(kind)
         where.append(f"p.kind = ${len(args)}::person_kind")
