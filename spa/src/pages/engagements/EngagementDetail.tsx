@@ -37,6 +37,7 @@ import { useSnackbar } from "../../components/Snackbar";
 import { StatusChip } from "../../components/StatusChip";
 import { useEngagementTypes } from "../../hooks/useEngagementTypes";
 import { IntakeContextCard, type IntakeSnapshot } from "./IntakeContextCard";
+import { RequirementsCard } from "./RequirementsCard";
 
 // /api/engagements/{id} returns a plain dict (no OpenAPI response_model).
 // Hand-typed here for the bits we render.
@@ -222,6 +223,8 @@ export function EngagementDetail() {
       <HeaderStrip engagement={engagement.data} />
 
       <IntakeContextCard snapshot={engagement.data.intake_snapshot} />
+
+      <RequirementsCard engagementId={id!} />
 
       <PhaseStepper
         catalogPhases={catalog.data ?? []}
