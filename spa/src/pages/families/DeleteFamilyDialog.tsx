@@ -100,9 +100,12 @@ export function DeleteFamilyDialog({
     onSuccess: onDeleted,
   });
 
-  const engagementsBlock =
-    (impact.data?.active_engagement_count ?? 0) +
-    (impact.data?.deleted_engagement_count ?? 0);
+  const activeEng = impact.data?.active_engagement_count ?? 0;
+  const archivedEng = impact.data?.deleted_engagement_count ?? 0;
+  // Only active engagements block. Archived ones get swept inside
+  // the family hard-delete transaction (their CASCADE dependents go
+  // with them); we just inform the operator so it's not a surprise.
+  const blocked = activeEng > 0;
 
   return (
     <Dialog open={open} onClose={() => !del.isPending && onClose()} maxWidth="sm" fullWidth>
@@ -125,13 +128,16 @@ export function DeleteFamilyDialog({
               standalone people.
             </Typography>
 
-            {engagementsBlock > 0 && (
+            {blocked && (
               <Alert severity="warning">
-                {impact.data.active_engagement_count} active and{" "}
-                {impact.data.deleted_engagement_count} archived
-                engagement(s) reference this family. Delete is blocked
-                until those are handled — Archive the family or detach
-                the engagements first.
+                {activeEng} active engagement(s) still reference this
+                family. Close or remove them before hard-deleting.
+              </Alert>
+            )}
+            {!blocked && archivedEng > 0 && (
+              <Alert severity="info">
+                {archivedEng} archived engagement(s) on this family will
+                be cleaned up alongside the delete.
               </Alert>
             )}
 
@@ -208,9 +214,7 @@ export function DeleteFamilyDialog({
         <Button
           color="error"
           variant="contained"
-          disabled={
-            del.isPending || impact.isPending || engagementsBlock > 0
-          }
+          disabled={del.isPending || impact.isPending || blocked}
           onClick={() => del.mutate()}
         >
           {del.isPending ? "Deleting…" : "Delete family"}

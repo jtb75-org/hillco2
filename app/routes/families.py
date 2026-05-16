@@ -517,9 +517,11 @@ async def get_family_deletion_impact(
     conn=Depends(get_conn),
 ):
     """Returns what `POST /families/{id}/hard-delete` would touch. Drives
-    the SPA's per-row checkbox confirmation. Includes soft-deleted
-    guardians/students too (they'll still get hard-cleared on family
-    delete via the junction's CASCADE) so the operator sees everything."""
+    the SPA's per-row checkbox confirmation. Only **live** guardians /
+    students show up — soft-deleted people still have junction rows
+    but the operator already deleted them from the address book; their
+    junctions get swept silently by the family hard-delete and don't
+    need confirmation."""
     family = await _family_or_404(conn, family_id)
     guardian_rows = await conn.fetch(
         """
@@ -531,7 +533,7 @@ async def get_family_deletion_impact(
                ) AS name,
                p.email::text AS email
         FROM family_guardians fg
-        JOIN people p ON p.id = fg.person_id
+        JOIN people p ON p.id = fg.person_id AND p.deleted_at IS NULL
         WHERE fg.family_id = $1
         ORDER BY fg.is_primary_contact DESC, p.last_name NULLS LAST, p.first_name
         """,
@@ -547,7 +549,7 @@ async def get_family_deletion_impact(
                ) AS name,
                sd.current_grade
         FROM family_students fs
-        JOIN people p ON p.id = fs.person_id
+        JOIN people p ON p.id = fs.person_id AND p.deleted_at IS NULL
         LEFT JOIN student_details sd ON sd.person_id = p.id
         WHERE fs.family_id = $1
         ORDER BY p.last_name NULLS LAST, p.first_name
