@@ -28,6 +28,8 @@ const LOGIN_ERROR_COPY: Record<string, string> = {
   no_userinfo: "Google didn't return your account info. Please try again.",
   not_allowed:
     "Your Google account isn't authorized for HillCo Portal. Contact an admin if you think this is a mistake.",
+  deactivated:
+    "Your account has been deactivated. Contact an admin to reactivate it.",
 };
 
 function AuthGate({ children }: { children: React.ReactNode }) {

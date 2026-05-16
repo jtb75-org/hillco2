@@ -506,7 +506,7 @@ async def update_person(
 @router.delete("/people/{person_id}", status_code=204)
 async def delete_person(
     person_id: UUID,
-    _user=Depends(require_user),
+    user=Depends(require_user),
     conn=Depends(get_conn),
 ):
     """Soft-delete by setting people.deleted_at. The family-detail
@@ -514,6 +514,13 @@ async def delete_person(
     vanishes from rosters automatically. Junction rows in
     family_guardians / family_students stay intact in case the
     operator restores."""
+    if user["id"] == person_id:
+        # Locks the caller out of the app — the auth_identities row
+        # stays, but the joined-lookup in auth_callback would think
+        # they're a new signup and crash on the unique constraint.
+        raise HTTPException(
+            status_code=400, detail="You can't delete your own account."
+        )
     exists = await conn.fetchval(
         "SELECT 1 FROM people WHERE id = $1 AND deleted_at IS NULL",
         person_id,

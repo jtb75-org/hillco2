@@ -334,12 +334,19 @@ async def update_contact(
 @router.delete("/contacts/{contact_id}", status_code=204)
 async def delete_contact(
     contact_id: UUID,
-    _user=Depends(require_user),
+    user=Depends(require_user),
     conn=Depends(get_conn),
 ):
     """Soft delete via people.deleted_at. school_visit_attendees
     references contacts (via people.id thanks to id preservation) so
     the row stays — the deleted_at filter hides it from listings."""
+    if user["id"] == contact_id:
+        # Self-delete on the /contacts page would lock the caller out
+        # — auth_identities row stays, but auth_callback's joined
+        # lookup would 500 trying to recreate it.
+        raise HTTPException(
+            status_code=400, detail="You can't delete your own account."
+        )
     await _contact_or_404(conn, contact_id)
     await conn.execute(
         "UPDATE people SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL",
