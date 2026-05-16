@@ -96,3 +96,29 @@ async def test_e2e_auth_bypass_rejects_wrong_token(client, monkeypatch):
 
     r = await client.get("/api/me", headers={"x-hillco2-e2e-auth": "wrong"})
     assert r.status_code == 401
+
+
+def test_e2e_auth_bypass_requires_nonprod_docs_flag():
+    """Boot fails if the E2E bypass is enabled in the production-shaped config."""
+    from pydantic_core import ValidationError
+
+    from app.config import Settings  # noqa: PLC0415
+
+    with pytest.raises(ValidationError, match="E2E auth bypass requires EXPOSE_DOCS=true"):
+        Settings(
+            database_url="postgresql://postgres@localhost:5432/hillco2_test",
+            session_secret="test-only-not-for-prod-aaaaaaaaaaaaaaaaaaaa",
+            google_client_id="test-client-id.apps.googleusercontent.com",
+            google_client_secret="test-client-secret",
+            e2e_auth_bypass_enabled=True,
+            expose_docs=False,
+        )
+
+    Settings(
+        database_url="postgresql://postgres@localhost:5432/hillco2_test",
+        session_secret="test-only-not-for-prod-aaaaaaaaaaaaaaaaaaaa",
+        google_client_id="test-client-id.apps.googleusercontent.com",
+        google_client_secret="test-client-secret",
+        e2e_auth_bypass_enabled=True,
+        expose_docs=True,
+    )
