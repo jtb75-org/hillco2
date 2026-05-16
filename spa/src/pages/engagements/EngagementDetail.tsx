@@ -36,6 +36,7 @@ import { api } from "../../api/client";
 import { useSnackbar } from "../../components/Snackbar";
 import { StatusChip } from "../../components/StatusChip";
 import { useEngagementTypes } from "../../hooks/useEngagementTypes";
+import { ContractCard } from "./ContractCard";
 import { IntakeContextCard, type IntakeSnapshot } from "./IntakeContextCard";
 import { RequirementsCard } from "./RequirementsCard";
 
@@ -223,6 +224,8 @@ export function EngagementDetail() {
       <HeaderStrip engagement={engagement.data} />
 
       <IntakeContextCard snapshot={engagement.data.intake_snapshot} />
+
+      <ContractCard engagementId={id!} />
 
       <RequirementsCard engagementId={id!} />
 
