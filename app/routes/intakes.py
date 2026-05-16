@@ -877,12 +877,17 @@ async def delete_intake(
     _user=Depends(require_user),
     conn=Depends(get_conn),
 ):
-    """Soft delete. Engagements that linked back via intake_id keep
-    their reference (FK is ON DELETE SET NULL, but soft-delete just
-    flips deleted_at — the FK still points)."""
+    """Soft delete. Engagements that linked back via intake_id are
+    detached first so the soft-deleted intake stops appearing as the
+    live origin for active work."""
     await _intake_or_404(conn, intake_id)
-    await conn.execute(
-        "UPDATE intakes SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL",
-        intake_id,
-    )
+    async with conn.transaction():
+        await conn.execute(
+            "UPDATE engagements SET intake_id = NULL WHERE intake_id = $1",
+            intake_id,
+        )
+        await conn.execute(
+            "UPDATE intakes SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL",
+            intake_id,
+        )
     return None

@@ -3,6 +3,7 @@ from decimal import Decimal
 from typing import Literal
 from uuid import UUID
 
+import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
@@ -330,12 +331,21 @@ async def delete_engagement(
     _user=Depends(require_user),
     conn=Depends(get_conn),
 ):
-    """Soft delete (sets deleted_at)."""
+    """Hard delete a clean engagement.
+
+    Child operational records such as tasks cascade from the database
+    FK. Billing records (agreements / invoices) intentionally RESTRICT
+    and surface as a 409 so the operator clears financial history
+    explicitly.
+    """
     await _engagement_or_404(conn, engagement_id)
-    await conn.execute(
-        "UPDATE engagements SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL",
-        engagement_id,
-    )
+    try:
+        await conn.execute("DELETE FROM engagements WHERE id = $1", engagement_id)
+    except asyncpg.ForeignKeyViolationError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="Engagement still has dependent records that block deletion.",
+        ) from exc
     return None
 
 
