@@ -43,17 +43,6 @@ DECLINED_OUTCOMES: frozenset[str] = frozenset(
 )
 
 
-class DecisionMaker(BaseModel):
-    """Captured family-context name. `person_id` links to an existing
-    guardian on the family when known; otherwise the row is free-text
-    for advisors/step-parents/etc. Keeps the "who can sign" CRM value
-    queryable without forcing every named decision-maker to be a
-    People row."""
-    person_id: UUID | None = None
-    name: Annotated[str, Field(min_length=1)]
-    relation: str = ""
-
-
 class Mention(BaseModel):
     """Lightweight "mentioned during discovery" chip. Promotion to a
     real entity (catalog school, contact, etc.) is a later concern."""
@@ -81,7 +70,6 @@ class IntakeUpdate(BaseModel):
     constraints: list[str] | None = None
     consent_granted: bool | None = None
     family_context_notes: str | None = None
-    decision_makers: list[DecisionMaker] | None = None
     # Bottom notes bucket (legacy column)
     notes: str | None = None
     # Outcome + next-step
@@ -151,9 +139,8 @@ def _intake_row_to_response(row: dict) -> dict:
     """Hydrate the JSONB columns + drop nothing. Returns a fresh dict
     so the caller can layer on guardians/students arrays."""
     out = dict(row)
-    for k in ("constraints", "decision_makers"):
-        if k in out:
-            out[k] = _maybe_json(out[k]) or []
+    if "constraints" in out:
+        out["constraints"] = _maybe_json(out["constraints"]) or []
     return out
 
 
@@ -645,10 +632,6 @@ async def update_intake(
     # Pre-convert JSONB-shaped fields.
     if "constraints" in fields:
         fields["constraints"] = json.dumps(fields["constraints"] or [])
-    if "decision_makers" in fields:
-        fields["decision_makers"] = json.dumps(
-            [dm.model_dump(mode="json") for dm in body.decision_makers or []]
-        )
 
     # Outcome transitions also touch outcome_at + completed_at. We
     # always pass these three columns together when outcome is in the
@@ -664,7 +647,7 @@ async def update_intake(
             fields["completed_at"] = now
 
     # Build the SET clause. JSONB columns get cast explicitly.
-    jsonb_cols = {"constraints", "decision_makers"}
+    jsonb_cols = {"constraints"}
     set_fragments = []
     args: list = [intake_id]
     for col, val in fields.items():
@@ -746,7 +729,6 @@ def _build_intake_snapshot(intake: dict, student: dict) -> str:
             "family": {
                 "desired_outcome": intake.get("desired_outcome"),
                 "constraints": _maybe_json(intake.get("constraints")) or [],
-                "decision_makers": _maybe_json(intake.get("decision_makers")) or [],
             },
             "student": {
                 "working": student.get("working"),
