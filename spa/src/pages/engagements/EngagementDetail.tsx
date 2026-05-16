@@ -24,8 +24,10 @@ import { StatusChip } from "../../components/StatusChip";
 import { useEngagementTypes } from "../../hooks/useEngagementTypes";
 import { ActivitiesCard } from "./ActivitiesCard";
 import { ContractCard } from "./ContractCard";
+import { ExpensesCard } from "./ExpensesCard";
 import { IntakeContextCard, type IntakeSnapshot } from "./IntakeContextCard";
 import { RequirementsCard } from "./RequirementsCard";
+import { TimeEntriesCard } from "./TimeEntriesCard";
 
 // /api/engagements/{id} returns a plain dict (no OpenAPI response_model).
 // Hand-typed here for the bits we render.
@@ -115,6 +117,10 @@ export function EngagementDetail() {
       <RequirementsCard engagementId={id!} />
 
       <ActivitiesCard engagementId={id!} />
+
+      <TimeEntriesCard engagementId={id!} />
+
+      <ExpensesCard engagementId={id!} />
 
       <DangerZoneCard engagement={engagement.data} />
     </Stack>
