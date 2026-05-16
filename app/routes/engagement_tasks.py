@@ -1,9 +1,10 @@
+import json
 from decimal import Decimal
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from ..auth import require_user
 from ..db import get_conn
@@ -14,6 +15,56 @@ TaskStatus = Literal[
     "not_started", "in_progress", "completed", "blocked", "not_applicable"
 ]
 OwnerRole = Literal["consultant", "assistant", "both"]
+ActivityKind = Literal[
+    "task",
+    "document_review",
+    "best_environment",
+    "feedback_meeting",
+    "school_visit",
+    "school_recommendation",
+]
+
+
+# ---- Per-kind structured_content schemas -----------------------------------
+#
+# Validated on PATCH (and create) after the merged kind is known. The
+# *_visit / *_recommendation kinds keep their structured data in their
+# own tables (school_visits, school_recommendations), so the JSONB on
+# the task is just an empty dict.
+
+class _EmptyContent(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class DocumentReviewContent(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    educational_doc_ids: list[UUID] = Field(default_factory=list)
+    medical_doc_ids: list[UUID] = Field(default_factory=list)
+
+
+class BestEnvironmentContent(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    curriculum: str = ""
+    placement_size: str = ""
+    social_emotional: str = ""
+    extras: str = ""
+
+
+class FeedbackMeetingContent(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    recommendations: str = ""
+    admissions: str = ""
+    follow_on: str = ""
+
+
+_CONTENT_SCHEMAS: dict[str, type[BaseModel]] = {
+    "task": _EmptyContent,
+    "document_review": DocumentReviewContent,
+    "best_environment": BestEnvironmentContent,
+    "feedback_meeting": FeedbackMeetingContent,
+    "school_visit": _EmptyContent,
+    "school_recommendation": _EmptyContent,
+}
 
 # Engagement-type → service-item membership now lives in the database
 # (service_item_engagement_types M2M, see migration 0003). This module
@@ -36,6 +87,8 @@ class TaskCreate(BaseModel):
     assignee_id: UUID | None = None
     sort_order: int = 0
     notes: str | None = None
+    activity_kind: ActivityKind = "task"
+    structured_content: dict[str, Any] | None = None
 
 
 class TaskUpdate(BaseModel):
@@ -50,6 +103,8 @@ class TaskUpdate(BaseModel):
     assignee_id: UUID | None = None
     sort_order: int | None = None
     notes: str | None = None
+    activity_kind: ActivityKind | None = None
+    structured_content: dict[str, Any] | None = None
 
 
 class TaskStatusUpdate(BaseModel):
@@ -77,6 +132,102 @@ async def _task_or_404(conn, task_id: UUID):
     if not row:
         raise HTTPException(status_code=404, detail="Task not found")
     return row
+
+
+def _maybe_json(value: Any) -> Any:
+    """JSONB columns come back as Python strings without a registered
+    codec. Decode for the response shape; leave non-strings alone."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return value
+    return value
+
+
+def _validate_structured_content(kind: str, content: dict[str, Any]) -> dict[str, Any]:
+    """Validate the structured_content blob against the per-kind
+    schema. Raises 400 on mismatch with the offending detail."""
+    schema = _CONTENT_SCHEMAS.get(kind)
+    if schema is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown activity_kind '{kind}'.",
+        )
+    try:
+        validated = schema.model_validate(content)
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid structured_content for activity_kind={kind}: {exc.errors()}",
+        ) from exc
+    return validated.model_dump(mode="json")
+
+
+async def _validate_document_review_doc_ids(
+    conn, engagement_id: UUID, content: dict[str, Any]
+) -> None:
+    """For document_review activities, the doc IDs in structured_content
+    must point to documents owned by this engagement, its family, or
+    a student on this engagement. Anything else is a 400.
+
+    documents are polymorphically owned via (owner_type, owner_id);
+    valid ownership chains here:
+      - owner_type='engagement', owner_id = this engagement
+      - owner_type='family',     owner_id = this engagement's family
+      - owner_type='student',    owner_id = this engagement's student
+    """
+    ids = list(content.get("educational_doc_ids", [])) + list(
+        content.get("medical_doc_ids", [])
+    )
+    if not ids:
+        return
+    eng = await conn.fetchrow(
+        """
+        SELECT id, family_id, student_id
+        FROM engagements
+        WHERE id = $1 AND deleted_at IS NULL
+        """,
+        engagement_id,
+    )
+    if eng is None:
+        raise HTTPException(status_code=404, detail="Engagement not found")
+    rows = await conn.fetch(
+        """
+        SELECT id, owner_type::text AS owner_type, owner_id
+        FROM documents
+        WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL
+        """,
+        ids,
+    )
+    found = {r["id"]: r for r in rows}
+    foreign = [str(i) for i in ids if i not in found]
+    if foreign:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown document id(s): {foreign}",
+        )
+    bad: list[str] = []
+    for doc_id, r in found.items():
+        t, oid = r["owner_type"], r["owner_id"]
+        ok = (
+            (t == "engagement" and oid == eng["id"])
+            or (t == "family" and oid == eng["family_id"])
+            or (t == "student" and oid == eng["student_id"])
+        )
+        if not ok:
+            bad.append(str(doc_id))
+    if bad:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Document(s) not in this engagement's scope: {bad}. "
+                "Linked documents must be owned by the engagement, its "
+                "family, or its student."
+            ),
+        )
 
 
 # ---- Routes ----------------------------------------------------------------
@@ -159,16 +310,31 @@ async def applicable_catalog(
 @router.get("/engagements/{engagement_id}/tasks")
 async def list_tasks(
     engagement_id: UUID,
+    include_skipped: bool = Query(
+        False,
+        description=(
+            "When false (default), tasks with status='not_applicable' are "
+            "excluded from the response. Linked school_visits / "
+            "school_recommendations stay visible on their own queries "
+            "regardless of their orchestrating task's status."
+        ),
+    ),
     _user=Depends(require_user),
     conn=Depends(get_conn),
 ):
     """Tasks for an engagement, sorted by their snapshotted phase order
     then by per-phase sort_order. Tasks with no phase (ad-hoc) come last."""
     await _engagement_or_404(conn, engagement_id)
+    skip_clause = (
+        ""
+        if include_skipped
+        else "AND t.status::text <> 'not_applicable'"
+    )
     rows = await conn.fetch(
-        """
+        f"""
         SELECT t.id, t.engagement_id, t.service_item_id, t.phase_id,
                t.title, t.description, t.status,
+               t.activity_kind, t.structured_content,
                t.est_hours, t.actual_hours, t.billable,
                t.deliverable, t.owner_role, t.assignee_id, t.sort_order,
                t.completed_at, t.notes, t.created_at, t.updated_at,
@@ -178,12 +344,17 @@ async def list_tasks(
         FROM engagement_tasks t
         LEFT JOIN people u ON u.id = t.assignee_id
         LEFT JOIN catalog_phases cp ON cp.id = t.phase_id
-        WHERE t.engagement_id = $1
+        WHERE t.engagement_id = $1 {skip_clause}
         ORDER BY cp.sort_order NULLS LAST, t.sort_order, t.title
         """,
         engagement_id,
     )
-    return [dict(r) for r in rows]
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["structured_content"] = _maybe_json(d.get("structured_content")) or {}
+        out.append(d)
+    return out
 
 
 @router.post("/engagements/{engagement_id}/tasks", status_code=201)
@@ -201,15 +372,22 @@ async def add_task(
         ):
             raise HTTPException(status_code=400, detail="phase_id does not match an active phase")
 
+    content = body.structured_content or {}
+    content = _validate_structured_content(body.activity_kind, content)
+    if body.activity_kind == "document_review":
+        await _validate_document_review_doc_ids(conn, engagement_id, content)
+
     row = await conn.fetchrow(
         """
         INSERT INTO engagement_tasks (
           engagement_id, phase_id, title, description,
           est_hours, actual_hours, billable, deliverable, owner_role,
-          assignee_id, sort_order, notes, created_by
+          assignee_id, sort_order, notes, created_by,
+          activity_kind, structured_content
         ) VALUES (
           $1, $2, $3, $4, $5, $6, $7, $8,
-          $9::owner_role, $10, $11, $12, $13
+          $9::owner_role, $10, $11, $12, $13,
+          $14::activity_kind, $15::jsonb
         )
         RETURNING *
         """,
@@ -222,8 +400,12 @@ async def add_task(
         body.assignee_id, body.sort_order,
         (body.notes or "").strip() or None,
         user["id"],
+        body.activity_kind,
+        json.dumps(content),
     )
-    return dict(row)
+    out = dict(row)
+    out["structured_content"] = _maybe_json(out.get("structured_content")) or {}
+    return out
 
 
 @router.post("/engagements/{engagement_id}/tasks/bulk-from-catalog", status_code=201)
@@ -302,7 +484,7 @@ async def update_task(
     _user=Depends(require_user),
     conn=Depends(get_conn),
 ):
-    await _task_or_404(conn, task_id)
+    task = await _task_or_404(conn, task_id)
     fields = body.model_dump(exclude_unset=True)
     if not fields:
         raise HTTPException(status_code=400, detail="No fields to update")
@@ -316,12 +498,35 @@ async def update_task(
         ):
             raise HTTPException(status_code=400, detail="phase_id does not match an active phase")
 
+    # Compute the FINAL activity_kind for validation. If the PATCH
+    # changes kind without supplying matching content, we reset the
+    # JSONB to empty for the new kind (avoids stale keys leaking from
+    # the previous shape).
+    final_kind = fields.get("activity_kind", task["activity_kind"])
+    kind_changed = "activity_kind" in fields and fields["activity_kind"] != task["activity_kind"]
+    if kind_changed and "structured_content" not in fields:
+        fields["structured_content"] = {}
+
+    if "structured_content" in fields:
+        validated = _validate_structured_content(
+            final_kind, fields["structured_content"] or {}
+        )
+        if final_kind == "document_review":
+            await _validate_document_review_doc_ids(
+                conn, task["engagement_id"], validated
+            )
+        fields["structured_content"] = json.dumps(validated)
+
     set_sql_parts = []
     values = []
     for col, val in fields.items():
         values.append(val)
         if col == "owner_role":
             set_sql_parts.append(f"owner_role = ${len(values)+1}::owner_role")
+        elif col == "activity_kind":
+            set_sql_parts.append(f"activity_kind = ${len(values)+1}::activity_kind")
+        elif col == "structured_content":
+            set_sql_parts.append(f"structured_content = ${len(values)+1}::jsonb")
         else:
             set_sql_parts.append(f"{col} = ${len(values)+1}")
     set_sql = ", ".join(set_sql_parts)
@@ -330,7 +535,9 @@ async def update_task(
         task_id,
         *values,
     )
-    return dict(row)
+    out = dict(row)
+    out["structured_content"] = _maybe_json(out.get("structured_content")) or {}
+    return out
 
 
 @router.post("/tasks/{task_id}/status")
