@@ -73,12 +73,6 @@ export const OUTCOME_STATUS_DISPLAY: Record<
   duplicate: { label: "Duplicate", color: "default" },
 };
 
-export interface DecisionMaker {
-  person_id?: string | null;
-  name: string;
-  relation?: string;
-}
-
 export interface Mention {
   text: string;
   kind: MentionKind;
@@ -134,7 +128,6 @@ export interface IntakeDetail {
   constraints: string[];
   consent_granted: boolean | null;
   family_context_notes: string | null;
-  decision_makers: DecisionMaker[];
   // Outcome + next-step
   outcome: Outcome | null;
   outcome_at: string | null;

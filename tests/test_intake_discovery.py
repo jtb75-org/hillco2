@@ -94,7 +94,6 @@ async def _prepare_converting_intake(
             "outcome": "converting",
             "desired_outcome": "Find a better school fit.",
             "constraints": ["commute", "budget"],
-            "decision_makers": [{"name": "Parent One", "relation": "mom"}],
         },
     )
     assert patch.status_code == 200, patch.text
@@ -188,18 +187,6 @@ async def test_next_step_owner_rejects_invalid_enum(
     r = await authed_client.patch(
         f"/api/intakes/{intake['id']}",
         json={"next_step_owner": "teacher"},
-    )
-    assert r.status_code == 422
-
-
-async def test_decision_makers_jsonb_shape_enforced(
-    authed_client, family_with_two_students
-):
-    """decision_makers requires shaped objects with a non-empty name."""
-    intake = await _create_intake(authed_client, family_with_two_students["family_id"])
-    r = await authed_client.patch(
-        f"/api/intakes/{intake['id']}",
-        json={"decision_makers": [{"relation": "mom"}]},
     )
     assert r.status_code == 422
 
