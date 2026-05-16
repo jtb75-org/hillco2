@@ -75,11 +75,6 @@ export function IntakeDiscoveryMockup() {
         grade="6"
         dobLabel="Aug 30, 2015"
         schoolLabel="Clayton Middle"
-        reach={{
-          name: "Kevin Ballard",
-          email: "kballard@email.test",
-          phone: "555-555-5555",
-        }}
         flags={{
           has_504: false,
           has_iep: true,
@@ -116,11 +111,6 @@ export function IntakeDiscoveryMockup() {
         grade="9"
         dobLabel="Mar 4, 2011"
         schoolLabel="Crossroads High"
-        reach={{
-          name: "Lisa Ballard",
-          email: "lballard@email.test",
-          phone: "555-555-5522",
-        }}
         flags={{
           has_504: true,
           has_iep: false,
@@ -398,7 +388,6 @@ function StudentEditorAccordion({
   grade,
   dobLabel,
   schoolLabel,
-  reach,
   flags,
 }: {
   firstName: string;
@@ -406,7 +395,6 @@ function StudentEditorAccordion({
   grade: string;
   dobLabel: string;
   schoolLabel: string;
-  reach: { name: string; email: string; phone: string };
   flags: StudentFlagState;
 }) {
   return (
@@ -427,7 +415,6 @@ function StudentEditorAccordion({
             grade={grade}
             dobLabel={dobLabel}
             schoolLabel={schoolLabel}
-            reach={reach}
           />
           <MockAtAGlance flags={flags} />
         </Stack>
@@ -458,14 +445,12 @@ function MockHeaderStrip({
   grade,
   dobLabel,
   schoolLabel,
-  reach,
 }: {
   firstName: string;
   lastName: string;
   grade: string;
   dobLabel: string;
   schoolLabel: string;
-  reach: { name: string; email: string; phone: string };
 }) {
   return (
     <Paper variant="outlined" sx={{ p: 2.5 }}>
@@ -523,7 +508,8 @@ function MockHeaderStrip({
         </Box>
         <Box sx={{ flex: 2 }}>
           <LabeledField label="School">
-            <Select
+            <TextField
+              select
               size="small"
               fullWidth
               defaultValue={schoolLabel}
@@ -534,30 +520,10 @@ function MockHeaderStrip({
               <MenuItem value="Crossroads High">Crossroads High</MenuItem>
               <MenuItem value="Maplewood Academy">Maplewood Academy</MenuItem>
               <MenuItem value="Other / not in list">Other / not in list</MenuItem>
-            </Select>
+            </TextField>
           </LabeledField>
         </Box>
       </Stack>
-      <Box
-        sx={{
-          mt: 2,
-          display: "grid",
-          gridTemplateColumns: "auto 1fr",
-          columnGap: 2,
-          rowGap: 1,
-        }}
-      >
-        <SmallLabel>Reach</SmallLabel>
-        <Stack direction="row" spacing={2} flexWrap="wrap" alignItems="baseline">
-          <Typography variant="body2">{reach.name}</Typography>
-          <Typography variant="body2" color="text.secondary">
-            {reach.email}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            {reach.phone}
-          </Typography>
-        </Stack>
-      </Box>
     </Paper>
   );
 }
@@ -894,22 +860,6 @@ function NotesPopover({
   );
 }
 
-function SmallLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <Typography
-      variant="caption"
-      color="text.secondary"
-      sx={{
-        textTransform: "uppercase",
-        letterSpacing: 0.5,
-        alignSelf: "center",
-      }}
-    >
-      {children}
-    </Typography>
-  );
-}
-
 function StudentDiscoveryCard({
   name,
   firstName,
@@ -917,7 +867,6 @@ function StudentDiscoveryCard({
   grade,
   dobLabel,
   schoolLabel,
-  reach,
   flags,
   prefill,
 }: {
@@ -927,7 +876,6 @@ function StudentDiscoveryCard({
   grade: string;
   dobLabel: string;
   schoolLabel: string;
-  reach: { name: string; email: string; phone: string };
   flags: StudentFlagState;
   prefill?: {
     working?: string;
@@ -964,7 +912,6 @@ function StudentDiscoveryCard({
             grade={grade}
             dobLabel={dobLabel}
             schoolLabel={schoolLabel}
-            reach={reach}
             flags={flags}
           />
         </Box>
