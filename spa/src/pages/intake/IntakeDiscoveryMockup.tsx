@@ -10,6 +10,11 @@ import {
   Card,
   CardContent,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
   Divider,
   FormControlLabel,
   Grid,
@@ -22,6 +27,7 @@ import {
   Stack,
   Switch,
   TextField,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
@@ -35,6 +41,48 @@ import { LabeledField } from "../../components/LabeledField";
 import { PageHeader } from "../../components/PageHeader";
 import { RichTextEditor } from "../../components/RichTextEditor";
 
+type Outcome =
+  | "converting"
+  | "nurture"
+  | "declined_by_family"
+  | "declined_by_hillco"
+  | "no_response"
+  | "duplicate";
+
+const OUTCOME_LABEL: Record<Outcome, string> = {
+  converting: "Converting to engagement",
+  nurture: "Nurture / follow up later",
+  declined_by_family: "Declined — family passed",
+  declined_by_hillco: "Declined — not a fit (HillCo)",
+  no_response: "No response after intake",
+  duplicate: "Duplicate / test record",
+};
+
+// Short label + chip color for the header Status chip.
+const STATUS_DISPLAY: Record<
+  Outcome,
+  { label: string; color: "default" | "primary" | "success" | "warning" | "error" }
+> = {
+  converting: { label: "Converting", color: "success" },
+  nurture: { label: "Nurture", color: "warning" },
+  declined_by_family: { label: "Declined (family)", color: "default" },
+  declined_by_hillco: { label: "Declined (HillCo)", color: "default" },
+  no_response: { label: "No response", color: "default" },
+  duplicate: { label: "Duplicate", color: "default" },
+};
+
+const ENGAGEMENT_TYPE_LABEL: Record<string, string> = {
+  placement: "School placement search",
+  iep_support: "IEP / 504 advocacy",
+  evaluation_coordination: "Evaluation coordination",
+  transition_planning: "Transition planning",
+};
+
+interface Candidacy {
+  candidate: boolean;
+  engagementType: string;
+}
+
 /**
  * MOCKUP — not wired to any API. Renders the proposed three-card
  * Discovery layout for an intake. Lives at /mockup/intake-discovery
@@ -42,6 +90,13 @@ import { RichTextEditor } from "../../components/RichTextEditor";
  * the real form. Throw away when the live form is built.
  */
 export function IntakeDiscoveryMockup() {
+  const [outcome, setOutcome] = useState<Outcome | null>("converting");
+  const [candidacies, setCandidacies] = useState<Record<string, Candidacy>>({
+    "Peter Ballard": { candidate: true, engagementType: "placement" },
+    "Anna Ballard": { candidate: true, engagementType: "placement" },
+  });
+  const setCandidacy = (name: string, next: Partial<Candidacy>) =>
+    setCandidacies((s) => ({ ...s, [name]: { ...s[name], ...next } }));
   return (
     <Stack spacing={3}>
       <Alert severity="info" variant="outlined">
@@ -64,7 +119,7 @@ export function IntakeDiscoveryMockup() {
         subtitle="Discovery — populates Family + Contacts. No fee."
       />
 
-      <HeaderStrip />
+      <HeaderStrip outcome={outcome} />
 
       <FamilyContextCard />
 
@@ -128,7 +183,12 @@ export function IntakeDiscoveryMockup() {
         }}
       />
 
-      <FitOutcomeCard />
+      <FitOutcomeCard
+        outcome={outcome}
+        onOutcomeChange={setOutcome}
+        candidacies={candidacies}
+        onCandidacyChange={setCandidacy}
+      />
 
       <NotesCard />
     </Stack>
@@ -137,7 +197,11 @@ export function IntakeDiscoveryMockup() {
 
 // ---- Header -----------------------------------------------------------------
 
-function HeaderStrip() {
+function HeaderStrip({ outcome }: { outcome: Outcome | null }) {
+  const status =
+    outcome == null
+      ? { label: "In progress", color: "primary" as const }
+      : STATUS_DISPLAY[outcome];
   return (
     <Paper variant="outlined" sx={{ p: 2.5 }}>
       <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems="flex-start">
@@ -166,10 +230,12 @@ function HeaderStrip() {
         <Box sx={{ flex: 1 }}>
           <LabeledField label="Status">
             <Stack direction="row" spacing={1} alignItems="center" sx={{ pt: 0.5 }}>
-              <Chip size="small" label="In progress" color="primary" />
-              <Button size="small" variant="text">
-                Mark complete
-              </Button>
+              <Chip size="small" label={status.label} color={status.color} />
+              <Typography variant="caption" color="text.secondary">
+                {outcome == null
+                  ? "Set the outcome below to close"
+                  : "Closed — change outcome to re-open"}
+              </Typography>
             </Stack>
           </LabeledField>
         </Box>
@@ -988,7 +1054,65 @@ function StudentDiscoveryCard({
 
 // ---- Card 3: Fit, Outcome & Next Steps --------------------------------------
 
-function FitOutcomeCard() {
+function FitOutcomeCard({
+  outcome,
+  onOutcomeChange,
+  candidacies,
+  onCandidacyChange,
+}: {
+  outcome: Outcome | null;
+  onOutcomeChange: (next: Outcome | null) => void;
+  candidacies: Record<string, Candidacy>;
+  onCandidacyChange: (name: string, next: Partial<Candidacy>) => void;
+}) {
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [resultMessage, setResultMessage] = useState<string | null>(null);
+
+  const candidateEntries = Object.entries(candidacies).filter(
+    ([, c]) => c.candidate,
+  );
+  const candidateCount = candidateEntries.length;
+  const isConverting = outcome === "converting";
+
+  // Primary action: convert when outcome=converting + at least one
+  // candidate, otherwise plain save. When converting with 2+ kids we
+  // open a confirmation dialog so the consultant sees what's about to
+  // be created before firing.
+  const handlePrimary = () => {
+    if (isConverting && candidateCount >= 2) {
+      setConfirmOpen(true);
+      return;
+    }
+    if (isConverting && candidateCount === 1) {
+      const [name, c] = candidateEntries[0];
+      setResultMessage(
+        `Mockup: created 1 engagement — ${name}, ${ENGAGEMENT_TYPE_LABEL[c.engagementType]}.`,
+      );
+      return;
+    }
+    setResultMessage(
+      `Mockup: saved outcome${outcome ? ` — ${OUTCOME_LABEL[outcome]}` : ""}.`,
+    );
+  };
+
+  const fireConvert = () => {
+    setConfirmOpen(false);
+    setResultMessage(
+      `Mockup: created ${candidateCount} engagements (${candidateEntries
+        .map(([name, c]) => `${name} — ${ENGAGEMENT_TYPE_LABEL[c.engagementType]}`)
+        .join(", ")}).`,
+    );
+  };
+
+  const primaryLabel = isConverting ? "Convert to engagement →" : "Save outcome";
+  const primaryDisabled = outcome == null || (isConverting && candidateCount === 0);
+  const primaryHint = (() => {
+    if (outcome == null) return "Pick an intake outcome to enable.";
+    if (isConverting && candidateCount === 0)
+      return "Toggle at least one student as a candidate.";
+    return "";
+  })();
+
   return (
     <Card variant="outlined">
       <CardContent>
@@ -1001,8 +1125,16 @@ function FitOutcomeCard() {
           Per-student candidacy
         </Typography>
         <Stack spacing={1.5} sx={{ mb: 2 }}>
-          <StudentCandidacyRow name="Peter Ballard" />
-          <StudentCandidacyRow name="Anna Ballard" />
+          {Object.entries(candidacies).map(([name, c]) => (
+            <StudentCandidacyRow
+              key={name}
+              name={name}
+              candidate={c.candidate}
+              engagementType={c.engagementType}
+              onCandidateChange={(v) => onCandidacyChange(name, { candidate: v })}
+              onTypeChange={(t) => onCandidacyChange(name, { engagementType: t })}
+            />
+          ))}
         </Stack>
 
         <Divider sx={{ mb: 2 }} />
@@ -1010,13 +1142,25 @@ function FitOutcomeCard() {
         <Grid container spacing={2}>
           <Grid item xs={12} md={6}>
             <LabeledField label="Intake outcome">
-              <Select size="small" fullWidth defaultValue="converting">
-                <MenuItem value="converting">Converting to engagement</MenuItem>
-                <MenuItem value="nurture">Nurture / follow up later</MenuItem>
-                <MenuItem value="declined_by_family">Declined — family passed</MenuItem>
-                <MenuItem value="declined_by_hillco">Declined — not a fit (HillCo)</MenuItem>
-                <MenuItem value="no_response">No response after intake</MenuItem>
-                <MenuItem value="duplicate">Duplicate / test record</MenuItem>
+              <Select
+                size="small"
+                fullWidth
+                value={outcome ?? ""}
+                displayEmpty
+                onChange={(e) =>
+                  onOutcomeChange(
+                    (e.target.value === "" ? null : e.target.value) as Outcome | null,
+                  )
+                }
+              >
+                <MenuItem value="">
+                  <em>— In progress —</em>
+                </MenuItem>
+                {(Object.keys(OUTCOME_LABEL) as Outcome[]).map((o) => (
+                  <MenuItem key={o} value={o}>
+                    {OUTCOME_LABEL[o]}
+                  </MenuItem>
+                ))}
               </Select>
             </LabeledField>
           </Grid>
@@ -1059,25 +1203,89 @@ function FitOutcomeCard() {
             </LabeledField>
           </Grid>
 
+          {resultMessage && (
+            <Grid item xs={12}>
+              <Alert
+                severity="success"
+                onClose={() => setResultMessage(null)}
+                variant="outlined"
+              >
+                {resultMessage}
+              </Alert>
+            </Grid>
+          )}
+
           <Grid item xs={12}>
-            <Stack
-              direction="row"
-              spacing={1.5}
-              justifyContent="flex-end"
-              sx={{ mt: 1 }}
-            >
-              <Button variant="outlined">Save outcome</Button>
-              <Button variant="contained">Convert to engagement →</Button>
+            <Stack direction="row" justifyContent="flex-end" sx={{ mt: 1 }}>
+              <Tooltip title={primaryHint} disableHoverListener={!primaryDisabled}>
+                <span>
+                  <Button
+                    variant="contained"
+                    disabled={primaryDisabled}
+                    onClick={handlePrimary}
+                  >
+                    {primaryLabel}
+                  </Button>
+                </span>
+              </Tooltip>
             </Stack>
           </Grid>
         </Grid>
       </CardContent>
+
+      <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Create {candidateCount} engagements?</DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ mb: 1 }}>
+            About to create one engagement per candidate student. Each will inherit
+            this intake's discovery context.
+          </DialogContentText>
+          <Stack spacing={0.75} sx={{ mt: 1 }}>
+            {candidateEntries.map(([name, c]) => (
+              <Box
+                key={name}
+                sx={{
+                  px: 1.5,
+                  py: 1,
+                  border: 1,
+                  borderColor: "divider",
+                  borderRadius: 1,
+                }}
+              >
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  {name}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {ENGAGEMENT_TYPE_LABEL[c.engagementType]}
+                </Typography>
+              </Box>
+            ))}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={fireConvert}>
+            Create {candidateCount} engagements
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Card>
   );
 }
 
-function StudentCandidacyRow({ name }: { name: string }) {
-  const [candidate, setCandidate] = useState(true);
+function StudentCandidacyRow({
+  name,
+  candidate,
+  engagementType,
+  onCandidateChange,
+  onTypeChange,
+}: {
+  name: string;
+  candidate: boolean;
+  engagementType: string;
+  onCandidateChange: (v: boolean) => void;
+  onTypeChange: (t: string) => void;
+}) {
   return (
     <Stack
       direction={{ xs: "column", sm: "row" }}
@@ -1095,7 +1303,7 @@ function StudentCandidacyRow({ name }: { name: string }) {
         control={
           <Switch
             checked={candidate}
-            onChange={(e) => setCandidate(e.target.checked)}
+            onChange={(e) => onCandidateChange(e.target.checked)}
           />
         }
         label={
@@ -1110,13 +1318,15 @@ function StudentCandidacyRow({ name }: { name: string }) {
           <Select
             size="small"
             fullWidth
-            defaultValue="placement"
+            value={engagementType}
+            onChange={(e) => onTypeChange(e.target.value)}
             disabled={!candidate}
           >
-            <MenuItem value="placement">School placement search</MenuItem>
-            <MenuItem value="iep_support">IEP / 504 advocacy</MenuItem>
-            <MenuItem value="evaluation_coordination">Evaluation coordination</MenuItem>
-            <MenuItem value="transition_planning">Transition planning</MenuItem>
+            {Object.entries(ENGAGEMENT_TYPE_LABEL).map(([key, label]) => (
+              <MenuItem key={key} value={key}>
+                {label}
+              </MenuItem>
+            ))}
           </Select>
         </LabeledField>
       </Box>
