@@ -21,6 +21,7 @@ import {
 import AddIcon from "@mui/icons-material/Add";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import CircleOutlinedIcon from "@mui/icons-material/CircleOutlined";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
 import PauseCircleOutlineIcon from "@mui/icons-material/PauseCircleOutline";
 import PlayCircleOutlineIcon from "@mui/icons-material/PlayCircleOutline";
@@ -28,6 +29,10 @@ import RemoveCircleOutlineIcon from "@mui/icons-material/RemoveCircleOutline";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useSnackbar } from "../../components/Snackbar";
+import {
+  ActivityKindBody,
+  KIND_HAS_BODY,
+} from "./ActivityKindBodies";
 
 type TaskStatus =
   | "not_started"
@@ -82,6 +87,16 @@ export function ActivitiesCard({ engagementId }: { engagementId: string }) {
   const snackbar = useSnackbar();
   const [showSkipped, setShowSkipped] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  const toggleExpand = (id: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const tasks = useQuery<ActivityRow[], Error>({
     queryKey: ["engagements", engagementId, "tasks", { showSkipped }],
@@ -214,6 +229,9 @@ export function ActivitiesCard({ engagementId }: { engagementId: string }) {
             <ActivityRowView
               key={row.id}
               row={row}
+              engagementId={engagementId}
+              isExpanded={expanded.has(row.id)}
+              onToggleExpand={() => toggleExpand(row.id)}
               onStatusChange={(status) => patchStatus.mutate({ id: row.id, status })}
               onSkipToggle={() => {
                 const next: TaskStatus =
@@ -227,6 +245,12 @@ export function ActivitiesCard({ engagementId }: { engagementId: string }) {
                 patchFields.mutate({
                   id: row.id,
                   body: { description } as Partial<ActivityRow>,
+                })
+              }
+              onStructuredContentCommit={(structured_content) =>
+                patchFields.mutate({
+                  id: row.id,
+                  body: { structured_content } as Partial<ActivityRow>,
                 })
               }
               onDelete={() => remove.mutate(row.id)}
@@ -251,72 +275,96 @@ export function ActivitiesCard({ engagementId }: { engagementId: string }) {
   );
 }
 
-// Note: kind-specific accordion bodies (document_review, best_environment,
-// feedback_meeting, school_visit, school_recommendation) land in
-// PR-Frontend cards 4b and 4c. Card 4a renders every kind as a plain
-// task row; the kind badge tells operators which rows are still
-// awaiting kind-specific UI.
-
 function ActivityRowView({
   row,
+  engagementId,
+  isExpanded,
+  onToggleExpand,
   onStatusChange,
   onSkipToggle,
   onTitleCommit,
   onDescriptionCommit,
+  onStructuredContentCommit,
   onDelete,
 }: {
   row: ActivityRow;
+  engagementId: string;
+  isExpanded: boolean;
+  onToggleExpand: () => void;
   onStatusChange: (next: TaskStatus) => void;
   onSkipToggle: () => void;
   onTitleCommit: (next: string) => void;
   onDescriptionCommit: (next: string | null) => void;
+  onStructuredContentCommit: (next: Record<string, unknown>) => void;
   onDelete: () => void;
 }) {
   const skipped = row.status === "not_applicable";
+  const hasBody = KIND_HAS_BODY[row.activity_kind];
   return (
-    <Stack
-      direction={{ xs: "column", md: "row" }}
-      spacing={1.5}
-      alignItems={{ md: "flex-start" }}
-      sx={{
-        py: 1.25,
-        opacity: skipped ? 0.6 : 1,
-      }}
-    >
-      <Box sx={{ width: { md: 160 }, flexShrink: 0, pt: 0.5 }}>
-        <StatusSelect value={row.status} onChange={onStatusChange} />
-      </Box>
-      <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.25 }}>
-          <TitleInput
-            value={row.title}
-            strikethrough={skipped}
-            onCommit={onTitleCommit}
+    <Box sx={{ py: 1.25, opacity: skipped ? 0.6 : 1 }}>
+      <Stack
+        direction={{ xs: "column", md: "row" }}
+        spacing={1.5}
+        alignItems={{ md: "flex-start" }}
+      >
+        <Box sx={{ width: { md: 160 }, flexShrink: 0, pt: 0.5 }}>
+          <StatusSelect value={row.status} onChange={onStatusChange} />
+        </Box>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.25 }}>
+            <TitleInput
+              value={row.title}
+              strikethrough={skipped}
+              onCommit={onTitleCommit}
+            />
+            {row.activity_kind !== "task" && (
+              <Chip
+                size="small"
+                variant="outlined"
+                label={KIND_LABEL[row.activity_kind]}
+                sx={{ height: 20, fontSize: 11 }}
+              />
+            )}
+            {row.billable && (
+              <Chip
+                size="small"
+                variant="outlined"
+                label="billable"
+                sx={{ height: 20, fontSize: 11 }}
+              />
+            )}
+          </Stack>
+          <DescriptionInput
+            value={row.description ?? ""}
+            onCommit={(v) => onDescriptionCommit(v || null)}
           />
-          {row.activity_kind !== "task" && (
-            <Chip
-              size="small"
-              variant="outlined"
-              label={KIND_LABEL[row.activity_kind]}
-              sx={{ height: 20, fontSize: 11 }}
-            />
-          )}
-          {row.billable && (
-            <Chip
-              size="small"
-              variant="outlined"
-              label="billable"
-              sx={{ height: 20, fontSize: 11 }}
-            />
-          )}
-        </Stack>
-        <DescriptionInput
-          value={row.description ?? ""}
-          onCommit={(v) => onDescriptionCommit(v || null)}
-        />
-      </Box>
-      <RowMenu skipped={skipped} onSkipToggle={onSkipToggle} onDelete={onDelete} />
-    </Stack>
+        </Box>
+        {hasBody && (
+          <IconButton
+            size="small"
+            aria-label={isExpanded ? "Collapse activity" : "Expand activity"}
+            onClick={onToggleExpand}
+            sx={{
+              color: "text.disabled",
+              transform: isExpanded ? "rotate(180deg)" : "none",
+              transition: (t) => t.transitions.create("transform"),
+            }}
+          >
+            <ExpandMoreIcon fontSize="small" />
+          </IconButton>
+        )}
+        <RowMenu skipped={skipped} onSkipToggle={onSkipToggle} onDelete={onDelete} />
+      </Stack>
+      {hasBody && isExpanded && (
+        <Box sx={{ mt: 1.5, ml: { md: "172px" } }}>
+          <ActivityKindBody
+            row={row}
+            engagementId={engagementId}
+            onCommit={onStructuredContentCommit}
+          />
+        </Box>
+      )}
+    </Box>
   );
 }
 
