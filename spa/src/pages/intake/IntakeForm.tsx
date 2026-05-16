@@ -31,12 +31,10 @@ import {
   Typography,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
-import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import CloseIcon from "@mui/icons-material/Close";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
-import ReplayIcon from "@mui/icons-material/Replay";
 import { DatePicker } from "@mui/x-date-pickers";
 import dayjs, { type Dayjs } from "dayjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -46,55 +44,28 @@ import { api } from "../../api/client";
 import { LabeledField } from "../../components/LabeledField";
 import { PageHeader } from "../../components/PageHeader";
 import { RichTextEditor } from "../../components/RichTextEditor";
-import { StatusChip } from "../../components/StatusChip";
 import { useSnackbar } from "../../components/Snackbar";
 import { ParentDrawer } from "../families/ParentDrawer";
 import type { ParentDrawerTarget } from "../families/ParentDrawer";
 import { StudentDrawer } from "../students/StudentDrawer";
 
-// /api/intakes/:id returns a plain dict; hand-typed here.
-interface Intake {
-  id: string;
-  family_id: string;
-  intake_date: string;
-  consultant_id: string | null;
-  notes: string | null;
-  completed_at: string | null;
-  created_at: string;
-  updated_at: string;
-  // Per-intake roster — the curated subset of the family that's on
-  // this intake meeting. May be empty even when the family has
-  // members; user selects via Add guardian / Add student.
-  guardians: GuardianRow[];
-  students: StudentRow[];
-}
+import { FamilyContextCard } from "./FamilyContextCard";
+import { FitOutcomeCard } from "./FitOutcomeCard";
+import { IntakeHeaderStrip } from "./IntakeHeaderStrip";
+import { StudentDiscoveryCard } from "./StudentDiscoveryCard";
+import type {
+  EngagementTypeOption,
+  IntakeDetail,
+  IntakeStudent,
+} from "./intakeTypes";
 
-interface GuardianRow {
-  id: string;
-  name: string;
-  email: string | null;
-  phone: string | null;
-  role: string;
-  is_primary_contact: boolean;
-  is_billing_contact: boolean;
-  mailing_address: string | null;
-  billing_address: string | null;
-}
-
-interface StudentRow {
-  id: string;
-  name: string;
-  dob: string | null;
-  current_grade: string | null;
-  has_504?: boolean;
-  has_iep?: boolean;
-  has_learning_disability?: boolean;
-  has_adhd?: boolean;
-  has_intellectual_disability?: boolean;
-  has_health_impairment?: boolean;
-  has_emotional_disturbance?: boolean;
-  autism_level?: number | null;
-}
+// Re-export the page-level types from intakeTypes.ts under the local
+// names the existing helper sub-components (GuardiansSection,
+// StudentsSection, dialogs) read. Saves churning each sub-component's
+// internal types.
+type Intake = IntakeDetail;
+type GuardianRow = IntakeDetail["guardians"][number];
+type StudentRow = IntakeStudent;
 
 interface FamilyDetail {
   id: string;
@@ -104,17 +75,16 @@ interface FamilyDetail {
 }
 
 /** Intake detail page at /intakes/:id. The family is locked once the
- *  intake exists; everything else auto-saves on blur. New intakes are
- *  created from the IntakesList or the home page via the family
- *  picker modal, so by the time we land here the row already exists. */
+ *  intake exists; everything else auto-saves on blur. The Discovery
+ *  layout: header strip, family context card, guardian + student
+ *  rosters (accordions), per-student discovery cards, fit/outcome
+ *  decision card, and the bottom intake-notes catch-all. */
 export function IntakeForm() {
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
   const snackbar = useSnackbar();
   const navigate = useNavigate();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
-  // Anchor for the header's kebab menu. Single button replaces what
-  // were two separate header buttons (mark-complete/reopen + delete).
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
 
   const intake = useQuery<Intake, Error>({
@@ -143,6 +113,21 @@ export function IntakeForm() {
     },
   });
 
+  // Engagement type catalog — drives the recommended-type picker in the
+  // Fit card. Cached across all intake pages; small enough that we
+  // accept the indirection over hardcoding.
+  const engagementTypes = useQuery<EngagementTypeOption[], Error>({
+    queryKey: ["engagement-types"],
+    queryFn: async () => {
+      const res = await fetch("/api/engagement-types", {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to load engagement types.");
+      const rows = (await res.json()) as { code: string; label: string }[];
+      return rows.map(({ code, label }) => ({ code, label }));
+    },
+  });
+
   const patch = useMutation({
     mutationFn: async (body: Record<string, unknown>) => {
       if (!id) return;
@@ -162,24 +147,63 @@ export function IntakeForm() {
     onError: (e: Error) => snackbar.show(e.message, "error"),
   });
 
-  const toggleComplete = useMutation({
-    mutationFn: async (action: "complete" | "reopen") => {
+  const patchStudent = useMutation({
+    mutationFn: async ({
+      personId,
+      body,
+    }: {
+      personId: string;
+      body: Partial<IntakeStudent>;
+    }) => {
       if (!id) return;
-      const path = action === "complete"
-        ? "/api/intakes/{intake_id}/complete"
-        : "/api/intakes/{intake_id}/reopen";
-      const { error } = await api.POST(path, {
-        params: { path: { intake_id: id } as never },
-      });
-      if (error) {
-        const msg = (error as { detail?: string }).detail ?? "Save failed.";
-        throw new Error(msg);
+      const res = await fetch(
+        `/api/intakes/${id}/students/${personId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify(body),
+        },
+      );
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(
+          (json as { detail?: string }).detail ?? "Save failed.",
+        );
       }
     },
-    onSuccess: (_d, action) => {
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["intakes", id] });
-      qc.invalidateQueries({ queryKey: ["intakes", "list"] });
-      snackbar.show(action === "complete" ? "Intake marked complete" : "Intake reopened");
+    },
+    onError: (e: Error) => snackbar.show(e.message, "error"),
+  });
+
+  const convert = useMutation({
+    mutationFn: async () => {
+      if (!id) return null;
+      const res = await fetch(`/api/intakes/${id}/convert`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: "{}",
+      });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(
+          (json as { detail?: string }).detail ?? "Convert failed.",
+        );
+      }
+      return (await res.json()) as { engagement_ids: string[] };
+    },
+    onSuccess: (result) => {
+      qc.invalidateQueries({ queryKey: ["intakes", id] });
+      qc.invalidateQueries({ queryKey: ["engagements", "list"] });
+      if (result && result.engagement_ids.length === 1) {
+        snackbar.show("Engagement created.");
+        navigate(`/engagements/${result.engagement_ids[0]}`);
+      } else if (result) {
+        snackbar.show(`${result.engagement_ids.length} engagements created.`);
+      }
     },
     onError: (e: Error) => snackbar.show(e.message, "error"),
   });
@@ -214,27 +238,11 @@ export function IntakeForm() {
     );
   }
 
-  const isComplete = !!intake.data.completed_at;
-
   return (
     <Stack spacing={3}>
       <PageHeader
-        title={
-          <Stack direction="row" alignItems="center" spacing={1}>
-            <Box component="span">Intake</Box>
-            <StatusChip
-              size="small"
-              label={isComplete ? "completed" : "in progress"}
-              tone={isComplete ? "success" : "info"}
-              variant="outlined"
-            />
-          </Stack>
-        }
-        subtitle={
-          isComplete
-            ? `Completed ${dayjs(intake.data.completed_at!).format("MMM D, YYYY")} · intake date ${dayjs(intake.data.intake_date).format("MMM D, YYYY")}`
-            : `Intake date ${dayjs(intake.data.intake_date).format("MMM D, YYYY")} — changes save automatically.`
-        }
+        title="Intake"
+        subtitle="Changes save automatically."
         breadcrumbs={
           <Breadcrumbs>
             <MuiLink component={RouterLink} to="/intakes" color="inherit" underline="hover">
@@ -272,33 +280,6 @@ export function IntakeForm() {
               anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
               transformOrigin={{ vertical: "top", horizontal: "right" }}
             >
-              {isComplete ? (
-                <MenuItem
-                  disabled={toggleComplete.isPending}
-                  onClick={() => {
-                    setMenuAnchor(null);
-                    toggleComplete.mutate("reopen");
-                  }}
-                >
-                  <ListItemIcon>
-                    <ReplayIcon fontSize="small" />
-                  </ListItemIcon>
-                  <ListItemText>Reopen</ListItemText>
-                </MenuItem>
-              ) : (
-                <MenuItem
-                  disabled={toggleComplete.isPending}
-                  onClick={() => {
-                    setMenuAnchor(null);
-                    toggleComplete.mutate("complete");
-                  }}
-                >
-                  <ListItemIcon>
-                    <CheckCircleOutlineIcon fontSize="small" />
-                  </ListItemIcon>
-                  <ListItemText>Mark complete</ListItemText>
-                </MenuItem>
-              )}
               <MenuItem
                 onClick={() => {
                   setMenuAnchor(null);
@@ -316,10 +297,23 @@ export function IntakeForm() {
         }
       />
 
-      {/* Roster sections collapse into accordions on top so the
-          consultant can capture them once, fold them away, and have
-          the notes editor span the full width for the rest of the
-          meeting. */}
+      <IntakeHeaderStrip
+        intakeDate={intake.data.intake_date}
+        referralSource={intake.data.referral_source}
+        outcome={intake.data.outcome}
+        onIntakeDateChange={(v) => patch.mutate({ intake_date: v })}
+        onReferralSourceChange={(v) => patch.mutate({ referral_source: v })}
+      />
+
+      <FamilyContextCard
+        intake={intake.data}
+        guardians={intake.data.guardians ?? []}
+        onPatch={(body) => patch.mutate(body as Record<string, unknown>)}
+      />
+
+      {/* Roster accordions — the consultant picks who's on this
+          intake from the family. Guardian/student management is
+          unchanged from the previous form. */}
       <GuardiansSection
         intakeId={intake.data.id}
         familyId={intake.data.family_id}
@@ -333,6 +327,31 @@ export function IntakeForm() {
         intakeStudents={intake.data.students ?? []}
         familyStudents={family.data?.students ?? []}
         loading={family.isPending}
+      />
+
+      {(intake.data.students ?? []).map((s) => (
+        <StudentDiscoveryCard
+          key={s.id}
+          student={s}
+          onPatch={(body) => patchStudent.mutate({ personId: s.id, body })}
+        />
+      ))}
+
+      <FitOutcomeCard
+        intake={intake.data}
+        engagementTypes={engagementTypes.data ?? []}
+        onPatchIntake={(body) => patch.mutate(body as Record<string, unknown>)}
+        onPatchStudent={(personId, body) =>
+          patchStudent.mutate({ personId, body })
+        }
+        onConvert={async () => {
+          try {
+            return await convert.mutateAsync();
+          } catch {
+            return null;
+          }
+        }}
+        converting={convert.isPending}
       />
 
       <IntakeNotesSection
