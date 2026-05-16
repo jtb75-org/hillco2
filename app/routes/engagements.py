@@ -1,6 +1,7 @@
+import json
 from datetime import date
 from decimal import Decimal
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 import asyncpg
@@ -83,6 +84,18 @@ class RequirementUpdate(BaseModel):
 
 
 # ---- Helpers ---------------------------------------------------------------
+
+def _decode_jsonb(value: Any) -> Any:
+    """asyncpg returns JSONB as a string by default. The frontend wants
+    a real object, so decode here. Returns None / value unchanged if the
+    column is NULL or already decoded."""
+    if value is None or not isinstance(value, str):
+        return value
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError:
+        return value
+
 
 async def _engagement_or_404(conn, engagement_id: UUID):
     row = await conn.fetchrow(
@@ -284,6 +297,7 @@ async def engagement_detail(
     out["requirements"] = [dict(r) for r in requirements]
     out["financial_summary"] = dict(finsum) if finsum else None
     out["counts"] = dict(counts) if counts else None
+    out["intake_snapshot"] = _decode_jsonb(out.get("intake_snapshot"))
     return out
 
 
