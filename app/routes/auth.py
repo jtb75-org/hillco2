@@ -74,6 +74,30 @@ async def auth_callback(request: Request):
         )
 
         if identity is None:
+            # Could legitimately be "first time seeing this email" — but
+            # could also be "auth_identities row already exists but the
+            # person row was soft-deleted." The first-time INSERT path
+            # below would hit the auth_identities unique constraint in
+            # that second case and 500. Detect it here and bail with a
+            # friendly redirect so the user knows their account is
+            # deactivated (and an admin can reactivate).
+            deactivated = await conn.fetchval(
+                """
+                SELECT 1
+                FROM auth_identities ai
+                JOIN people p ON p.id = ai.person_id
+                WHERE ai.provider = 'google'
+                  AND ai.provider_subject = $1
+                  AND p.deleted_at IS NOT NULL
+                """,
+                email,
+            )
+            if deactivated:
+                log.warning("Sign-in blocked: person soft-deleted (email=%s)", email)
+                return RedirectResponse(
+                    f"{POST_LOGIN_REDIRECT}?login_error=deactivated",
+                    status_code=303,
+                )
             # First time we see this email and they're in allowed_emails:
             # auto-create person + auth + identity, the same way the
             # legacy upsert-into-users path used to do.
