@@ -3,6 +3,7 @@ import {
   Accordion,
   AccordionDetails,
   AccordionSummary,
+  Alert,
   Box,
   Button,
   Card,
@@ -29,7 +30,7 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import { LabeledField } from "../../components/LabeledField";
 import { RichTextEditor } from "../../components/RichTextEditor";
 import { ParentDrawer, type ParentDrawerTarget } from "../families/ParentDrawer";
-import { useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { PromoteDecisionMakerDialog } from "./PromoteDecisionMakerDialog";
 import type { DecisionMaker, IntakeDetail, IntakeGuardian } from "./intakeTypes";
@@ -82,6 +83,7 @@ export function FamilyContextCard({
 
         <Box sx={{ mb: 2 }}>
           <DecisionMakersAccordion
+            familyId={intake.family_id}
             people={intake.decision_makers}
             guardians={guardians}
             onChange={(next) => onPatch({ decision_makers: next })}
@@ -215,11 +217,13 @@ export function FamilyContextCard({
 // ---- Decision-makers accordion --------------------------------------------
 
 function DecisionMakersAccordion({
+  familyId,
   people,
   guardians,
   onChange,
   onOpenDecisionMaker,
 }: {
+  familyId: string;
   people: DecisionMaker[];
   guardians: IntakeGuardian[];
   onChange: (next: DecisionMaker[]) => void;
@@ -285,6 +289,7 @@ function DecisionMakersAccordion({
         )}
         <AddDecisionMakerDialog
           open={addOpen}
+          familyId={familyId}
           guardians={guardians}
           existing={people}
           onClose={() => setAddOpen(false)}
@@ -356,20 +361,26 @@ function DecisionMakerCard({
 
 function AddDecisionMakerDialog({
   open,
+  familyId,
   guardians,
   existing,
   onClose,
   onSubmit,
 }: {
   open: boolean;
+  familyId: string;
   guardians: IntakeGuardian[];
   existing: DecisionMaker[];
   onClose: () => void;
   onSubmit: (dm: DecisionMaker) => void;
 }) {
-  const [pickerValue, setPickerValue] = useState<string>(""); // "" = free-text, otherwise guardian.id
-  const [name, setName] = useState("");
+  const qc = useQueryClient();
+  const [pickerValue, setPickerValue] = useState<string>(""); // "" = create new, otherwise guardian.id
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [relation, setRelation] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
 
   // Hide guardians who are already represented as decision-makers via
   // person_id — keeps the list from getting weird.
@@ -380,12 +391,64 @@ function AddDecisionMakerDialog({
 
   const reset = () => {
     setPickerValue("");
-    setName("");
+    setFirstName("");
+    setLastName("");
     setRelation("");
+    setEmail("");
+    setPhone("");
+    createGuardian.reset();
   };
+
+  // Create a real family guardian when the user fills in the form.
+  // Linking an existing guardian doesn't hit this — just emits the DM.
+  const createGuardian = useMutation({
+    mutationFn: async () => {
+      const rel = relation.toLowerCase();
+      const role: "mom" | "dad" | "guardian" | "other" = (() => {
+        if (rel.includes("mom") || rel.includes("mother")) return "mom";
+        if (rel.includes("dad") || rel.includes("father")) return "dad";
+        if (rel.includes("guardian")) return "guardian";
+        return "other";
+      })();
+      const res = await fetch(`/api/families/${familyId}/parents`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          first_name: firstName.trim(),
+          last_name: lastName.trim() || null,
+          email: email.trim() || null,
+          phone: phone.trim() || null,
+          role,
+        }),
+      });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(
+          (json as { detail?: string }).detail ?? "Failed to add guardian.",
+        );
+      }
+      return (await res.json()) as { id: string };
+    },
+    onSuccess: (created) => {
+      // Bubble the linked decision-maker up. The parent PATCHes the
+      // intake's decision_makers array. We also invalidate families
+      // + contacts so the new guardian appears on those pages
+      // immediately.
+      onSubmit({
+        person_id: created.id,
+        name: `${firstName.trim()} ${lastName.trim()}`.trim(),
+        relation: relation.trim(),
+      });
+      qc.invalidateQueries({ queryKey: ["families"] });
+      qc.invalidateQueries({ queryKey: ["contacts", "list"] });
+      reset();
+    },
+  });
 
   const handleSubmit = () => {
     if (pickerValue) {
+      // Link an existing guardian — no API call, no contact creation.
       const g = guardians.find((x) => x.id === pickerValue);
       if (!g) return;
       onSubmit({
@@ -393,17 +456,22 @@ function AddDecisionMakerDialog({
         name: g.name,
         relation: relation || g.role || "",
       });
+      reset();
     } else {
-      if (!name.trim()) return;
-      onSubmit({ name: name.trim(), relation: relation.trim() });
+      if (!firstName.trim()) return;
+      createGuardian.mutate();
     }
-    reset();
   };
+
+  const submitDisabled =
+    createGuardian.isPending ||
+    (!pickerValue && !firstName.trim());
 
   return (
     <Dialog
       open={open}
       onClose={() => {
+        if (createGuardian.isPending) return;
         onClose();
         reset();
       }}
@@ -413,6 +481,11 @@ function AddDecisionMakerDialog({
       <DialogTitle>Add decision-maker</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ pt: 0.5 }}>
+          <Typography variant="caption" color="text.secondary">
+            New decision-makers are added as family guardians so they show
+            up on the family page + in Contacts. Pick an existing guardian
+            to link instead of creating a new one.
+          </Typography>
           {availableGuardians.length > 0 && (
             <LabeledField label="From this family's guardians">
               <TextField
@@ -422,13 +495,17 @@ function AddDecisionMakerDialog({
                 value={pickerValue}
                 onChange={(e) => {
                   setPickerValue(e.target.value);
-                  const g = guardians.find((x) => x.id === e.target.value);
-                  if (g) setName(g.name);
+                  if (e.target.value) {
+                    setFirstName("");
+                    setLastName("");
+                    setEmail("");
+                    setPhone("");
+                  }
                 }}
                 SelectProps={{ displayEmpty: true }}
               >
                 <MenuItem value="">
-                  <em>— Free text below —</em>
+                  <em>— Create new below —</em>
                 </MenuItem>
                 {availableGuardians.map((g) => (
                   <MenuItem key={g.id} value={g.id}>
@@ -438,16 +515,48 @@ function AddDecisionMakerDialog({
               </TextField>
             </LabeledField>
           )}
-          <LabeledField label="Name" required>
-            <TextField
-              size="small"
-              fullWidth
-              autoFocus
-              disabled={!!pickerValue}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </LabeledField>
+          {!pickerValue && (
+            <>
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                <LabeledField label="First name" required>
+                  <TextField
+                    size="small"
+                    fullWidth
+                    autoFocus
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                  />
+                </LabeledField>
+                <LabeledField label="Last name">
+                  <TextField
+                    size="small"
+                    fullWidth
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                  />
+                </LabeledField>
+              </Stack>
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                <LabeledField label="Email">
+                  <TextField
+                    type="email"
+                    size="small"
+                    fullWidth
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+                </LabeledField>
+                <LabeledField label="Phone">
+                  <TextField
+                    size="small"
+                    fullWidth
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                  />
+                </LabeledField>
+              </Stack>
+            </>
+          )}
           <LabeledField label="Relation">
             <TextField
               size="small"
@@ -457,23 +566,28 @@ function AddDecisionMakerDialog({
               onChange={(e) => setRelation(e.target.value)}
             />
           </LabeledField>
+          {createGuardian.error && (
+            <Alert severity="error">{createGuardian.error.message}</Alert>
+          )}
         </Stack>
       </DialogContent>
       <DialogActions>
         <Button
           onClick={() => {
+            if (createGuardian.isPending) return;
             onClose();
             reset();
           }}
+          disabled={createGuardian.isPending}
         >
           Cancel
         </Button>
         <Button
           variant="contained"
           onClick={handleSubmit}
-          disabled={!pickerValue && !name.trim()}
+          disabled={submitDisabled}
         >
-          Add
+          {createGuardian.isPending ? "Adding…" : "Add"}
         </Button>
       </DialogActions>
     </Dialog>
