@@ -3,6 +3,7 @@ import {
   Alert,
   Box,
   Button,
+  Chip,
   MenuItem,
   Stack,
   Table,
@@ -21,10 +22,10 @@ import { api } from "../../api/client";
 import { DataTableContainer } from "../../components/DataTableContainer";
 import { DataToolbar } from "../../components/DataToolbar";
 import { PageHeader } from "../../components/PageHeader";
-import { StatusChip } from "../../components/StatusChip";
 import { useSnackbar } from "../../components/Snackbar";
 
 import { PickOrCreateFamilyDialog } from "./PickOrCreateFamilyDialog";
+import { OUTCOME_STATUS_DISPLAY, type Outcome } from "./intakeTypes";
 
 // GET /api/intakes returns plain dicts; hand-typed for the columns we
 // render. Backend joins family + consultant so the list renders in one
@@ -38,6 +39,8 @@ interface IntakeRow {
   consultant_name: string | null;
   notes: string | null;
   completed_at: string | null;
+  outcome: Outcome | null;
+  outcome_at: string | null;
   created_at: string;
 }
 
@@ -110,8 +113,8 @@ export function IntakesList() {
           onChange={(e) => setStatus(e.target.value as StatusFilter)}
           sx={{ minWidth: 160 }}
         >
-          <MenuItem value="active">Active</MenuItem>
-          <MenuItem value="completed">Completed</MenuItem>
+          <MenuItem value="active">Open</MenuItem>
+          <MenuItem value="completed">Closed</MenuItem>
           <MenuItem value="all">All</MenuItem>
         </TextField>
       </DataToolbar>
@@ -160,12 +163,20 @@ export function IntakesList() {
                   {dayjs(row.intake_date).format("MMM D, YYYY")}
                 </TableCell>
                 <TableCell>
-                  <StatusChip
-                    size="small"
-                    label={row.completed_at ? "completed" : "in progress"}
-                    tone={row.completed_at ? "success" : "info"}
-                    variant="outlined"
-                  />
+                  {row.outcome ? (
+                    <Chip
+                      size="small"
+                      label={OUTCOME_STATUS_DISPLAY[row.outcome].label}
+                      color={OUTCOME_STATUS_DISPLAY[row.outcome].color}
+                    />
+                  ) : (
+                    <Chip
+                      size="small"
+                      label="In progress"
+                      color="primary"
+                      variant="outlined"
+                    />
+                  )}
                 </TableCell>
                 <TableCell>
                   {row.consultant_name ?? (
