@@ -19,6 +19,7 @@ import {
   Typography,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
+import ArrowDropDownIcon from "@mui/icons-material/ArrowDropDown";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import CircleOutlinedIcon from "@mui/icons-material/CircleOutlined";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
@@ -33,6 +34,7 @@ import {
   ActivityKindBody,
   KIND_HAS_BODY,
 } from "./ActivityKindBodies";
+import { AddSchoolVisitDialog, AddSchoolRecommendationDialog } from "./AddSchoolActivityDialogs";
 
 type TaskStatus =
   | "not_started"
@@ -86,7 +88,8 @@ export function ActivitiesCard({ engagementId }: { engagementId: string }) {
   const qc = useQueryClient();
   const snackbar = useSnackbar();
   const [showSkipped, setShowSkipped] = useState(false);
-  const [addOpen, setAddOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState<"task" | "visit" | "recommendation" | null>(null);
+  const [addMenuAnchor, setAddMenuAnchor] = useState<HTMLElement | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const toggleExpand = (id: string) => {
@@ -210,9 +213,46 @@ export function ActivitiesCard({ engagementId }: { engagementId: string }) {
           }
           sx={{ ml: 1 }}
         />
-        <Button size="small" startIcon={<AddIcon />} onClick={() => setAddOpen(true)}>
+        <Button
+          size="small"
+          startIcon={<AddIcon />}
+          endIcon={<ArrowDropDownIcon />}
+          onClick={(e) => setAddMenuAnchor(e.currentTarget)}
+        >
           Add activity
         </Button>
+        <Menu
+          anchorEl={addMenuAnchor}
+          open={!!addMenuAnchor}
+          onClose={() => setAddMenuAnchor(null)}
+          anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+          transformOrigin={{ vertical: "top", horizontal: "right" }}
+        >
+          <MenuItem
+            onClick={() => {
+              setAddMenuAnchor(null);
+              setAddOpen("task");
+            }}
+          >
+            Bespoke task
+          </MenuItem>
+          <MenuItem
+            onClick={() => {
+              setAddMenuAnchor(null);
+              setAddOpen("visit");
+            }}
+          >
+            Campus visit
+          </MenuItem>
+          <MenuItem
+            onClick={() => {
+              setAddMenuAnchor(null);
+              setAddOpen("recommendation");
+            }}
+          >
+            School recommendation
+          </MenuItem>
+        </Menu>
       </Stack>
 
       {tasks.isPending ? (
@@ -260,14 +300,32 @@ export function ActivitiesCard({ engagementId }: { engagementId: string }) {
       )}
 
       <AddActivityDialog
-        open={addOpen}
+        open={addOpen === "task"}
         engagementId={engagementId}
         nextSortOrder={
           (rows[rows.length - 1]?.sort_order ?? 0) + 10
         }
-        onClose={() => setAddOpen(false)}
+        onClose={() => setAddOpen(null)}
         onCreated={() => {
-          setAddOpen(false);
+          setAddOpen(null);
+          invalidate();
+        }}
+      />
+      <AddSchoolVisitDialog
+        open={addOpen === "visit"}
+        engagementId={engagementId}
+        onClose={() => setAddOpen(null)}
+        onCreated={() => {
+          setAddOpen(null);
+          invalidate();
+        }}
+      />
+      <AddSchoolRecommendationDialog
+        open={addOpen === "recommendation"}
+        engagementId={engagementId}
+        onClose={() => setAddOpen(null)}
+        onCreated={() => {
+          setAddOpen(null);
           invalidate();
         }}
       />
