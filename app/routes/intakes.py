@@ -635,8 +635,6 @@ async def update_intake(
     `completed_at` in the same statement; null → non-null also fires
     the family lifecycle auto-flip rules. Reverse (non-null → null)
     clears both timestamps but doesn't auto-revert the family stage."""
-    prev = await _intake_or_404(conn, intake_id)
-
     fields = body.model_dump(exclude_unset=True)
     if "notes" in fields:
         fields["notes"] = (fields["notes"] or "").strip() or None
@@ -674,18 +672,20 @@ async def update_intake(
         set_fragments.append(f"{col} = ${len(args)}{cast}")
     set_sql = ", ".join(set_fragments)
 
-    row = await conn.fetchrow(
-        f"UPDATE intakes SET {set_sql} WHERE id = $1 RETURNING *",
-        *args,
-    )
-
-    if will_transition:
-        await _flip_family_lifecycle(
-            conn,
-            prev["family_id"],
-            prev_outcome=prev["outcome"],
-            next_outcome=fields["outcome"],
+    async with conn.transaction():
+        prev = await _intake_or_404(conn, intake_id)
+        row = await conn.fetchrow(
+            f"UPDATE intakes SET {set_sql} WHERE id = $1 RETURNING *",
+            *args,
         )
+
+        if will_transition:
+            await _flip_family_lifecycle(
+                conn,
+                prev["family_id"],
+                prev_outcome=prev["outcome"],
+                next_outcome=fields["outcome"],
+            )
 
     return _intake_row_to_response(row)
 
@@ -772,97 +772,98 @@ async def convert_intake(
     duplicate active engagement of the same type already exists for
     that (intake, student). Wraps the whole thing in a row lock on the
     intake so concurrent calls can't double-fire."""
-    # SELECT ... FOR UPDATE serializes the convert flow per intake.
-    intake = await conn.fetchrow(
-        "SELECT * FROM intakes WHERE id = $1 AND deleted_at IS NULL FOR UPDATE",
-        intake_id,
-    )
-    if not intake:
-        raise HTTPException(status_code=404, detail="Intake not found")
-    if intake["converted_at"] is not None:
-        raise HTTPException(
-            status_code=409,
-            detail="Intake has already been converted.",
+    engagement_ids: list[str] = []
+    async with conn.transaction():
+        # SELECT ... FOR UPDATE serializes the convert flow per intake.
+        intake = await conn.fetchrow(
+            "SELECT * FROM intakes WHERE id = $1 AND deleted_at IS NULL FOR UPDATE",
+            intake_id,
         )
-    if intake["outcome"] != "converting":
-        raise HTTPException(
-            status_code=400,
-            detail="Intake outcome must be 'converting' to convert.",
-        )
-
-    candidates = await conn.fetch(
-        """
-        SELECT ist.*, p.kind
-        FROM intake_students ist
-        JOIN people p ON p.id = ist.person_id AND p.deleted_at IS NULL
-        WHERE ist.intake_id = $1 AND ist.candidate = TRUE
-        """,
-        intake_id,
-    )
-    if not candidates:
-        raise HTTPException(
-            status_code=400,
-            detail="At least one student must be a candidate.",
-        )
-
-    for c in candidates:
-        if not c["recommended_engagement_type"]:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    "Every candidate student needs a "
-                    "recommended_engagement_type."
-                ),
-            )
-        await _validate_engagement_type(conn, c["recommended_engagement_type"])
-        # Duplicate guard — block creating a second in_progress/on_hold
-        # engagement of the same type for the same student.
-        dup = await conn.fetchval(
-            """
-            SELECT 1 FROM engagements
-            WHERE family_id = $1
-              AND student_id = $2
-              AND engagement_type = $3
-              AND status IN ('in_progress', 'on_hold')
-              AND deleted_at IS NULL
-            LIMIT 1
-            """,
-            intake["family_id"], c["person_id"], c["recommended_engagement_type"],
-        )
-        if dup:
+        if not intake:
+            raise HTTPException(status_code=404, detail="Intake not found")
+        if intake["converted_at"] is not None:
             raise HTTPException(
                 status_code=409,
-                detail=(
-                    f"An active {c['recommended_engagement_type']} "
-                    f"engagement already exists for this student."
-                ),
+                detail="Intake has already been converted.",
+            )
+        if intake["outcome"] != "converting":
+            raise HTTPException(
+                status_code=400,
+                detail="Intake outcome must be 'converting' to convert.",
             )
 
-    engagement_ids: list[str] = []
-    for c in candidates:
-        snapshot = _build_intake_snapshot(dict(intake), dict(c))
-        eng_id = await conn.fetchval(
+        candidates = await conn.fetch(
             """
-            INSERT INTO engagements (
-              family_id, student_id, intake_id,
-              engagement_type, status, start_date,
-              lead_consultant_id, intake_snapshot
-            ) VALUES ($1, $2, $3, $4, 'in_progress', CURRENT_DATE, $5, $6::jsonb)
-            RETURNING id
+            SELECT ist.*, p.kind
+            FROM intake_students ist
+            JOIN people p ON p.id = ist.person_id AND p.deleted_at IS NULL
+            WHERE ist.intake_id = $1 AND ist.candidate = TRUE
             """,
-            intake["family_id"], c["person_id"], intake_id,
-            c["recommended_engagement_type"], user["id"], snapshot,
+            intake_id,
         )
-        engagement_ids.append(str(eng_id))
+        if not candidates:
+            raise HTTPException(
+                status_code=400,
+                detail="At least one student must be a candidate.",
+            )
 
-    await conn.execute(
-        "UPDATE intakes SET converted_at = NOW() WHERE id = $1",
-        intake_id,
-    )
-    await conn.execute(
-        "UPDATE families SET lifecycle_stage = 'client' WHERE id = $1",
-        intake["family_id"],
-    )
+        for c in candidates:
+            if not c["recommended_engagement_type"]:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Every candidate student needs a "
+                        "recommended_engagement_type."
+                    ),
+                )
+            await _validate_engagement_type(conn, c["recommended_engagement_type"])
+            # Duplicate guard — block creating a second in_progress/on_hold
+            # engagement of the same type for the same student.
+            dup = await conn.fetchval(
+                """
+                SELECT 1 FROM engagements
+                WHERE family_id = $1
+                  AND student_id = $2
+                  AND engagement_type = $3
+                  AND status IN ('in_progress', 'on_hold')
+                  AND deleted_at IS NULL
+                LIMIT 1
+                """,
+                intake["family_id"], c["person_id"], c["recommended_engagement_type"],
+            )
+            if dup:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"An active {c['recommended_engagement_type']} "
+                        f"engagement already exists for this student."
+                    ),
+                )
+
+        for c in candidates:
+            snapshot = _build_intake_snapshot(dict(intake), dict(c))
+            eng_id = await conn.fetchval(
+                """
+                INSERT INTO engagements (
+                  family_id, student_id, intake_id,
+                  engagement_type, status, start_date,
+                  lead_consultant_id, intake_snapshot
+                ) VALUES ($1, $2, $3, $4, 'in_progress', CURRENT_DATE, $5, $6::jsonb)
+                RETURNING id
+                """,
+                intake["family_id"], c["person_id"], intake_id,
+                c["recommended_engagement_type"], user["id"], snapshot,
+            )
+            engagement_ids.append(str(eng_id))
+
+        await conn.execute(
+            "UPDATE intakes SET converted_at = NOW() WHERE id = $1",
+            intake_id,
+        )
+        await conn.execute(
+            "UPDATE families SET lifecycle_stage = 'client' WHERE id = $1",
+            intake["family_id"],
+        )
 
     return {"engagement_ids": engagement_ids}
 
