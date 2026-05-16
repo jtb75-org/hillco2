@@ -65,14 +65,21 @@ class StatusUpdate(BaseModel):
     status: EngagementStatus
 
 
+RequirementStatus = Literal["needed", "requested", "received", "waived"]
+
+
 class RequirementCreate(BaseModel):
     kind: str = Field(..., min_length=1)
     value: str | None = None
+    status: RequirementStatus | None = None
+    notes: str | None = None
 
 
 class RequirementUpdate(BaseModel):
     kind: str | None = Field(default=None, min_length=1)
     value: str | None = None
+    status: RequirementStatus | None = None
+    notes: str | None = None
 
 
 # ---- Helpers ---------------------------------------------------------------
@@ -231,7 +238,7 @@ async def engagement_detail(
 
     requirements = await conn.fetch(
         """
-        SELECT id, kind, value, created_at, updated_at
+        SELECT id, kind, value, status, notes, created_at, updated_at
         FROM engagement_requirements
         WHERE engagement_id = $1
         ORDER BY kind, id
@@ -360,7 +367,8 @@ async def list_requirements(
     await _engagement_or_404(conn, engagement_id)
     rows = await conn.fetch(
         """
-        SELECT id, engagement_id, kind, value, created_at, updated_at
+        SELECT id, engagement_id, kind, value, status, notes,
+               created_at, updated_at
         FROM engagement_requirements
         WHERE engagement_id = $1
         ORDER BY kind, id
@@ -378,13 +386,20 @@ async def add_requirement(
     conn=Depends(get_conn),
 ):
     await _engagement_or_404(conn, engagement_id)
+    value = (body.value or "").strip() or None
+    notes = (body.notes or "").strip() or None
+    # If the operator created this row WITH a value already populated
+    # and didn't explicitly set status, infer 'received' to match the
+    # migration 0013 backfill rule. Otherwise let the DB default fire.
+    status = body.status or ("received" if value else None)
     row = await conn.fetchrow(
         """
-        INSERT INTO engagement_requirements (engagement_id, kind, value)
-        VALUES ($1, $2, $3)
-        RETURNING id, engagement_id, kind, value, created_at, updated_at
+        INSERT INTO engagement_requirements (engagement_id, kind, value, status, notes)
+        VALUES ($1, $2, $3, COALESCE($4, 'needed'), $5)
+        RETURNING id, engagement_id, kind, value, status, notes,
+                  created_at, updated_at
         """,
-        engagement_id, body.kind.strip(), (body.value or "").strip() or None,
+        engagement_id, body.kind.strip(), value, status, notes,
     )
     return dict(row)
 
@@ -404,13 +419,16 @@ async def update_requirement(
         fields["kind"] = fields["kind"].strip()
     if "value" in fields:
         fields["value"] = (fields["value"] or "").strip() or None
+    if "notes" in fields:
+        fields["notes"] = (fields["notes"] or "").strip() or None
 
     set_sql = ", ".join(f"{col} = ${i+2}" for i, col in enumerate(fields))
     row = await conn.fetchrow(
         f"""
         UPDATE engagement_requirements SET {set_sql}
         WHERE id = $1
-        RETURNING id, engagement_id, kind, value, created_at, updated_at
+        RETURNING id, engagement_id, kind, value, status, notes,
+                  created_at, updated_at
         """,
         requirement_id,
         *fields.values(),
