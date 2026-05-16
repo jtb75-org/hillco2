@@ -527,6 +527,21 @@ async def delete_person(
     )
     if not exists:
         raise HTTPException(status_code=404, detail="Person not found")
+    # Staff accounts (anyone who can sign in) get deactivated via
+    # /admin/users/{id}/deactivate, which also flips auth.status. The
+    # generic person-delete path shouldn't touch them.
+    has_auth = await conn.fetchval(
+        "SELECT 1 FROM auth_identities WHERE person_id = $1",
+        person_id,
+    )
+    if has_auth:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "This is a staff account. Deactivate via "
+                "Admin → Users instead."
+            ),
+        )
     await conn.execute(
         "UPDATE people SET deleted_at = NOW() WHERE id = $1",
         person_id,
