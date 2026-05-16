@@ -344,8 +344,15 @@ async def delete_engagement(
     FK. Billing records (agreements / invoices) intentionally RESTRICT
     and surface as a 409 so the operator clears financial history
     explicitly.
+
+    If the deleted engagement came from an intake convert AND no other
+    engagements remain on that intake, clear intake.converted_at so the
+    intake re-opens for another convert pass. Lifecycle_stage on the
+    family is left alone — that's a family-wide flag and other intakes
+    may still legitimately mark the family as a client.
     """
-    await _engagement_or_404(conn, engagement_id)
+    eng = await _engagement_or_404(conn, engagement_id)
+    intake_id = eng["intake_id"]
     try:
         await conn.execute("DELETE FROM engagements WHERE id = $1", engagement_id)
     except asyncpg.ForeignKeyViolationError as exc:
@@ -353,6 +360,16 @@ async def delete_engagement(
             status_code=409,
             detail="Engagement still has dependent records that block deletion.",
         ) from exc
+    if intake_id is not None:
+        remaining = await conn.fetchval(
+            "SELECT 1 FROM engagements WHERE intake_id = $1 LIMIT 1",
+            intake_id,
+        )
+        if not remaining:
+            await conn.execute(
+                "UPDATE intakes SET converted_at = NULL WHERE id = $1",
+                intake_id,
+            )
     return None
 
 
