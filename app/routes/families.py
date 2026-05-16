@@ -588,23 +588,51 @@ async def hard_delete_family(
         lists get `people.deleted_at = NOW()` (soft delete). Listed
         people stay in the address book; they just lose their family
         link.
-      * Engagements ON DELETE RESTRICT — if any engagement references
-        the family (active OR soft-deleted) we 409. The operator has
-        to detach / hard-delete those first.
+      * Engagements: ACTIVE engagements (deleted_at IS NULL) 409 — the
+        operator has to close them first. Already soft-deleted
+        engagements get hard-deleted inside this transaction (their
+        tasks / requirements / time entries / notes / etc. CASCADE).
+        Soft-deleted engagements with attached agreements or invoices
+        still 409 — those are billing records and can't be swept.
     """
     family = await _family_or_404(conn, family_id)
 
-    # Block if any engagements still reference the family.
-    eng_count = await conn.fetchval(
-        "SELECT COUNT(*) FROM engagements WHERE family_id = $1",
+    # Block on active engagements only — soft-deleted ones get swept
+    # below as part of this hard-delete.
+    active_eng = await conn.fetchval(
+        "SELECT COUNT(*) FROM engagements WHERE family_id = $1 AND deleted_at IS NULL",
         family_id,
     )
-    if eng_count:
+    if active_eng:
         raise HTTPException(
             status_code=409,
             detail=(
-                f"{eng_count} engagement(s) still reference this family — "
-                "remove or detach them before hard-deleting."
+                f"{active_eng} active engagement(s) still reference this "
+                "family — close or remove them before hard-deleting."
+            ),
+        )
+
+    # Soft-deleted engagements still block if they carry billing
+    # records. Agreements / invoices have ON DELETE RESTRICT, and
+    # auto-sweeping financial history is a step too far.
+    billing_blocked = await conn.fetchval(
+        """
+        SELECT COUNT(*) FROM engagements e
+        WHERE e.family_id = $1
+          AND e.deleted_at IS NOT NULL
+          AND (
+            EXISTS (SELECT 1 FROM agreements   WHERE engagement_id = e.id)
+            OR EXISTS (SELECT 1 FROM invoices  WHERE engagement_id = e.id)
+          )
+        """,
+        family_id,
+    )
+    if billing_blocked:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"{billing_blocked} soft-deleted engagement(s) on this family "
+                "still carry agreements or invoices. Clear those records first."
             ),
         )
 
@@ -612,6 +640,14 @@ async def hard_delete_family(
     preserve_s = set(str(u) for u in body.preserve_student_ids)
 
     async with conn.transaction():
+        # Sweep soft-deleted engagements. Their dependents (tasks,
+        # requirements, expenses, followups, learning_profiles, notes,
+        # reports, school_recommendations, school_visits, time_entries,
+        # communications) all CASCADE off the FK.
+        await conn.execute(
+            "DELETE FROM engagements WHERE family_id = $1 AND deleted_at IS NOT NULL",
+            family_id,
+        )
         # Identify which guardians / students are linked to this family.
         attached_g = await conn.fetch(
             "SELECT person_id FROM family_guardians WHERE family_id = $1",
