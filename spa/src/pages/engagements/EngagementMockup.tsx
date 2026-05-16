@@ -922,16 +922,35 @@ function ActivityRow({
             color={display.color}
             variant={completed ? "filled" : "outlined"}
           />
-          <IconButton
-            size="small"
+          <Box
+            component="span"
+            role="button"
+            tabIndex={0}
+            aria-label="Activity menu"
             onClick={(e) => {
               e.stopPropagation();
-              setMenuAnchor(e.currentTarget);
+              setMenuAnchor(e.currentTarget as HTMLElement);
             }}
-            aria-label="Activity menu"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.stopPropagation();
+                setMenuAnchor(e.currentTarget as HTMLElement);
+              }
+            }}
+            sx={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 28,
+              height: 28,
+              borderRadius: "50%",
+              cursor: "pointer",
+              color: "text.secondary",
+              "&:hover": { bgcolor: "action.hover" },
+            }}
           >
             <MoreVertIcon fontSize="small" />
-          </IconButton>
+          </Box>
           <Menu
             anchorEl={menuAnchor}
             open={!!menuAnchor}
@@ -1033,15 +1052,34 @@ function ActivityStatusButton({
         : status === "blocked"
           ? "error.main"
           : "text.disabled";
+  // Rendered as <Box role="button"> rather than IconButton because
+  // we live inside an AccordionSummary, which is itself a <button>;
+  // nesting two real <button>s trips validateDOMNesting.
+  const handle = (e: React.SyntheticEvent) => {
+    e.stopPropagation();
+    cycle();
+  };
   return (
-    <IconButton
-      size="small"
+    <Box
+      component="span"
+      role="button"
+      tabIndex={0}
       aria-label="Cycle status"
-      onClick={(e) => {
-        e.stopPropagation();
-        cycle();
+      onClick={handle}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") handle(e);
       }}
-      sx={{ color }}
+      sx={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: 28,
+        height: 28,
+        borderRadius: "50%",
+        cursor: "pointer",
+        color,
+        "&:hover": { bgcolor: "action.hover" },
+      }}
     >
       {status === "completed" ? (
         <CheckCircleOutlineIcon fontSize="small" />
@@ -1050,7 +1088,7 @@ function ActivityStatusButton({
       ) : (
         <RadioButtonUncheckedIcon fontSize="small" />
       )}
-    </IconButton>
+    </Box>
   );
 }
 
