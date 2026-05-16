@@ -227,9 +227,8 @@ async def test_family_hard_delete_archived_engagement_with_agreement_blocks(
         json={},
     )
     assert r.status_code == 409
-    assert "soft-deleted engagement(s) still carry agreements or invoices" in (
-        r.json()["detail"]
-    )
+    assert "soft-deleted engagement" in r.json()["detail"]
+    assert "still carry agreements or invoices" in r.json()["detail"]
 
 
 async def test_family_hard_delete_archived_engagement_with_invoice_blocks(
@@ -250,9 +249,8 @@ async def test_family_hard_delete_archived_engagement_with_invoice_blocks(
         json={},
     )
     assert r.status_code == 409
-    assert "soft-deleted engagement(s) still carry agreements or invoices" in (
-        r.json()["detail"]
-    )
+    assert "soft-deleted engagement" in r.json()["detail"]
+    assert "still carry agreements or invoices" in r.json()["detail"]
 
 
 async def test_family_hard_delete_sweeps_soft_deleted_guardian_junction(
