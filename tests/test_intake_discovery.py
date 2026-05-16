@@ -6,7 +6,6 @@ Pydantic models, endpoint updates, convert flow, and lifecycle rules.
 
 import pytest
 
-
 SKIP_REASON = "scaffold - fill in with PR-Backend implementation"
 pytestmark = pytest.mark.skip(reason=SKIP_REASON)
 
