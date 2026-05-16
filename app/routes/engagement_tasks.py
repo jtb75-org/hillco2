@@ -410,18 +410,22 @@ async def add_task(
     return out
 
 
-@router.post("/engagements/{engagement_id}/tasks/bulk-from-catalog", status_code=201)
-async def bulk_from_catalog(
+async def seed_catalog_for_engagement(
+    conn,
+    *,
     engagement_id: UUID,
-    body: BulkFromCatalog,
-    user=Depends(require_user),
-    conn=Depends(get_conn),
-):
-    """Snapshot the selected service_items into engagement_tasks. Idempotent
+    engagement_type: str,
+    user_id: UUID,
+    service_item_ids: list[UUID] | None = None,
+) -> dict:
+    """Snapshot applicable service_items into engagement_tasks. Idempotent
     per (engagement_id, service_item_id) — already-seeded items are skipped
-    so calling this again to add newly-checked items is safe."""
-    eng = await _engagement_or_404(conn, engagement_id)
+    so callers can re-run safely.
 
+    service_item_ids=None means "every applicable item for engagement_type",
+    used by the intake-convert auto-seed. A list means "only these IDs that
+    are also applicable", used by the explicit bulk-from-catalog endpoint.
+    """
     items = await conn.fetch(
         """
         SELECT si.id, si.phase_id, si.title, si.description, si.sort_order,
@@ -436,11 +440,12 @@ async def bulk_from_catalog(
         JOIN catalog_phases cp
           ON cp.id = si.phase_id
          AND cp.deleted_at IS NULL
-        WHERE si.id = ANY($1::uuid[])
-          AND si.deleted_at IS NULL
-          AND et.code = $2
+        WHERE si.deleted_at IS NULL
+          AND et.code = $1
+          AND ($2::uuid[] IS NULL OR si.id = ANY($2::uuid[]))
+        ORDER BY cp.sort_order, si.sort_order
         """,
-        body.service_item_ids, eng["engagement_type"],
+        engagement_type, service_item_ids,
     )
 
     created_ids: list[UUID] = []
@@ -471,15 +476,35 @@ async def bulk_from_catalog(
             s["title"], s["description"],
             s["default_est_hours"], s["default_billable"],
             s["default_deliverable"], s["default_owner_role"],
-            s["sort_order"], user["id"], s["default_activity_kind"],
+            s["sort_order"], user_id, s["default_activity_kind"],
         )
         created_ids.append(new_id)
+    return {"matched_applicable": len(items), "created_ids": created_ids}
 
+
+@router.post("/engagements/{engagement_id}/tasks/bulk-from-catalog", status_code=201)
+async def bulk_from_catalog(
+    engagement_id: UUID,
+    body: BulkFromCatalog,
+    user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    """Snapshot the selected service_items into engagement_tasks. Idempotent
+    per (engagement_id, service_item_id) — already-seeded items are skipped
+    so calling this again to add newly-checked items is safe."""
+    eng = await _engagement_or_404(conn, engagement_id)
+    result = await seed_catalog_for_engagement(
+        conn,
+        engagement_id=engagement_id,
+        engagement_type=eng["engagement_type"],
+        user_id=user["id"],
+        service_item_ids=body.service_item_ids,
+    )
     return {
         "requested": len(body.service_item_ids),
-        "matched_applicable": len(items),
-        "created": len(created_ids),
-        "task_ids": [str(i) for i in created_ids],
+        "matched_applicable": result["matched_applicable"],
+        "created": len(result["created_ids"]),
+        "task_ids": [str(i) for i in result["created_ids"]],
     }
 
 
