@@ -179,9 +179,10 @@ async def _validate_document_review_doc_ids(
       - owner_type='family',     owner_id = this engagement's family
       - owner_type='student',    owner_id = this engagement's student
     """
-    ids = list(content.get("educational_doc_ids", [])) + list(
+    raw_ids = list(content.get("educational_doc_ids", [])) + list(
         content.get("medical_doc_ids", [])
     )
+    ids = [UUID(str(i)) for i in raw_ids]
     if not ids:
         return
     eng = await conn.fetchrow(
@@ -250,6 +251,7 @@ async def applicable_catalog(
         SELECT si.id, si.phase_id, si.title, si.description, si.sort_order,
                si.default_est_hours, si.default_billable,
                si.default_deliverable, si.default_owner_role,
+               si.default_activity_kind,
                cp.sort_order AS phase_sort_order, cp.title AS phase_title
         FROM service_items si
         JOIN service_item_engagement_types siet ON siet.service_item_id = si.id
@@ -424,7 +426,8 @@ async def bulk_from_catalog(
         """
         SELECT si.id, si.phase_id, si.title, si.description, si.sort_order,
                si.default_est_hours, si.default_billable,
-               si.default_deliverable, si.default_owner_role
+               si.default_deliverable, si.default_owner_role,
+               si.default_activity_kind
         FROM service_items si
         JOIN service_item_engagement_types siet ON siet.service_item_id = si.id
         JOIN engagement_types et
@@ -457,15 +460,18 @@ async def bulk_from_catalog(
               engagement_id, service_item_id, phase_id,
               title, description,
               est_hours, billable, deliverable, owner_role,
-              sort_order, created_by
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+              sort_order, created_by, activity_kind
+            ) VALUES (
+              $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
+              $12::activity_kind
+            )
             RETURNING id
             """,
             engagement_id, s["id"], s["phase_id"],
             s["title"], s["description"],
             s["default_est_hours"], s["default_billable"],
             s["default_deliverable"], s["default_owner_role"],
-            s["sort_order"], user["id"],
+            s["sort_order"], user["id"], s["default_activity_kind"],
         )
         created_ids.append(new_id)
 
