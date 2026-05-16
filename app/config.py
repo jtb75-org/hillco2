@@ -35,6 +35,16 @@ class Settings(BaseSettings):
     # `npm run update-openapi` against a port-forwarded backend).
     expose_docs: bool = False
 
+    # Test-only auth bypass for browser E2E. Disabled by default; when
+    # enabled, requests with the matching header token mint a normal app
+    # session for the configured fixed user.
+    e2e_auth_bypass_enabled: bool = False
+    e2e_auth_bypass_token: str = ""
+    e2e_auth_bypass_header: str = "x-hillco2-e2e-auth"
+    e2e_auth_email: str = "e2e@example.com"
+    e2e_auth_name: str = "E2E Test"
+    e2e_auth_role: str = "admin"
+
     @property
     def allowed_email_set(self) -> set[str]:
         return {e.strip().lower() for e in self.allowed_emails.split(",") if e.strip()}
