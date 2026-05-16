@@ -78,9 +78,16 @@ const ENGAGEMENT_TYPE_LABEL: Record<string, string> = {
   transition_planning: "Transition planning",
 };
 
+interface ExistingEngagement {
+  type: string;
+  status: "active" | "completed";
+  startedOn: string;
+}
+
 interface Candidacy {
   candidate: boolean;
   engagementType: string;
+  existing?: ExistingEngagement[];
 }
 
 /**
@@ -92,7 +99,13 @@ interface Candidacy {
 export function IntakeDiscoveryMockup() {
   const [outcome, setOutcome] = useState<Outcome | null>("converting");
   const [candidacies, setCandidacies] = useState<Record<string, Candidacy>>({
-    "Peter Ballard": { candidate: true, engagementType: "placement" },
+    "Peter Ballard": {
+      candidate: false,
+      engagementType: "iep_support",
+      existing: [
+        { type: "placement", status: "active", startedOn: "2026-04-10" },
+      ],
+    },
     "Anna Ballard": { candidate: true, engagementType: "placement" },
   });
   const setCandidacy = (name: string, next: Partial<Candidacy>) =>
@@ -1131,6 +1144,7 @@ function FitOutcomeCard({
               name={name}
               candidate={c.candidate}
               engagementType={c.engagementType}
+              existing={c.existing}
               onCandidateChange={(v) => onCandidacyChange(name, { candidate: v })}
               onTypeChange={(t) => onCandidacyChange(name, { engagementType: t })}
             />
@@ -1277,20 +1291,27 @@ function StudentCandidacyRow({
   name,
   candidate,
   engagementType,
+  existing,
   onCandidateChange,
   onTypeChange,
 }: {
   name: string;
   candidate: boolean;
   engagementType: string;
+  existing?: ExistingEngagement[];
   onCandidateChange: (v: boolean) => void;
   onTypeChange: (t: string) => void;
 }) {
+  const collidingActive =
+    candidate &&
+    existing?.find(
+      (e) => e.type === engagementType && e.status === "active",
+    );
   return (
     <Stack
       direction={{ xs: "column", sm: "row" }}
       spacing={2}
-      alignItems={{ sm: "center" }}
+      alignItems={{ xs: "stretch", sm: "flex-start" }}
       sx={{
         p: 1.5,
         border: 1,
@@ -1307,11 +1328,28 @@ function StudentCandidacyRow({
           />
         }
         label={
-          <Typography variant="body2" sx={{ fontWeight: 600 }}>
-            {name}
-          </Typography>
+          <Stack spacing={0.5}>
+            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+              {name}
+            </Typography>
+            {existing && existing.length > 0 && (
+              <Stack direction="row" flexWrap="wrap" sx={{ gap: 0.5 }}>
+                {existing.map((e, i) => (
+                  <Chip
+                    key={i}
+                    size="small"
+                    variant="outlined"
+                    color={e.status === "active" ? "info" : "default"}
+                    label={`${ENGAGEMENT_TYPE_LABEL[e.type]} · ${e.status}`}
+                    onClick={() => undefined}
+                    sx={{ cursor: "pointer" }}
+                  />
+                ))}
+              </Stack>
+            )}
+          </Stack>
         }
-        sx={{ minWidth: 240 }}
+        sx={{ minWidth: 240, alignItems: "flex-start", mt: 0.5 }}
       />
       <Box sx={{ flex: 1 }}>
         <LabeledField label="Recommended engagement type">
@@ -1329,6 +1367,16 @@ function StudentCandidacyRow({
             ))}
           </Select>
         </LabeledField>
+        {collidingActive && (
+          <Typography
+            variant="caption"
+            color="warning.main"
+            sx={{ display: "block", mt: 0.5 }}
+          >
+            Already has an active {ENGAGEMENT_TYPE_LABEL[collidingActive.type]} engagement —
+            pick a different scope, or confirm a second instance.
+          </Typography>
+        )}
       </Box>
     </Stack>
   );
