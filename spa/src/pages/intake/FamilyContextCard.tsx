@@ -28,6 +28,8 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 
 import { LabeledField } from "../../components/LabeledField";
 import { RichTextEditor } from "../../components/RichTextEditor";
+import { ParentDrawer, type ParentDrawerTarget } from "../families/ParentDrawer";
+import { useQueryClient } from "@tanstack/react-query";
 
 import type { DecisionMaker, IntakeDetail, IntakeGuardian } from "./intakeTypes";
 
@@ -42,6 +44,19 @@ export function FamilyContextCard({
   guardians: IntakeGuardian[];
   onPatch: (body: Partial<IntakeDetail>) => void;
 }) {
+  const qc = useQueryClient();
+  const [drawerTarget, setDrawerTarget] = useState<ParentDrawerTarget | null>(null);
+
+  const openPersonDrawer = (personId: string) => {
+    const guardian = guardians.find((g) => g.id === personId);
+    if (guardian) setDrawerTarget(guardian);
+  };
+
+  const refreshIntake = () => {
+    qc.invalidateQueries({ queryKey: ["intakes", intake.id] });
+    qc.invalidateQueries({ queryKey: ["families"] });
+  };
+
   return (
     <Card variant="outlined">
       <CardContent>
@@ -59,6 +74,7 @@ export function FamilyContextCard({
             people={intake.decision_makers}
             guardians={guardians}
             onChange={(next) => onPatch({ decision_makers: next })}
+            onOpenPerson={openPersonDrawer}
           />
         </Box>
 
@@ -132,6 +148,28 @@ export function FamilyContextCard({
           </Grid>
         </Grid>
       </CardContent>
+
+      <ParentDrawer
+        open={!!drawerTarget}
+        parent={drawerTarget}
+        onClose={() => setDrawerTarget(null)}
+        onChanged={refreshIntake}
+        onRemoved={() => {
+          // Drop the decision_makers entry if the person was deleted
+          // upstream — they're gone from the family, so the link is
+          // stale.
+          if (drawerTarget) {
+            const next = intake.decision_makers.filter(
+              (dm) => dm.person_id !== drawerTarget.id,
+            );
+            if (next.length !== intake.decision_makers.length) {
+              onPatch({ decision_makers: next });
+            }
+          }
+          setDrawerTarget(null);
+          refreshIntake();
+        }}
+      />
     </Card>
   );
 }
@@ -142,10 +180,12 @@ function DecisionMakersAccordion({
   people,
   guardians,
   onChange,
+  onOpenPerson,
 }: {
   people: DecisionMaker[];
   guardians: IntakeGuardian[];
   onChange: (next: DecisionMaker[]) => void;
+  onOpenPerson: (personId: string) => void;
 }) {
   const [addOpen, setAddOpen] = useState(false);
   return (
@@ -196,6 +236,9 @@ function DecisionMakersAccordion({
               <Box key={`${p.person_id ?? "free"}-${i}`} sx={{ flex: "1 1 260px", maxWidth: 360 }}>
                 <DecisionMakerCard
                   person={p}
+                  onOpen={
+                    p.person_id ? () => onOpenPerson(p.person_id!) : undefined
+                  }
                   onRemove={() =>
                     onChange(people.filter((_, idx) => idx !== i))
                   }
@@ -221,25 +264,37 @@ function DecisionMakersAccordion({
 
 function DecisionMakerCard({
   person,
+  onOpen,
   onRemove,
 }: {
   person: DecisionMaker;
+  /** Set only when the decision-maker is linked to a person row;
+   *  free-text entries don't have anything to drill into. */
+  onOpen?: () => void;
   onRemove: () => void;
 }) {
+  const clickable = !!onOpen;
   return (
     <Card
       variant="outlined"
       sx={{
         height: "100%",
         position: "relative",
+        cursor: clickable ? "pointer" : "default",
         transition: (t) => t.transitions.create(["border-color", "background-color"]),
-        "&:hover": { borderColor: "primary.light", bgcolor: "action.hover" },
+        "&:hover": clickable
+          ? { borderColor: "primary.light", bgcolor: "action.hover" }
+          : undefined,
       }}
+      onClick={clickable ? onOpen : undefined}
     >
       <IconButton
         size="small"
         aria-label="Remove decision-maker"
-        onClick={onRemove}
+        onClick={(e) => {
+          e.stopPropagation();
+          onRemove();
+        }}
         sx={{
           position: "absolute",
           top: 4,
