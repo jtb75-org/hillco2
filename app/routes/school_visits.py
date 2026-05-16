@@ -24,6 +24,10 @@ class VisitCreate(BaseModel):
     hours: Decimal | None = Field(default=None, ge=0)
     scorecard: dict[str, Any] | None = None
     attendee_ids: list[UUID] = Field(default_factory=list)
+    # If set, override the default "Campus visit — {school}" title on
+    # the orchestrating engagement_tasks row that gets created with
+    # the visit.
+    task_title: str | None = None
 
 
 class VisitUpdate(BaseModel):
@@ -96,7 +100,8 @@ async def list_visits(
         """
         SELECT v.id, v.engagement_id, v.school_id, v.visit_date,
                v.attendees, v.facts_notes, v.opinion_notes, v.hours,
-               v.scorecard, v.created_by, v.created_at, v.updated_at,
+               v.scorecard, v.engagement_task_id,
+               v.created_by, v.created_at, v.updated_at,
                s.name AS school_name, s.location AS school_location
         FROM school_visits v
         JOIN schools s ON s.id = v.school_id
@@ -121,11 +126,16 @@ async def add_visit(
     user=Depends(require_user),
     conn=Depends(get_conn),
 ):
+    """Create a school visit AND its orchestrating engagement_tasks
+    row (activity_kind='school_visit') in one transaction. The visit
+    points back at the task via engagement_task_id. The task gets
+    title = body.task_title OR "Campus visit — {school name}"."""
     await _engagement_or_404(conn, engagement_id)
-    if not await conn.fetchval(
-        "SELECT 1 FROM schools WHERE id = $1 AND deleted_at IS NULL",
+    school = await conn.fetchrow(
+        "SELECT id, name FROM schools WHERE id = $1 AND deleted_at IS NULL",
         body.school_id,
-    ):
+    )
+    if school is None:
         raise HTTPException(status_code=400, detail="school_id does not match an active school")
 
     visit_date = body.visit_date or date.today()
@@ -147,16 +157,39 @@ async def add_visit(
         )
         valid_attendee_ids = [r["id"] for r in active]
 
+    task_title = (body.task_title or "").strip() or f"Campus visit — {school['name']}"
+
+    # All inserts are wrapped in the request-level transaction from
+    # get_conn (see app/db.py); if any step here raises we roll back.
+    task_id = await conn.fetchval(
+        """
+        INSERT INTO engagement_tasks (
+          engagement_id, title, billable,
+          activity_kind, sort_order, created_by
+        ) VALUES (
+          $1, $2, true, 'school_visit'::activity_kind,
+          (
+            SELECT COALESCE(MAX(sort_order), 0) + 10
+            FROM engagement_tasks WHERE engagement_id = $1
+          ),
+          $3
+        )
+        RETURNING id
+        """,
+        engagement_id, task_title, user["id"],
+    )
     visit_id = await conn.fetchval(
         """
         INSERT INTO school_visits
           (engagement_id, school_id, visit_date, attendees,
-           facts_notes, opinion_notes, hours, scorecard, created_by)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           facts_notes, opinion_notes, hours, scorecard, created_by,
+           engagement_task_id)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         RETURNING id
         """,
         engagement_id, body.school_id, visit_date, attendees_text,
         facts, opinion, body.hours, body.scorecard, user["id"],
+        task_id,
     )
     for cid in valid_attendee_ids:
         await conn.execute(
@@ -171,7 +204,8 @@ async def add_visit(
         """
         SELECT v.id, v.engagement_id, v.school_id, v.visit_date,
                v.attendees, v.facts_notes, v.opinion_notes, v.hours,
-               v.scorecard, v.created_by, v.created_at, v.updated_at,
+               v.scorecard, v.engagement_task_id,
+               v.created_by, v.created_at, v.updated_at,
                s.name AS school_name, s.location AS school_location
         FROM school_visits v
         JOIN schools s ON s.id = v.school_id

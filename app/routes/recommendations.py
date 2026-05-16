@@ -21,6 +21,9 @@ class RecommendationCreate(BaseModel):
     status: RecStatus = "considered"
     rank: int | None = None
     notes: str | None = None
+    # If set, override the default "Recommendation: {school}" title on
+    # the orchestrating engagement_tasks row created with the rec.
+    task_title: str | None = None
 
 
 class RecommendationUpdate(BaseModel):
@@ -91,33 +94,77 @@ async def list_recommendations(
 async def add_recommendation(
     engagement_id: UUID,
     body: RecommendationCreate,
-    _user=Depends(require_user),
+    user=Depends(require_user),
     conn=Depends(get_conn),
 ):
-    """Idempotent upsert keyed by (engagement_id, school_id) — repeated
-    POSTs with the same school don't create duplicates, they update.
-    Mirrors hillco-portal's ON CONFLICT shape."""
-    await _engagement_or_404(conn, engagement_id)
-    if not await conn.fetchval(
-        "SELECT 1 FROM schools WHERE id = $1 AND deleted_at IS NULL",
-        body.school_id,
-    ):
-        raise HTTPException(status_code=400, detail="school_id does not match an active school")
-    notes = (body.notes or "").strip() or None
+    """Create a school recommendation AND its orchestrating
+    engagement_tasks row (activity_kind='school_recommendation') in
+    one transaction. The rec points back at the task via
+    engagement_task_id.
 
+    Collision behavior: (engagement_id, school_id) is unique on
+    school_recommendations. If a recommendation for the same school
+    already exists, returns 409 — operator opens the existing one
+    instead. The 409 check fires BEFORE the task insert so we don't
+    leave an orphaned task on failure.
+    """
+    await _engagement_or_404(conn, engagement_id)
+    school = await conn.fetchrow(
+        "SELECT id, name FROM schools WHERE id = $1 AND deleted_at IS NULL",
+        body.school_id,
+    )
+    if school is None:
+        raise HTTPException(status_code=400, detail="school_id does not match an active school")
+
+    existing = await conn.fetchval(
+        """
+        SELECT 1 FROM school_recommendations
+        WHERE engagement_id = $1 AND school_id = $2
+        """,
+        engagement_id, body.school_id,
+    )
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Recommendation already exists for school '{school['name']}' "
+                "on this engagement; edit it instead."
+            ),
+        )
+
+    notes = (body.notes or "").strip() or None
+    task_title = (body.task_title or "").strip() or f"Recommendation: {school['name']}"
+
+    # Task first, then rec linked to it. Both wrapped in the request
+    # transaction (app/db.py) — if either fails, both roll back.
+    task_id = await conn.fetchval(
+        """
+        INSERT INTO engagement_tasks (
+          engagement_id, title, billable,
+          activity_kind, sort_order, created_by
+        ) VALUES (
+          $1, $2, false,
+          'school_recommendation'::activity_kind,
+          (
+            SELECT COALESCE(MAX(sort_order), 0) + 10
+            FROM engagement_tasks WHERE engagement_id = $1
+          ),
+          $3
+        )
+        RETURNING id
+        """,
+        engagement_id, task_title, user["id"],
+    )
     row = await conn.fetchrow(
         """
         INSERT INTO school_recommendations
-          (engagement_id, school_id, rank, status, notes)
-        VALUES ($1, $2, $3, $4::school_recommendation_status, $5)
-        ON CONFLICT (engagement_id, school_id) DO UPDATE SET
-          rank = EXCLUDED.rank,
-          status = EXCLUDED.status,
-          notes = COALESCE(EXCLUDED.notes, school_recommendations.notes)
+          (engagement_id, school_id, rank, status, notes, engagement_task_id)
+        VALUES ($1, $2, $3, $4::school_recommendation_status, $5, $6)
         RETURNING id, engagement_id, school_id, rank, status, notes,
-                  created_at, updated_at
+                  engagement_task_id, created_at, updated_at
         """,
         engagement_id, body.school_id, body.rank, body.status, notes,
+        task_id,
     )
     return dict(row)
 
