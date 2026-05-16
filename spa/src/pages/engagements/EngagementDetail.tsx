@@ -36,6 +36,7 @@ import { api } from "../../api/client";
 import { useSnackbar } from "../../components/Snackbar";
 import { StatusChip } from "../../components/StatusChip";
 import { useEngagementTypes } from "../../hooks/useEngagementTypes";
+import { IntakeContextCard, type IntakeSnapshot } from "./IntakeContextCard";
 
 // /api/engagements/{id} returns a plain dict (no OpenAPI response_model).
 // Hand-typed here for the bits we render.
@@ -47,6 +48,7 @@ interface EngagementDetail {
   target_end_date: string | null;
   default_hourly_rate: string | null;
   notes: string | null;
+  intake_snapshot: IntakeSnapshot | null;
   family: { id: string; household_name: string };
   student: {
     id: string;
@@ -218,6 +220,8 @@ export function EngagementDetail() {
       </Breadcrumbs>
 
       <HeaderStrip engagement={engagement.data} />
+
+      <IntakeContextCard snapshot={engagement.data.intake_snapshot} />
 
       <PhaseStepper
         catalogPhases={catalog.data ?? []}
