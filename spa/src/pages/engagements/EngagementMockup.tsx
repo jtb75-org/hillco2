@@ -22,15 +22,19 @@ import {
   Typography,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
+import AttachFileIcon from "@mui/icons-material/AttachFile";
+import BlockIcon from "@mui/icons-material/Block";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import CloseIcon from "@mui/icons-material/Close";
 import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import FileDownloadOutlinedIcon from "@mui/icons-material/FileDownloadOutlined";
 import FileUploadOutlinedIcon from "@mui/icons-material/FileUploadOutlined";
+import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
+import MoreVertIcon from "@mui/icons-material/MoreVert";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import RadioButtonUncheckedIcon from "@mui/icons-material/RadioButtonUnchecked";
-import RemoveCircleOutlineIcon from "@mui/icons-material/RemoveCircleOutline";
+import SendOutlinedIcon from "@mui/icons-material/SendOutlined";
 import { DatePicker } from "@mui/x-date-pickers";
 import dayjs from "dayjs";
 import { Link as RouterLink } from "react-router-dom";
@@ -42,23 +46,26 @@ import { ghostFieldSx } from "../../components/ghostFieldSx";
 
 /**
  * MOCKUP — not wired to any API. Renders the proposed engagement
- * detail layout. Throw away when the live engagement page is built.
+ * detail layout for review at /mockup/engagement-detail. Throw away
+ * when the live engagement page is built.
  *
- * Workflow-shaped (vs the earlier layout-shaped revision):
+ * v2 incorporates vera + halo's review notes:
  *
- *   Header
- *   Intake context (read-only snapshot)
- *   Contract & releases  (services agreement + medical-records release;
- *                         each goes through generate → download →
- *                         upload-signed states)
- *   Activities           (catalog-driven checklist + bespoke; status,
- *                         notes, type-specific structured forms for
- *                         campus visits / doc review / etc.)
- *   Time entries         (independent from activities — freeform
- *                         description + date + hours + optional rate
- *                         override)
- *   Expenses             (per-engagement billable + non-billable lines)
- *   Engagement notes     (rich-text catch-all)
+ *   - Activities are a UI wrapper, not 1:1 with engagement_tasks.
+ *     Each activity has a `kind` discriminator. Campus visits are
+ *     backed by school_visits; recommendations by
+ *     school_recommendations; everything else by engagement_tasks.
+ *   - Status enum matches backend: not_started / in_progress /
+ *     completed / blocked / not_applicable.
+ *   - Catalog-seeded activities get a "Skip" affordance (sets
+ *     not_applicable, keeps the row). Bespoke activities can be
+ *     hard-deleted.
+ *   - Contracts use a 4-state lifecycle: Not started → Draft → Sent
+ *     → Signed. The intermediate Sent state matters in a solo
+ *     practice — "I made the PDF" and "I emailed it" are different.
+ *   - Requirements section added (engagement_requirements).
+ *   - Time entries surface billable flag + invoice-locked rows.
+ *   - Expenses gain category + receipt upload affordance.
  */
 export function EngagementMockup() {
   return (
@@ -88,6 +95,7 @@ export function EngagementMockup() {
       <HeaderStrip />
       <IntakeContextCard />
       <ContractCard />
+      <RequirementsCard />
       <ActivitiesCard />
       <TimeEntriesCard />
       <ExpensesCard />
@@ -218,7 +226,17 @@ function IntakeContextCard() {
 
 // ---- Contract & releases ------------------------------------------------
 
-type ContractStage = "not_started" | "generated" | "signed";
+type ContractStage = "not_started" | "draft" | "sent" | "signed";
+
+const CONTRACT_STAGE_DISPLAY: Record<
+  ContractStage,
+  { label: string; color: "default" | "primary" | "warning" | "success" }
+> = {
+  not_started: { label: "Not started", color: "default" },
+  draft: { label: "Draft", color: "primary" },
+  sent: { label: "Awaiting signature", color: "warning" },
+  signed: { label: "Signed", color: "success" },
+};
 
 function ContractCard() {
   return (
@@ -229,7 +247,7 @@ function ContractCard() {
             Contract & releases
           </Typography>
           <Typography variant="caption" color="text.secondary">
-            Generate, send for signature, then upload the countersigned PDF.
+            Draft → send to family → upload signed PDF.
           </Typography>
         </Stack>
         <Stack spacing={2}>
@@ -249,6 +267,7 @@ function ContractCard() {
 
 function AgreementRow({ title, description }: { title: string; description: string }) {
   const [stage, setStage] = useState<ContractStage>("not_started");
+  const display = CONTRACT_STAGE_DISPLAY[stage];
   return (
     <Paper variant="outlined" sx={{ p: 2 }}>
       <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems="flex-start">
@@ -258,7 +277,12 @@ function AgreementRow({ title, description }: { title: string; description: stri
             <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
               {title}
             </Typography>
-            <ContractStageChip stage={stage} />
+            <Chip
+              size="small"
+              label={display.label}
+              color={display.color}
+              variant={stage === "signed" ? "filled" : "outlined"}
+            />
           </Stack>
           <Typography variant="body2" color="text.secondary">
             {description}
@@ -270,20 +294,38 @@ function AgreementRow({ title, description }: { title: string; description: stri
               variant="contained"
               size="small"
               startIcon={<DescriptionOutlinedIcon />}
-              onClick={() => setStage("generated")}
+              onClick={() => setStage("draft")}
             >
-              Generate
+              Create draft
             </Button>
           )}
-          {stage === "generated" && (
+          {stage === "draft" && (
             <>
               <Button
                 variant="outlined"
                 size="small"
                 startIcon={<FileDownloadOutlinedIcon />}
-                onClick={() => undefined}
               >
-                Download
+                Download draft
+              </Button>
+              <Button
+                variant="contained"
+                size="small"
+                startIcon={<SendOutlinedIcon />}
+                onClick={() => setStage("sent")}
+              >
+                Mark sent
+              </Button>
+            </>
+          )}
+          {stage === "sent" && (
+            <>
+              <Button
+                variant="text"
+                size="small"
+                startIcon={<FileDownloadOutlinedIcon />}
+              >
+                Sent PDF
               </Button>
               <Button
                 variant="contained"
@@ -309,7 +351,7 @@ function AgreementRow({ title, description }: { title: string; description: stri
                 color="warning"
                 onClick={() => setStage("not_started")}
               >
-                Regenerate
+                Supersede
               </Button>
             </>
           )}
@@ -319,27 +361,275 @@ function AgreementRow({ title, description }: { title: string; description: stri
   );
 }
 
-function ContractStageChip({ stage }: { stage: ContractStage }) {
-  if (stage === "not_started") {
-    return <Chip size="small" label="Not started" variant="outlined" />;
-  }
-  if (stage === "generated") {
-    return (
-      <Chip size="small" label="Awaiting signature" color="warning" variant="outlined" />
-    );
-  }
-  return <Chip size="small" label="Signed" color="success" />;
+// ---- Requirements -------------------------------------------------------
+
+type RequirementStatus = "needed" | "requested" | "received" | "waived";
+
+interface Requirement {
+  id: string;
+  kind: string;
+  status: RequirementStatus;
+  notes: string;
+}
+
+const REQUIREMENT_KINDS = [
+  "IEP / current",
+  "504 plan",
+  "Psychoeducational report",
+  "Recent report cards",
+  "Standardized test scores",
+  "Pediatrician note",
+  "Other",
+];
+
+const SEED_REQUIREMENTS: Requirement[] = [
+  {
+    id: "r1",
+    kind: "IEP / current",
+    status: "received",
+    notes: "PDF in family folder.",
+  },
+  {
+    id: "r2",
+    kind: "Psychoeducational report",
+    status: "received",
+    notes: "Dr. Hoffman, 2024-11-04.",
+  },
+  {
+    id: "r3",
+    kind: "Recent report cards",
+    status: "requested",
+    notes: "Asked mom 5/8. Following up next week.",
+  },
+];
+
+const REQUIREMENT_STATUS_DISPLAY: Record<
+  RequirementStatus,
+  { label: string; color: "default" | "primary" | "success" | "warning" }
+> = {
+  needed: { label: "Needed", color: "warning" },
+  requested: { label: "Requested", color: "primary" },
+  received: { label: "Received", color: "success" },
+  waived: { label: "Waived", color: "default" },
+};
+
+function RequirementsCard() {
+  const [items, setItems] = useState<Requirement[]>(SEED_REQUIREMENTS);
+  const [adding, setAdding] = useState(false);
+
+  const update = (id: string, patch: Partial<Requirement>) =>
+    setItems((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  const remove = (id: string) =>
+    setItems((prev) => prev.filter((r) => r.id !== id));
+
+  return (
+    <Card variant="outlined">
+      <CardContent>
+        <Stack direction="row" alignItems="baseline" spacing={1.5} sx={{ mb: 1.5 }}>
+          <Typography variant="h6" sx={{ fontWeight: 600 }}>
+            Records needed
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            {items.filter((r) => r.status === "received").length} of {items.length} received
+          </Typography>
+          <Box sx={{ flex: 1 }} />
+          <Button size="small" startIcon={<AddIcon />} onClick={() => setAdding(true)}>
+            Add requirement
+          </Button>
+        </Stack>
+        <Stack
+          divider={<Divider flexItem />}
+          sx={{ border: 1, borderColor: "divider", borderRadius: 1 }}
+        >
+          <Stack
+            direction="row"
+            sx={{ px: 1.5, py: 1, bgcolor: "action.hover", fontSize: 12, color: "text.secondary" }}
+          >
+            <Box sx={{ flex: 1 }}>KIND</Box>
+            <Box sx={{ width: 130 }}>STATUS</Box>
+            <Box sx={{ flex: 2 }}>NOTES</Box>
+            <Box sx={{ width: 40 }} />
+          </Stack>
+          {items.map((r) => (
+            <Stack
+              key={r.id}
+              direction="row"
+              alignItems="center"
+              sx={{ px: 1.5, py: 0.5 }}
+            >
+              <Box sx={{ flex: 1, pr: 1 }}>
+                <TextField
+                  size="small"
+                  select
+                  fullWidth
+                  variant="standard"
+                  InputProps={{ disableUnderline: true }}
+                  value={r.kind}
+                  onChange={(e) => update(r.id, { kind: e.target.value })}
+                >
+                  {REQUIREMENT_KINDS.map((k) => (
+                    <MenuItem key={k} value={k}>
+                      {k}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              </Box>
+              <Box sx={{ width: 130 }}>
+                <TextField
+                  select
+                  size="small"
+                  variant="standard"
+                  InputProps={{ disableUnderline: true }}
+                  value={r.status}
+                  onChange={(e) => update(r.id, { status: e.target.value as RequirementStatus })}
+                  SelectProps={{
+                    renderValue: (v) => (
+                      <Chip
+                        size="small"
+                        label={REQUIREMENT_STATUS_DISPLAY[v as RequirementStatus].label}
+                        color={REQUIREMENT_STATUS_DISPLAY[v as RequirementStatus].color}
+                        variant={r.status === "received" ? "filled" : "outlined"}
+                      />
+                    ),
+                  }}
+                >
+                  {Object.entries(REQUIREMENT_STATUS_DISPLAY).map(([k, v]) => (
+                    <MenuItem key={k} value={k}>
+                      {v.label}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              </Box>
+              <Box sx={{ flex: 2, pr: 1 }}>
+                <TextField
+                  size="small"
+                  fullWidth
+                  variant="standard"
+                  InputProps={{ disableUnderline: true }}
+                  value={r.notes}
+                  onChange={(e) => update(r.id, { notes: e.target.value })}
+                  placeholder="When asked, who has it, etc."
+                />
+              </Box>
+              <Box sx={{ width: 40, textAlign: "right" }}>
+                <IconButton
+                  size="small"
+                  onClick={() => remove(r.id)}
+                  sx={{ color: "text.disabled", "&:hover": { color: "error.main" } }}
+                >
+                  <CloseIcon fontSize="small" />
+                </IconButton>
+              </Box>
+            </Stack>
+          ))}
+          {adding && (
+            <RequirementAddRow
+              onSave={(req) => {
+                setItems([...items, { ...req, id: `r${Date.now()}` }]);
+                setAdding(false);
+              }}
+              onCancel={() => setAdding(false)}
+            />
+          )}
+        </Stack>
+      </CardContent>
+    </Card>
+  );
+}
+
+function RequirementAddRow({
+  onSave,
+  onCancel,
+}: {
+  onSave: (r: Omit<Requirement, "id">) => void;
+  onCancel: () => void;
+}) {
+  const [kind, setKind] = useState(REQUIREMENT_KINDS[0]);
+  const [status, setStatus] = useState<RequirementStatus>("needed");
+  const [notes, setNotes] = useState("");
+  return (
+    <Stack
+      direction="row"
+      alignItems="center"
+      sx={{ px: 1.5, py: 1, bgcolor: "action.hover" }}
+      spacing={1}
+    >
+      <Box sx={{ flex: 1 }}>
+        <TextField
+          select
+          size="small"
+          fullWidth
+          value={kind}
+          onChange={(e) => setKind(e.target.value)}
+        >
+          {REQUIREMENT_KINDS.map((k) => (
+            <MenuItem key={k} value={k}>
+              {k}
+            </MenuItem>
+          ))}
+        </TextField>
+      </Box>
+      <Box sx={{ width: 130 }}>
+        <TextField
+          select
+          size="small"
+          fullWidth
+          value={status}
+          onChange={(e) => setStatus(e.target.value as RequirementStatus)}
+        >
+          {Object.entries(REQUIREMENT_STATUS_DISPLAY).map(([k, v]) => (
+            <MenuItem key={k} value={k}>
+              {v.label}
+            </MenuItem>
+          ))}
+        </TextField>
+      </Box>
+      <Box sx={{ flex: 2 }}>
+        <TextField
+          size="small"
+          fullWidth
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="Notes"
+        />
+      </Box>
+      <Box sx={{ width: 40 }}>
+        <IconButton size="small" onClick={onCancel}>
+          <CloseIcon fontSize="small" />
+        </IconButton>
+      </Box>
+      <Button
+        size="small"
+        variant="contained"
+        onClick={() => onSave({ kind, status, notes })}
+      >
+        Save
+      </Button>
+    </Stack>
+  );
 }
 
 // ---- Activities ---------------------------------------------------------
 
-type ActivityStatus = "pending" | "in_progress" | "done" | "na";
+type ActivityStatus =
+  | "not_started"
+  | "in_progress"
+  | "completed"
+  | "blocked"
+  | "not_applicable";
+
+// kind names mirror the backend table that backs each activity body.
+// `task` rows live in engagement_tasks; `school_visit` rows hydrate
+// school_visits; `school_recommendation` rows hydrate
+// school_recommendations. UI is unified, storage is delegated.
 type ActivityKind =
-  | "generic"
-  | "document_review"
-  | "best_environment"
-  | "campus_visit"
-  | "feedback_meeting";
+  | "task" // generic engagement_tasks row (default)
+  | "document_review" // task with sub-form for educational + medical docs
+  | "best_environment" // task with sub-form for the 4 BEE prompts
+  | "feedback_meeting" // task with sub-form for recs/admissions/follow-on
+  | "school_visit" // backed by school_visits
+  | "school_recommendation" // backed by school_recommendations
+  | "bespoke"; // engagement_tasks row, free-form
 
 interface Activity {
   id: string;
@@ -356,7 +646,7 @@ const SEED_ACTIVITIES: Activity[] = [
     id: "a1",
     name: "Review of documents",
     kind: "document_review",
-    status: "done",
+    status: "completed",
     fromCatalog: true,
     expectedHours: 2,
     notes: "",
@@ -365,7 +655,7 @@ const SEED_ACTIVITIES: Activity[] = [
     id: "a2",
     name: "Best educational environment profile",
     kind: "best_environment",
-    status: "done",
+    status: "completed",
     fromCatalog: true,
     expectedHours: 0.5,
     notes: "",
@@ -373,8 +663,8 @@ const SEED_ACTIVITIES: Activity[] = [
   {
     id: "a3",
     name: "Campus visit — Clayton HS",
-    kind: "campus_visit",
-    status: "done",
+    kind: "school_visit",
+    status: "completed",
     fromCatalog: true,
     expectedHours: 4.5,
     notes: "",
@@ -382,14 +672,23 @@ const SEED_ACTIVITIES: Activity[] = [
   {
     id: "a4",
     name: "Campus visit — Crossroads HS",
-    kind: "campus_visit",
-    status: "done",
+    kind: "school_visit",
+    status: "completed",
     fromCatalog: true,
     expectedHours: 2,
     notes: "",
   },
   {
     id: "a5",
+    name: "Recommendation: Clayton HS",
+    kind: "school_recommendation",
+    status: "in_progress",
+    fromCatalog: false,
+    expectedHours: null,
+    notes: "",
+  },
+  {
+    id: "a6",
     name: "Feedback & next steps meeting",
     kind: "feedback_meeting",
     status: "in_progress",
@@ -398,15 +697,26 @@ const SEED_ACTIVITIES: Activity[] = [
     notes: "",
   },
   {
-    id: "a6",
-    name: "Phone consultation with Dr. Hoffman (neuropsych)",
-    kind: "generic",
-    status: "pending",
+    id: "a7",
+    name: "Phone consultation with Dr. Hoffman",
+    kind: "bespoke",
+    status: "not_started",
     fromCatalog: false,
     expectedHours: null,
     notes: "",
   },
 ];
+
+const ACTIVITY_STATUS_DISPLAY: Record<
+  ActivityStatus,
+  { label: string; color: "default" | "primary" | "success" | "warning" | "error" }
+> = {
+  not_started: { label: "Not started", color: "default" },
+  in_progress: { label: "In progress", color: "primary" },
+  completed: { label: "Completed", color: "success" },
+  blocked: { label: "Blocked", color: "error" },
+  not_applicable: { label: "Skipped", color: "default" },
+};
 
 function ActivitiesCard() {
   const [activities, setActivities] = useState<Activity[]>(SEED_ACTIVITIES);
@@ -421,21 +731,22 @@ function ActivitiesCard() {
     setActivities((prev) => prev.filter((a) => a.id !== id));
 
   const addActivity = (kind: ActivityKind, fromCatalog: boolean) => {
-    const id = `a${Date.now()}`;
     const defaults: Record<ActivityKind, { name: string; expectedHours: number | null }> = {
-      generic: { name: "New activity", expectedHours: null },
+      task: { name: "New task", expectedHours: null },
       document_review: { name: "Review of documents", expectedHours: 2 },
       best_environment: { name: "Best educational environment profile", expectedHours: 0.5 },
-      campus_visit: { name: "Campus visit — ", expectedHours: 4 },
       feedback_meeting: { name: "Feedback & next steps meeting", expectedHours: 1 },
+      school_visit: { name: "Campus visit — ", expectedHours: 4 },
+      school_recommendation: { name: "Recommendation: ", expectedHours: null },
+      bespoke: { name: "New activity", expectedHours: null },
     };
     setActivities((prev) => [
       ...prev,
       {
-        id,
+        id: `a${Date.now()}`,
         name: defaults[kind].name,
         kind,
-        status: "pending",
+        status: "not_started",
         fromCatalog,
         expectedHours: defaults[kind].expectedHours,
         notes: "",
@@ -444,8 +755,8 @@ function ActivitiesCard() {
   };
 
   const counts = useMemo(() => {
-    const total = activities.length;
-    const done = activities.filter((a) => a.status === "done").length;
+    const total = activities.filter((a) => a.status !== "not_applicable").length;
+    const done = activities.filter((a) => a.status === "completed").length;
     return { total, done };
   }, [activities]);
 
@@ -457,7 +768,7 @@ function ActivitiesCard() {
             Activities
           </Typography>
           <Typography variant="caption" color="text.secondary">
-            {counts.done} of {counts.total} complete
+            {counts.done} of {counts.total} complete (skipped not counted)
           </Typography>
           <Box sx={{ flex: 1 }} />
           <Button
@@ -472,6 +783,9 @@ function ActivitiesCard() {
             open={!!addMenuAnchor}
             onClose={() => setAddMenuAnchor(null)}
           >
+            <MenuItem disabled sx={{ fontSize: 12, opacity: 0.6 }}>
+              From catalog
+            </MenuItem>
             <MenuItem
               onClick={() => {
                 addActivity("document_review", true);
@@ -490,14 +804,6 @@ function ActivitiesCard() {
             </MenuItem>
             <MenuItem
               onClick={() => {
-                addActivity("campus_visit", true);
-                setAddMenuAnchor(null);
-              }}
-            >
-              Campus visit
-            </MenuItem>
-            <MenuItem
-              onClick={() => {
                 addActivity("feedback_meeting", true);
                 setAddMenuAnchor(null);
               }}
@@ -505,9 +811,29 @@ function ActivitiesCard() {
               Feedback meeting
             </MenuItem>
             <Divider />
+            <MenuItem disabled sx={{ fontSize: 12, opacity: 0.6 }}>
+              Backed by another table
+            </MenuItem>
             <MenuItem
               onClick={() => {
-                addActivity("generic", false);
+                addActivity("school_visit", true);
+                setAddMenuAnchor(null);
+              }}
+            >
+              Campus visit (creates a school_visits row)
+            </MenuItem>
+            <MenuItem
+              onClick={() => {
+                addActivity("school_recommendation", false);
+                setAddMenuAnchor(null);
+              }}
+            >
+              School recommendation (creates a school_recommendations row)
+            </MenuItem>
+            <Divider />
+            <MenuItem
+              onClick={() => {
+                addActivity("bespoke", false);
                 setAddMenuAnchor(null);
               }}
             >
@@ -523,14 +849,10 @@ function ActivitiesCard() {
               activity={a}
               onUpdate={(patch) => updateActivity(a.id, patch)}
               onRemove={() => removeActivity(a.id)}
+              onSkip={() => updateActivity(a.id, { status: "not_applicable" })}
+              onUnskip={() => updateActivity(a.id, { status: "not_started" })}
             />
           ))}
-          {activities.length === 0 && (
-            <Typography variant="body2" color="text.disabled" sx={{ py: 2 }}>
-              No activities yet. Pick a catalog activity above, or add a
-              bespoke one.
-            </Typography>
-          )}
         </Stack>
       </CardContent>
     </Card>
@@ -541,21 +863,31 @@ function ActivityRow({
   activity,
   onUpdate,
   onRemove,
+  onSkip,
+  onUnskip,
 }: {
   activity: Activity;
   onUpdate: (patch: Partial<Activity>) => void;
   onRemove: () => void;
+  onSkip: () => void;
+  onUnskip: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const done = activity.status === "done";
-  const na = activity.status === "na";
+  const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
+  const skipped = activity.status === "not_applicable";
+  const completed = activity.status === "completed";
+  const display = ACTIVITY_STATUS_DISPLAY[activity.status];
+
   return (
     <Accordion
       variant="outlined"
       disableGutters
       expanded={expanded}
       onChange={(_e, v) => setExpanded(v)}
-      sx={{ bgcolor: done ? "action.hover" : "transparent" }}
+      sx={{
+        bgcolor: completed ? "action.hover" : "transparent",
+        opacity: skipped ? 0.55 : 1,
+      }}
     >
       <AccordionSummary expandIcon={<ExpandMoreIcon />}>
         <Stack direction="row" alignItems="center" spacing={1.5} sx={{ width: "100%" }}>
@@ -568,8 +900,8 @@ function ActivityRow({
               variant="body2"
               sx={{
                 fontWeight: 600,
-                textDecoration: na ? "line-through" : "none",
-                color: na ? "text.disabled" : "text.primary",
+                textDecoration: skipped ? "line-through" : "none",
+                color: skipped ? "text.disabled" : "text.primary",
               }}
             >
               {activity.name}
@@ -579,14 +911,78 @@ function ActivityRow({
               {activity.expectedHours != null
                 ? ` · ≈${activity.expectedHours} hr expected`
                 : ""}
+              {activity.kind === "school_visit" && " · linked to school_visits"}
+              {activity.kind === "school_recommendation" &&
+                " · linked to school_recommendations"}
             </Typography>
           </Box>
           <Chip
             size="small"
-            label={ACTIVITY_STATUS_LABEL[activity.status]}
-            color={ACTIVITY_STATUS_COLOR[activity.status]}
-            variant={done ? "filled" : "outlined"}
+            label={display.label}
+            color={display.color}
+            variant={completed ? "filled" : "outlined"}
           />
+          <IconButton
+            size="small"
+            onClick={(e) => {
+              e.stopPropagation();
+              setMenuAnchor(e.currentTarget);
+            }}
+            aria-label="Activity menu"
+          >
+            <MoreVertIcon fontSize="small" />
+          </IconButton>
+          <Menu
+            anchorEl={menuAnchor}
+            open={!!menuAnchor}
+            onClose={() => setMenuAnchor(null)}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <MenuItem
+              onClick={() => {
+                onUpdate({ status: "blocked" });
+                setMenuAnchor(null);
+              }}
+              disabled={activity.status === "blocked"}
+            >
+              <BlockIcon fontSize="small" sx={{ mr: 1 }} />
+              Mark blocked
+            </MenuItem>
+            {!skipped && activity.fromCatalog && (
+              <MenuItem
+                onClick={() => {
+                  onSkip();
+                  setMenuAnchor(null);
+                }}
+              >
+                <RadioButtonUncheckedIcon fontSize="small" sx={{ mr: 1 }} />
+                Skip (mark not applicable)
+              </MenuItem>
+            )}
+            {skipped && (
+              <MenuItem
+                onClick={() => {
+                  onUnskip();
+                  setMenuAnchor(null);
+                }}
+              >
+                <RadioButtonUncheckedIcon fontSize="small" sx={{ mr: 1 }} />
+                Un-skip
+              </MenuItem>
+            )}
+            {!activity.fromCatalog && (
+              <MenuItem
+                onClick={() => {
+                  onRemove();
+                  setMenuAnchor(null);
+                }}
+                sx={{ color: "error.main" }}
+              >
+                <CloseIcon fontSize="small" sx={{ mr: 1 }} />
+                Delete (bespoke only)
+              </MenuItem>
+            )}
+          </Menu>
         </Stack>
       </AccordionSummary>
       <AccordionDetails>
@@ -610,39 +1006,11 @@ function ActivityRow({
               minRows={3}
             />
           </LabeledField>
-
-          <Stack direction="row" justifyContent="flex-end">
-            <Button
-              size="small"
-              color="error"
-              startIcon={<RemoveCircleOutlineIcon />}
-              onClick={onRemove}
-            >
-              Remove activity
-            </Button>
-          </Stack>
         </Stack>
       </AccordionDetails>
     </Accordion>
   );
 }
-
-const ACTIVITY_STATUS_LABEL: Record<ActivityStatus, string> = {
-  pending: "Pending",
-  in_progress: "In progress",
-  done: "Done",
-  na: "N/A",
-};
-
-const ACTIVITY_STATUS_COLOR: Record<
-  ActivityStatus,
-  "default" | "primary" | "success" | "warning"
-> = {
-  pending: "default",
-  in_progress: "primary",
-  done: "success",
-  na: "default",
-};
 
 function ActivityStatusButton({
   status,
@@ -652,11 +1020,19 @@ function ActivityStatusButton({
   onChange: (next: ActivityStatus) => void;
 }) {
   const cycle = () => {
-    if (status === "pending") onChange("in_progress");
-    else if (status === "in_progress") onChange("done");
-    else if (status === "done") onChange("pending");
-    else onChange("pending");
+    if (status === "not_started") onChange("in_progress");
+    else if (status === "in_progress") onChange("completed");
+    else if (status === "completed") onChange("not_started");
+    else onChange("not_started");
   };
+  const color =
+    status === "completed"
+      ? "success.main"
+      : status === "in_progress"
+        ? "primary.main"
+        : status === "blocked"
+          ? "error.main"
+          : "text.disabled";
   return (
     <IconButton
       size="small"
@@ -665,17 +1041,12 @@ function ActivityStatusButton({
         e.stopPropagation();
         cycle();
       }}
-      sx={{
-        color:
-          status === "done"
-            ? "success.main"
-            : status === "in_progress"
-              ? "primary.main"
-              : "text.disabled",
-      }}
+      sx={{ color }}
     >
-      {status === "done" ? (
+      {status === "completed" ? (
         <CheckCircleOutlineIcon fontSize="small" />
+      ) : status === "blocked" ? (
+        <BlockIcon fontSize="small" />
       ) : (
         <RadioButtonUncheckedIcon fontSize="small" />
       )}
@@ -683,20 +1054,12 @@ function ActivityStatusButton({
   );
 }
 
-// Type-specific structured forms inside each activity's accordion body.
 function ActivityTypeContent({ activity }: { activity: Activity }) {
-  if (activity.kind === "document_review") {
-    return <DocumentReviewContent />;
-  }
-  if (activity.kind === "best_environment") {
-    return <BestEnvironmentContent />;
-  }
-  if (activity.kind === "campus_visit") {
-    return <CampusVisitContent />;
-  }
-  if (activity.kind === "feedback_meeting") {
-    return <FeedbackContent />;
-  }
+  if (activity.kind === "document_review") return <DocumentReviewContent />;
+  if (activity.kind === "best_environment") return <BestEnvironmentContent />;
+  if (activity.kind === "school_visit") return <CampusVisitContent />;
+  if (activity.kind === "school_recommendation") return <RecommendationContent />;
+  if (activity.kind === "feedback_meeting") return <FeedbackContent />;
   return null;
 }
 
@@ -778,6 +1141,12 @@ function BestEnvironmentContent() {
 function CampusVisitContent() {
   return (
     <Stack spacing={2}>
+      <Alert severity="info" variant="outlined" sx={{ py: 0.5 }}>
+        <Typography variant="caption">
+          This activity creates a record on the school's page. Visits show up
+          both here and on /schools/clayton-hs.
+        </Typography>
+      </Alert>
       <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
         <Box sx={{ flex: 2 }}>
           <LabeledField label="School">
@@ -830,6 +1199,60 @@ function CampusVisitContent() {
         <MockRichText
           initial="<p>Strong cultural fit on the structured-social piece.</p>"
           placeholder="Your read."
+          minRows={3}
+        />
+      </LabeledField>
+    </Stack>
+  );
+}
+
+function RecommendationContent() {
+  return (
+    <Stack spacing={2}>
+      <Alert severity="info" variant="outlined" sx={{ py: 0.5 }}>
+        <Typography variant="caption">
+          This activity creates a record on the school's page and on the
+          family's recommendation list.
+        </Typography>
+      </Alert>
+      <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+        <Box sx={{ flex: 2 }}>
+          <LabeledField label="School">
+            <TextField
+              size="small"
+              fullWidth
+              sx={ghostFieldSx}
+              defaultValue="Clayton HS"
+            />
+          </LabeledField>
+        </Box>
+        <Box sx={{ width: { xs: "100%", sm: 120 } }}>
+          <LabeledField label="Rank">
+            <TextField size="small" fullWidth sx={ghostFieldSx} defaultValue="1" />
+          </LabeledField>
+        </Box>
+        <Box sx={{ flex: 1 }}>
+          <LabeledField label="Status">
+            <TextField
+              select
+              size="small"
+              fullWidth
+              sx={ghostFieldSx}
+              defaultValue="suggested"
+            >
+              <MenuItem value="suggested">Suggested</MenuItem>
+              <MenuItem value="considering">Considering</MenuItem>
+              <MenuItem value="applied">Applied</MenuItem>
+              <MenuItem value="accepted">Accepted</MenuItem>
+              <MenuItem value="rejected">Rejected</MenuItem>
+            </TextField>
+          </LabeledField>
+        </Box>
+      </Stack>
+      <LabeledField label="Why this school">
+        <MockRichText
+          initial="<p>Best match on the structured-social environment Peter needs. Mary's approach to LD students is unusually intentional.</p>"
+          placeholder="Why you're recommending."
           minRows={3}
         />
       </LabeledField>
@@ -932,6 +1355,8 @@ interface TimeEntry {
   description: string;
   hours: number;
   rateOverride: number | null;
+  billable: boolean;
+  invoiceId: string | null;
 }
 
 const HOURLY = 150;
@@ -943,6 +1368,8 @@ const SEED_TIME: TimeEntry[] = [
     description: "Initial review of IEP + neuropsych report",
     hours: 2,
     rateOverride: null,
+    billable: true,
+    invoiceId: "INV-042",
   },
   {
     id: "t2",
@@ -950,6 +1377,8 @@ const SEED_TIME: TimeEntry[] = [
     description: "Clayton HS visit + drive time",
     hours: 4.5,
     rateOverride: null,
+    billable: true,
+    invoiceId: "INV-042",
   },
   {
     id: "t3",
@@ -957,6 +1386,8 @@ const SEED_TIME: TimeEntry[] = [
     description: "Best-environment profile + research on candidate schools",
     hours: 0.5,
     rateOverride: null,
+    billable: true,
+    invoiceId: null,
   },
   {
     id: "t4",
@@ -964,6 +1395,17 @@ const SEED_TIME: TimeEntry[] = [
     description: "Crossroads HS visit",
     hours: 2,
     rateOverride: null,
+    billable: true,
+    invoiceId: null,
+  },
+  {
+    id: "t5",
+    date: "2026-05-15",
+    description: "Internal: catching up on engagement notes",
+    hours: 0.5,
+    rateOverride: null,
+    billable: false,
+    invoiceId: null,
   },
 ];
 
@@ -971,11 +1413,13 @@ function TimeEntriesCard() {
   const [entries, setEntries] = useState<TimeEntry[]>(SEED_TIME);
   const [adding, setAdding] = useState(false);
 
-  const total = entries.reduce(
-    (s, e) => s + e.hours * (e.rateOverride ?? HOURLY),
-    0,
-  );
+  const totalBillable = entries
+    .filter((e) => e.billable)
+    .reduce((s, e) => s + e.hours * (e.rateOverride ?? HOURLY), 0);
   const totalHours = entries.reduce((s, e) => s + e.hours, 0);
+  const unbilled = entries
+    .filter((e) => e.billable && !e.invoiceId)
+    .reduce((s, e) => s + e.hours * (e.rateOverride ?? HOURLY), 0);
 
   return (
     <Card variant="outlined">
@@ -985,7 +1429,10 @@ function TimeEntriesCard() {
             Time entries
           </Typography>
           <Typography variant="caption" color="text.secondary">
-            {totalHours} hr · ${total.toFixed(0)}
+            {totalHours} hr · ${totalBillable.toFixed(0)} billable ·{" "}
+            <Box component="span" sx={{ color: unbilled > 0 ? "warning.main" : "text.disabled" }}>
+              ${unbilled.toFixed(0)} unbilled
+            </Box>
           </Typography>
           <Box sx={{ flex: 1 }} />
           <Button
@@ -1013,9 +1460,10 @@ function TimeEntriesCard() {
           >
             <Box sx={{ width: 110 }}>DATE</Box>
             <Box sx={{ flex: 1 }}>DESCRIPTION</Box>
-            <Box sx={{ width: 80, textAlign: "right" }}>HOURS</Box>
-            <Box sx={{ width: 100, textAlign: "right" }}>RATE</Box>
-            <Box sx={{ width: 90, textAlign: "right" }}>TOTAL</Box>
+            <Box sx={{ width: 70, textAlign: "right" }}>HOURS</Box>
+            <Box sx={{ width: 85, textAlign: "right" }}>RATE</Box>
+            <Box sx={{ width: 80, textAlign: "right" }}>TOTAL</Box>
+            <Box sx={{ width: 100, textAlign: "center" }}>BILLABLE</Box>
             <Box sx={{ width: 40 }} />
           </Stack>
           {entries.map((e) => (
@@ -1056,63 +1504,112 @@ function TimeEntryRow({
 }) {
   const rate = entry.rateOverride ?? HOURLY;
   const total = entry.hours * rate;
+  const locked = !!entry.invoiceId;
   return (
-    <Stack direction="row" alignItems="center" sx={{ px: 1.5, py: 0.5 }}>
+    <Stack
+      direction="row"
+      alignItems="center"
+      sx={{
+        px: 1.5,
+        py: 0.5,
+        bgcolor: locked ? "action.hover" : "transparent",
+        opacity: locked ? 0.8 : 1,
+      }}
+    >
       <Box sx={{ width: 110 }}>
-        <DatePicker
-          value={dayjs(entry.date)}
-          onChange={(d) =>
-            d && d.isValid() && onChange({ date: d.format("YYYY-MM-DD") })
-          }
-          slotProps={{
-            textField: {
-              size: "small",
-              variant: "standard",
-              InputProps: { disableUnderline: true },
-            },
-          }}
-        />
+        {locked ? (
+          <Typography variant="body2" color="text.secondary">
+            {dayjs(entry.date).format("MMM D, YYYY")}
+          </Typography>
+        ) : (
+          <DatePicker
+            value={dayjs(entry.date)}
+            onChange={(d) =>
+              d && d.isValid() && onChange({ date: d.format("YYYY-MM-DD") })
+            }
+            slotProps={{
+              textField: {
+                size: "small",
+                variant: "standard",
+                InputProps: { disableUnderline: true },
+              },
+            }}
+          />
+        )}
       </Box>
-      <Box sx={{ flex: 1, pr: 1 }}>
-        <TextField
-          size="small"
-          fullWidth
-          variant="standard"
-          InputProps={{ disableUnderline: true }}
-          value={entry.description}
-          onChange={(e) => onChange({ description: e.target.value })}
-        />
+      <Box sx={{ flex: 1, pr: 1, minWidth: 0 }}>
+        {locked ? (
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <LockOutlinedIcon fontSize="inherit" sx={{ color: "text.disabled" }} />
+            <Typography variant="body2" sx={{ color: "text.secondary" }}>
+              {entry.description}
+            </Typography>
+            <Chip size="small" label={entry.invoiceId} variant="outlined" />
+          </Stack>
+        ) : (
+          <TextField
+            size="small"
+            fullWidth
+            variant="standard"
+            InputProps={{ disableUnderline: true }}
+            value={entry.description}
+            onChange={(e) => onChange({ description: e.target.value })}
+          />
+        )}
       </Box>
-      <Box sx={{ width: 80, textAlign: "right" }}>
-        <TextField
-          size="small"
-          variant="standard"
-          InputProps={{ disableUnderline: true, sx: { textAlign: "right" } }}
-          inputProps={{ style: { textAlign: "right" } }}
-          value={entry.hours}
-          onChange={(e) => {
-            const v = parseFloat(e.target.value);
-            if (!Number.isNaN(v)) onChange({ hours: v });
-          }}
-          sx={{ width: 70 }}
-        />
+      <Box sx={{ width: 70, textAlign: "right" }}>
+        {locked ? (
+          <Typography variant="body2" color="text.secondary">
+            {entry.hours}
+          </Typography>
+        ) : (
+          <TextField
+            size="small"
+            variant="standard"
+            InputProps={{ disableUnderline: true }}
+            inputProps={{ style: { textAlign: "right" } }}
+            value={entry.hours}
+            onChange={(e) => {
+              const v = parseFloat(e.target.value);
+              if (!Number.isNaN(v)) onChange({ hours: v });
+            }}
+            sx={{ width: 60 }}
+          />
+        )}
       </Box>
-      <Box sx={{ width: 100, textAlign: "right", color: "text.secondary" }}>
-        <Typography variant="body2" sx={{ fontStyle: entry.rateOverride ? "normal" : "italic" }}>
+      <Box sx={{ width: 85, textAlign: "right", color: "text.secondary" }}>
+        <Typography
+          variant="body2"
+          sx={{ fontStyle: entry.rateOverride ? "normal" : "italic" }}
+        >
           ${rate}
         </Typography>
       </Box>
-      <Box sx={{ width: 90, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-        <Typography variant="body2">${total.toFixed(0)}</Typography>
+      <Box sx={{ width: 80, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+        <Typography variant="body2">
+          {entry.billable ? `$${total.toFixed(0)}` : "—"}
+        </Typography>
+      </Box>
+      <Box sx={{ width: 100, textAlign: "center" }}>
+        <Chip
+          size="small"
+          label={entry.billable ? "Billable" : "Internal"}
+          variant="outlined"
+          color={entry.billable ? "success" : "default"}
+          onClick={locked ? undefined : () => onChange({ billable: !entry.billable })}
+          sx={{ cursor: locked ? "default" : "pointer" }}
+        />
       </Box>
       <Box sx={{ width: 40, textAlign: "right" }}>
-        <IconButton
-          size="small"
-          onClick={onRemove}
-          sx={{ color: "text.disabled", "&:hover": { color: "error.main" } }}
-        >
-          <CloseIcon fontSize="small" />
-        </IconButton>
+        {!locked && (
+          <IconButton
+            size="small"
+            onClick={onRemove}
+            sx={{ color: "text.disabled", "&:hover": { color: "error.main" } }}
+          >
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        )}
       </Box>
     </Stack>
   );
@@ -1129,6 +1626,7 @@ function TimeEntryEditor({
   const [description, setDescription] = useState("");
   const [hours, setHours] = useState<string>("");
   const [rateOverride, setRateOverride] = useState<string>("");
+  const [billable, setBillable] = useState(true);
   const canSave = description.trim() !== "" && parseFloat(hours) > 0;
   return (
     <Stack
@@ -1153,7 +1651,7 @@ function TimeEntryEditor({
           onChange={(e) => setDescription(e.target.value)}
         />
       </Box>
-      <Box sx={{ width: 80 }}>
+      <Box sx={{ width: 70 }}>
         <TextField
           size="small"
           fullWidth
@@ -1162,7 +1660,7 @@ function TimeEntryEditor({
           onChange={(e) => setHours(e.target.value)}
         />
       </Box>
-      <Box sx={{ width: 100 }}>
+      <Box sx={{ width: 85 }}>
         <TextField
           size="small"
           fullWidth
@@ -1171,8 +1669,18 @@ function TimeEntryEditor({
           onChange={(e) => setRateOverride(e.target.value)}
         />
       </Box>
-      <Box sx={{ width: 90 }} />
-      <Box sx={{ width: 40, display: "flex" }}>
+      <Box sx={{ width: 80 }} />
+      <Box sx={{ width: 100, textAlign: "center" }}>
+        <Chip
+          size="small"
+          label={billable ? "Billable" : "Internal"}
+          variant="outlined"
+          color={billable ? "success" : "default"}
+          onClick={() => setBillable(!billable)}
+          sx={{ cursor: "pointer" }}
+        />
+      </Box>
+      <Box sx={{ width: 40 }}>
         <IconButton size="small" onClick={onCancel}>
           <CloseIcon fontSize="small" />
         </IconButton>
@@ -1188,6 +1696,8 @@ function TimeEntryEditor({
             description: description.trim(),
             hours: parseFloat(hours),
             rateOverride: Number.isFinite(r) ? r : null,
+            billable,
+            invoiceId: null,
           });
         }}
       >
@@ -1199,28 +1709,39 @@ function TimeEntryEditor({
 
 // ---- Expenses -----------------------------------------------------------
 
+const EXPENSE_CATEGORIES = ["Mileage", "Parking", "Tolls", "Materials", "Other"];
+
 interface Expense {
   id: string;
   date: string;
+  category: string;
   description: string;
   amount: number;
   billable: boolean;
+  receiptAttached: boolean;
+  invoiceId: string | null;
 }
 
 const SEED_EXPENSES: Expense[] = [
   {
     id: "e1",
     date: "2026-04-30",
-    description: "Mileage — Clayton HS round trip (24 mi)",
+    category: "Mileage",
+    description: "Clayton HS round trip (24 mi)",
     amount: 16.08,
     billable: true,
+    receiptAttached: false,
+    invoiceId: "INV-042",
   },
   {
     id: "e2",
     date: "2026-05-12",
-    description: "Parking — Crossroads HS visit",
+    category: "Parking",
+    description: "Crossroads HS visit",
     amount: 6,
     billable: true,
+    receiptAttached: true,
+    invoiceId: null,
   },
 ];
 
@@ -1230,13 +1751,21 @@ function ExpensesCard() {
   const billable = expenses
     .filter((e) => e.billable)
     .reduce((s, e) => s + e.amount, 0);
+  const unbilled = expenses
+    .filter((e) => e.billable && !e.invoiceId)
+    .reduce((s, e) => s + e.amount, 0);
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState<Omit<Expense, "id">>({
     date: dayjs().format("YYYY-MM-DD"),
+    category: EXPENSE_CATEGORIES[0],
     description: "",
     amount: 0,
     billable: true,
+    receiptAttached: false,
+    invoiceId: null,
   });
+  const update = (id: string, patch: Partial<Expense>) =>
+    setExpenses((prev) => prev.map((e) => (e.id === id ? { ...e, ...patch } : e)));
   return (
     <Card variant="outlined">
       <CardContent>
@@ -1245,7 +1774,10 @@ function ExpensesCard() {
             Expenses
           </Typography>
           <Typography variant="caption" color="text.secondary">
-            ${total.toFixed(2)} total · ${billable.toFixed(2)} billable
+            ${total.toFixed(2)} total · ${billable.toFixed(2)} billable ·{" "}
+            <Box component="span" sx={{ color: unbilled > 0 ? "warning.main" : "text.disabled" }}>
+              ${unbilled.toFixed(2)} unbilled
+            </Box>
           </Typography>
           <Box sx={{ flex: 1 }} />
           <Button
@@ -1254,9 +1786,12 @@ function ExpensesCard() {
             onClick={() => {
               setDraft({
                 date: dayjs().format("YYYY-MM-DD"),
+                category: EXPENSE_CATEGORIES[0],
                 description: "",
                 amount: 0,
                 billable: true,
+                receiptAttached: false,
+                invoiceId: null,
               });
               setAdding(true);
             }}
@@ -1280,48 +1815,109 @@ function ExpensesCard() {
             }}
           >
             <Box sx={{ width: 110 }}>DATE</Box>
+            <Box sx={{ width: 110 }}>CATEGORY</Box>
             <Box sx={{ flex: 1 }}>DESCRIPTION</Box>
             <Box sx={{ width: 100, textAlign: "right" }}>AMOUNT</Box>
             <Box sx={{ width: 90, textAlign: "center" }}>BILLABLE</Box>
+            <Box sx={{ width: 80, textAlign: "center" }}>RECEIPT</Box>
             <Box sx={{ width: 40 }} />
           </Stack>
-          {expenses.map((e) => (
-            <Stack
-              key={e.id}
-              direction="row"
-              alignItems="center"
-              sx={{ px: 1.5, py: 0.75 }}
-            >
-              <Box sx={{ width: 110 }}>
-                <Typography variant="body2">
-                  {dayjs(e.date).format("MMM D, YYYY")}
-                </Typography>
-              </Box>
-              <Box sx={{ flex: 1, pr: 1 }}>
-                <Typography variant="body2">{e.description}</Typography>
-              </Box>
-              <Box sx={{ width: 100, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                <Typography variant="body2">${e.amount.toFixed(2)}</Typography>
-              </Box>
-              <Box sx={{ width: 90, textAlign: "center" }}>
-                <Chip
-                  size="small"
-                  label={e.billable ? "Billable" : "Internal"}
-                  variant="outlined"
-                  color={e.billable ? "success" : "default"}
-                />
-              </Box>
-              <Box sx={{ width: 40, textAlign: "right" }}>
-                <IconButton
-                  size="small"
-                  onClick={() => setExpenses(expenses.filter((x) => x.id !== e.id))}
-                  sx={{ color: "text.disabled", "&:hover": { color: "error.main" } }}
+          {expenses.map((e) => {
+            const locked = !!e.invoiceId;
+            return (
+              <Stack
+                key={e.id}
+                direction="row"
+                alignItems="center"
+                sx={{
+                  px: 1.5,
+                  py: 0.75,
+                  bgcolor: locked ? "action.hover" : "transparent",
+                  opacity: locked ? 0.8 : 1,
+                }}
+              >
+                <Box sx={{ width: 110 }}>
+                  <Typography variant="body2">
+                    {dayjs(e.date).format("MMM D, YYYY")}
+                  </Typography>
+                </Box>
+                <Box sx={{ width: 110 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    {e.category}
+                  </Typography>
+                </Box>
+                <Box sx={{ flex: 1, pr: 1 }}>
+                  <Stack direction="row" alignItems="center" spacing={1}>
+                    {locked && (
+                      <LockOutlinedIcon fontSize="inherit" sx={{ color: "text.disabled" }} />
+                    )}
+                    <Typography variant="body2">{e.description}</Typography>
+                    {locked && (
+                      <Chip size="small" label={e.invoiceId} variant="outlined" />
+                    )}
+                  </Stack>
+                </Box>
+                <Box
+                  sx={{
+                    width: 100,
+                    textAlign: "right",
+                    fontVariantNumeric: "tabular-nums",
+                  }}
                 >
-                  <CloseIcon fontSize="small" />
-                </IconButton>
-              </Box>
-            </Stack>
-          ))}
+                  <Typography variant="body2">${e.amount.toFixed(2)}</Typography>
+                </Box>
+                <Box sx={{ width: 90, textAlign: "center" }}>
+                  <Chip
+                    size="small"
+                    label={e.billable ? "Billable" : "Internal"}
+                    variant="outlined"
+                    color={e.billable ? "success" : "default"}
+                    onClick={locked ? undefined : () => update(e.id, { billable: !e.billable })}
+                    sx={{ cursor: locked ? "default" : "pointer" }}
+                  />
+                </Box>
+                <Box sx={{ width: 80, textAlign: "center" }}>
+                  {e.receiptAttached ? (
+                    <Chip
+                      size="small"
+                      icon={<AttachFileIcon fontSize="small" />}
+                      label="Attached"
+                      variant="outlined"
+                      color="default"
+                      onClick={
+                        locked ? undefined : () => update(e.id, { receiptAttached: false })
+                      }
+                      sx={{ cursor: locked ? "default" : "pointer" }}
+                    />
+                  ) : !locked ? (
+                    <IconButton
+                      size="small"
+                      aria-label="Attach receipt"
+                      onClick={() => update(e.id, { receiptAttached: true })}
+                      sx={{ color: "text.disabled" }}
+                    >
+                      <FileUploadOutlinedIcon fontSize="small" />
+                    </IconButton>
+                  ) : (
+                    <Typography variant="caption" color="text.disabled">
+                      —
+                    </Typography>
+                  )}
+                </Box>
+                <Box sx={{ width: 40, textAlign: "right" }}>
+                  {!locked && (
+                    <IconButton
+                      size="small"
+                      onClick={() => setExpenses(expenses.filter((x) => x.id !== e.id))}
+                      sx={{ color: "text.disabled", "&:hover": { color: "error.main" } }}
+                    >
+                      <CloseIcon fontSize="small" />
+                    </IconButton>
+                  )}
+                </Box>
+              </Stack>
+            );
+          })}
           {adding && (
             <Stack
               direction="row"
@@ -1337,6 +1933,21 @@ function ExpensesCard() {
                   }
                   slotProps={{ textField: { size: "small" } }}
                 />
+              </Box>
+              <Box sx={{ width: 110 }}>
+                <TextField
+                  select
+                  size="small"
+                  fullWidth
+                  value={draft.category}
+                  onChange={(e) => setDraft({ ...draft, category: e.target.value })}
+                >
+                  {EXPENSE_CATEGORIES.map((c) => (
+                    <MenuItem key={c} value={c}>
+                      {c}
+                    </MenuItem>
+                  ))}
+                </TextField>
               </Box>
               <Box sx={{ flex: 1 }}>
                 <TextField
@@ -1367,6 +1978,19 @@ function ExpensesCard() {
                   onClick={() => setDraft({ ...draft, billable: !draft.billable })}
                   sx={{ cursor: "pointer" }}
                 />
+              </Box>
+              <Box sx={{ width: 80, textAlign: "center" }}>
+                <IconButton
+                  size="small"
+                  onClick={() =>
+                    setDraft({ ...draft, receiptAttached: !draft.receiptAttached })
+                  }
+                  sx={{
+                    color: draft.receiptAttached ? "primary.main" : "text.disabled",
+                  }}
+                >
+                  <FileUploadOutlinedIcon fontSize="small" />
+                </IconButton>
               </Box>
               <Box sx={{ width: 40 }}>
                 <IconButton size="small" onClick={() => setAdding(false)}>
@@ -1410,10 +2034,7 @@ function NotesCard() {
             expenses sections missed.
           </Typography>
         </Stack>
-        <MockRichText
-          placeholder="Anything else worth capturing."
-          minRows={6}
-        />
+        <MockRichText placeholder="Anything else worth capturing." minRows={6} />
       </CardContent>
     </Card>
   );
