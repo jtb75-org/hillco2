@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 
 from ..auth import require_user
 from ..db import get_conn
+from .engagement_tasks import seed_catalog_for_engagement
 
 router = APIRouter(prefix="/api", tags=["intakes"])
 
@@ -855,6 +856,16 @@ async def convert_intake(
                 c["recommended_engagement_type"], user["id"], snapshot,
             )
             engagement_ids.append(str(eng_id))
+            # Auto-seed every applicable catalog item for this engagement
+            # type. Operator can still skip items or add bespoke ones from
+            # the engagement page; idempotency on (engagement, service_item)
+            # lets a follow-up bulk-from-catalog call be a no-op for these.
+            await seed_catalog_for_engagement(
+                conn,
+                engagement_id=eng_id,
+                engagement_type=c["recommended_engagement_type"],
+                user_id=user["id"],
+            )
 
         await conn.execute(
             "UPDATE intakes SET converted_at = NOW() WHERE id = $1",
