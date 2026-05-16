@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     e2e_auth_name: str = "E2E Test"
     e2e_auth_role: str = "admin"
 
+    def model_post_init(self, __context: object) -> None:
+        if self.e2e_auth_bypass_enabled and not self.expose_docs:
+            raise ValueError("E2E auth bypass requires EXPOSE_DOCS=true")
+
     @property
     def allowed_email_set(self) -> set[str]:
         return {e.strip().lower() for e in self.allowed_emails.split(",") if e.strip()}
