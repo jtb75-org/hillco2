@@ -30,6 +30,7 @@ class RecommendationUpdate(BaseModel):
     status: RecStatus | None = None
     rank: int | None = None
     notes: str | None = None
+    engagement_task_id: UUID | None = None
 
 
 class RecStatusUpdate(BaseModel):
@@ -56,6 +57,30 @@ async def _rec_or_404(conn, rec_id: UUID):
     return row
 
 
+async def _validate_task_belongs_to_engagement(
+    conn,
+    *,
+    task_id: UUID | None,
+    engagement_id: UUID,
+) -> None:
+    if task_id is None:
+        return
+    task_engagement_id = await conn.fetchval(
+        "SELECT engagement_id FROM engagement_tasks WHERE id = $1",
+        task_id,
+    )
+    if task_engagement_id is None:
+        raise HTTPException(
+            status_code=400,
+            detail="engagement_task_id does not match an existing task",
+        )
+    if task_engagement_id != engagement_id:
+        raise HTTPException(
+            status_code=400,
+            detail="engagement_task_id belongs to a different engagement",
+        )
+
+
 # ---- Routes ----------------------------------------------------------------
 
 @router.get("/engagements/{engagement_id}/recommendations")
@@ -68,7 +93,7 @@ async def list_recommendations(
     rows = await conn.fetch(
         """
         SELECT r.id, r.engagement_id, r.school_id, r.rank, r.status, r.notes,
-               r.created_at, r.updated_at,
+               r.engagement_task_id, r.created_at, r.updated_at,
                s.name AS school_name, s.location AS school_location
         FROM school_recommendations r
         JOIN schools s ON s.id = r.school_id
@@ -176,12 +201,18 @@ async def update_recommendation(
     _user=Depends(require_user),
     conn=Depends(get_conn),
 ):
-    await _rec_or_404(conn, rec_id)
+    rec = await _rec_or_404(conn, rec_id)
     fields = body.model_dump(exclude_unset=True)
     if not fields:
         raise HTTPException(status_code=400, detail="No fields to update")
     if "notes" in fields:
         fields["notes"] = (fields["notes"] or "").strip() or None
+    if "engagement_task_id" in fields:
+        await _validate_task_belongs_to_engagement(
+            conn,
+            task_id=fields["engagement_task_id"],
+            engagement_id=rec["engagement_id"],
+        )
 
     set_sql_parts = []
     values = []
@@ -196,7 +227,7 @@ async def update_recommendation(
         f"""
         UPDATE school_recommendations SET {set_sql} WHERE id = $1
         RETURNING id, engagement_id, school_id, rank, status, notes,
-                  created_at, updated_at
+                  engagement_task_id, created_at, updated_at
         """,
         rec_id,
         *values,
@@ -218,7 +249,7 @@ async def update_rec_status(
         SET status = $1::school_recommendation_status
         WHERE id = $2
         RETURNING id, engagement_id, school_id, rank, status, notes,
-                  created_at, updated_at
+                  engagement_task_id, created_at, updated_at
         """,
         body.status, rec_id,
     )

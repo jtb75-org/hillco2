@@ -37,6 +37,7 @@ class VisitUpdate(BaseModel):
     opinion_notes: str | None = None
     hours: Decimal | None = Field(default=None, ge=0)
     scorecard: dict[str, Any] | None = None
+    engagement_task_id: UUID | None = None
 
 
 # ---- Helpers ---------------------------------------------------------------
@@ -54,6 +55,30 @@ async def _visit_or_404(conn, visit_id: UUID):
     if not row:
         raise HTTPException(status_code=404, detail="Visit not found")
     return row
+
+
+async def _validate_task_belongs_to_engagement(
+    conn,
+    *,
+    task_id: UUID | None,
+    engagement_id: UUID,
+) -> None:
+    if task_id is None:
+        return
+    task_engagement_id = await conn.fetchval(
+        "SELECT engagement_id FROM engagement_tasks WHERE id = $1",
+        task_id,
+    )
+    if task_engagement_id is None:
+        raise HTTPException(
+            status_code=400,
+            detail="engagement_task_id does not match an existing task",
+        )
+    if task_engagement_id != engagement_id:
+        raise HTTPException(
+            status_code=400,
+            detail="engagement_task_id belongs to a different engagement",
+        )
 
 
 async def _attendees_for_visits(conn, visit_ids: list[UUID]) -> dict[UUID, list[dict]]:
@@ -226,13 +251,19 @@ async def update_visit(
     _user=Depends(require_user),
     conn=Depends(get_conn),
 ):
-    await _visit_or_404(conn, visit_id)
+    visit = await _visit_or_404(conn, visit_id)
     fields = body.model_dump(exclude_unset=True)
     if not fields:
         raise HTTPException(status_code=400, detail="No fields to update")
     for col in ("attendees", "facts_notes", "opinion_notes"):
         if col in fields and fields[col] is not None:
             fields[col] = (fields[col] or "").strip() or None
+    if "engagement_task_id" in fields:
+        await _validate_task_belongs_to_engagement(
+            conn,
+            task_id=fields["engagement_task_id"],
+            engagement_id=visit["engagement_id"],
+        )
 
     set_sql = ", ".join(f"{col} = ${i+2}" for i, col in enumerate(fields))
     row = await conn.fetchrow(
@@ -240,7 +271,8 @@ async def update_visit(
         UPDATE school_visits SET {set_sql} WHERE id = $1
         RETURNING id, engagement_id, school_id, visit_date,
                   attendees, facts_notes, opinion_notes, hours,
-                  scorecard, created_by, created_at, updated_at
+                  scorecard, engagement_task_id,
+                  created_by, created_at, updated_at
         """,
         visit_id,
         *fields.values(),
