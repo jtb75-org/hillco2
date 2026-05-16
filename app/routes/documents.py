@@ -312,18 +312,22 @@ async def engagement_merged_documents(
 
 # ---- Upload ----------------------------------------------------------------
 
-@router.post("/documents/upload", status_code=201)
-async def upload_document(
-    owner_type: OwnerType = Form(...),
-    owner_id: UUID = Form(...),
-    kind: DocumentKind = Form("other"),
-    file: UploadFile = File(...),
-    user=Depends(require_user),
-    conn=Depends(get_conn),
-):
+async def store_uploaded_document(
+    conn,
+    *,
+    owner_type: str,
+    owner_id: UUID,
+    kind: str,
+    file: UploadFile,
+    uploaded_by: UUID,
+) -> dict:
+    """Validate, upload-to-S3, and insert a documents row. Shared by
+    the generic /documents/upload endpoint and by purpose-specific
+    upload routes (e.g. agreements upload-signed) that need to attach
+    a freshly-uploaded document and do follow-up work in the same
+    transaction. Caller must have already verified the owner exists."""
     if not file.filename:
         raise HTTPException(status_code=400, detail="filename is required")
-    await _verify_owner(conn, owner_type, owner_id)
 
     filename = _safe_filename(file.filename)
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
@@ -368,9 +372,29 @@ async def upload_document(
                   byte_size, uploaded_by, created_at, updated_at
         """,
         doc_id, owner_type, owner_id, kind, filename, content_type,
-        byte_size, key, user["id"],
+        byte_size, key, uploaded_by,
     )
     return dict(row)
+
+
+@router.post("/documents/upload", status_code=201)
+async def upload_document(
+    owner_type: OwnerType = Form(...),
+    owner_id: UUID = Form(...),
+    kind: DocumentKind = Form("other"),
+    file: UploadFile = File(...),
+    user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    await _verify_owner(conn, owner_type, owner_id)
+    return await store_uploaded_document(
+        conn,
+        owner_type=owner_type,
+        owner_id=owner_id,
+        kind=kind,
+        file=file,
+        uploaded_by=user["id"],
+    )
 
 
 # ---- Download (stream through the app) -------------------------------------

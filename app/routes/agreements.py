@@ -10,16 +10,17 @@ layer validates that an attached document_id actually owns this
 agreement; the DB FK on agreements.document_id only enforces basic
 referential integrity.
 """
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from ..auth import require_user
 from ..db import get_conn
+from .documents import store_uploaded_document
 
 router = APIRouter(prefix="/api", tags=["agreements"])
 
@@ -43,6 +44,7 @@ class AgreementCreate(BaseModel):
 class AgreementUpdate(BaseModel):
     status: AgreementStatus | None = None
     amount: Decimal | None = None
+    sent_at: datetime | None = None
     signed_at: date | None = None
     effective_date: date | None = None
     expires_at: date | None = None
@@ -116,7 +118,7 @@ async def list_for_engagement(
     rows = await conn.fetch(
         """
         SELECT a.id, a.engagement_id, a.type, a.status, a.contract_number,
-               a.amount, a.signed_at, a.effective_date, a.expires_at,
+               a.amount, a.sent_at, a.signed_at, a.effective_date, a.expires_at,
                a.supersedes_id, a.document_id, a.notes,
                a.created_by, a.created_at, a.updated_at,
                TRIM(BOTH ' ' FROM COALESCE(u.first_name,'') || CASE WHEN u.last_name IS NOT NULL AND u.last_name <> '' THEN ' ' || u.last_name ELSE '' END) AS created_by_name
@@ -265,6 +267,79 @@ async def supersede_agreement(
         agreement_id, user["id"],
     )
     return dict(new_row)
+
+
+@router.post("/agreements/{agreement_id}/mark-sent")
+async def mark_agreement_sent(
+    agreement_id: UUID,
+    _user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    """Stamp sent_at = NOW() while keeping status='draft'. The "sent"
+    UI state is derived as (status='draft' AND sent_at IS NOT NULL).
+    Idempotent — re-sending preserves the first sent_at via COALESCE;
+    the UI can offer an explicit re-send affordance that PATCHes
+    sent_at directly if it wants to overwrite."""
+    row = await _agreement_or_404(conn, agreement_id)
+    if row["status"] != "draft":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot mark-sent an agreement in status '{row['status']}'.",
+        )
+    updated = await conn.fetchrow(
+        """
+        UPDATE agreements
+        SET sent_at = COALESCE(sent_at, NOW())
+        WHERE id = $1
+        RETURNING *
+        """,
+        agreement_id,
+    )
+    return dict(updated)
+
+
+@router.post("/agreements/{agreement_id}/upload-signed", status_code=201)
+async def upload_signed_agreement(
+    agreement_id: UUID,
+    file: UploadFile = File(...),
+    user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    """Upload the signed PDF for this agreement. In one transaction:
+    create a documents row (owner_type='agreement', owner_id=this
+    agreement), link it via agreements.document_id, stamp signed_at,
+    and flip status to 'active'. Requires the agreement to be in
+    'draft' status (cannot re-sign a superseded/expired/terminated
+    row; supersede first instead)."""
+    row = await _agreement_or_404(conn, agreement_id)
+    if row["status"] != "draft":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Cannot upload signed copy for an agreement in status "
+                f"'{row['status']}'; supersede it first."
+            ),
+        )
+    doc = await store_uploaded_document(
+        conn,
+        owner_type="agreement",
+        owner_id=agreement_id,
+        kind="other",
+        file=file,
+        uploaded_by=user["id"],
+    )
+    updated = await conn.fetchrow(
+        """
+        UPDATE agreements
+        SET document_id = $2,
+            signed_at = COALESCE(signed_at, CURRENT_DATE),
+            status = 'active'
+        WHERE id = $1
+        RETURNING *
+        """,
+        agreement_id, doc["id"],
+    )
+    return {"agreement": dict(updated), "document": doc}
 
 
 @router.delete("/agreements/{agreement_id}", status_code=204)
