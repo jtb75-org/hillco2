@@ -31,6 +31,7 @@ import { RichTextEditor } from "../../components/RichTextEditor";
 import { ParentDrawer, type ParentDrawerTarget } from "../families/ParentDrawer";
 import { useQueryClient } from "@tanstack/react-query";
 
+import { PromoteDecisionMakerDialog } from "./PromoteDecisionMakerDialog";
 import type { DecisionMaker, IntakeDetail, IntakeGuardian } from "./intakeTypes";
 
 /** Family Context card — the family-scoped half of discovery: who's
@@ -46,10 +47,20 @@ export function FamilyContextCard({
 }) {
   const qc = useQueryClient();
   const [drawerTarget, setDrawerTarget] = useState<ParentDrawerTarget | null>(null);
+  const [promoteTarget, setPromoteTarget] = useState<{
+    index: number;
+    dm: DecisionMaker;
+  } | null>(null);
 
-  const openPersonDrawer = (personId: string) => {
-    const guardian = guardians.find((g) => g.id === personId);
-    if (guardian) setDrawerTarget(guardian);
+  const handleOpenDecisionMaker = (index: number, dm: DecisionMaker) => {
+    if (dm.person_id) {
+      const guardian = guardians.find((g) => g.id === dm.person_id);
+      if (guardian) setDrawerTarget(guardian);
+    } else {
+      // Free-text entry — no person record to drill into yet.
+      // Offer to promote them into a real family guardian.
+      setPromoteTarget({ index, dm });
+    }
   };
 
   const refreshIntake = () => {
@@ -74,7 +85,7 @@ export function FamilyContextCard({
             people={intake.decision_makers}
             guardians={guardians}
             onChange={(next) => onPatch({ decision_makers: next })}
-            onOpenPerson={openPersonDrawer}
+            onOpenDecisionMaker={handleOpenDecisionMaker}
           />
         </Box>
 
@@ -170,6 +181,33 @@ export function FamilyContextCard({
           refreshIntake();
         }}
       />
+      <PromoteDecisionMakerDialog
+        open={!!promoteTarget}
+        familyId={intake.family_id}
+        intakeId={intake.id}
+        decisionMaker={promoteTarget?.dm ?? null}
+        decisionMakerIndex={promoteTarget?.index ?? null}
+        allDecisionMakers={intake.decision_makers}
+        onClose={() => setPromoteTarget(null)}
+        onPromoted={({ person_id }) => {
+          setPromoteTarget(null);
+          refreshIntake();
+          // Open the ParentDrawer for the new guardian. We optimistically
+          // build a target from what we just submitted; the drawer's own
+          // query refetches the structured detail.
+          setDrawerTarget({
+            id: person_id,
+            name: promoteTarget?.dm.name ?? "",
+            email: null,
+            phone: null,
+            role: "other",
+            is_primary_contact: false,
+            is_billing_contact: false,
+            mailing_address: null,
+            billing_address: null,
+          });
+        }}
+      />
     </Card>
   );
 }
@@ -180,12 +218,12 @@ function DecisionMakersAccordion({
   people,
   guardians,
   onChange,
-  onOpenPerson,
+  onOpenDecisionMaker,
 }: {
   people: DecisionMaker[];
   guardians: IntakeGuardian[];
   onChange: (next: DecisionMaker[]) => void;
-  onOpenPerson: (personId: string) => void;
+  onOpenDecisionMaker: (index: number, dm: DecisionMaker) => void;
 }) {
   const [addOpen, setAddOpen] = useState(false);
   return (
@@ -236,9 +274,7 @@ function DecisionMakersAccordion({
               <Box key={`${p.person_id ?? "free"}-${i}`} sx={{ flex: "1 1 260px", maxWidth: 360 }}>
                 <DecisionMakerCard
                   person={p}
-                  onOpen={
-                    p.person_id ? () => onOpenPerson(p.person_id!) : undefined
-                  }
+                  onOpen={() => onOpenDecisionMaker(i, p)}
                   onRemove={() =>
                     onChange(people.filter((_, idx) => idx !== i))
                   }
@@ -268,25 +304,23 @@ function DecisionMakerCard({
   onRemove,
 }: {
   person: DecisionMaker;
-  /** Set only when the decision-maker is linked to a person row;
-   *  free-text entries don't have anything to drill into. */
-  onOpen?: () => void;
+  /** Always clickable. Linked entries open the ParentDrawer; free-text
+   *  entries open a promote dialog so they can become real family
+   *  guardians. */
+  onOpen: () => void;
   onRemove: () => void;
 }) {
-  const clickable = !!onOpen;
   return (
     <Card
       variant="outlined"
       sx={{
         height: "100%",
         position: "relative",
-        cursor: clickable ? "pointer" : "default",
+        cursor: "pointer",
         transition: (t) => t.transitions.create(["border-color", "background-color"]),
-        "&:hover": clickable
-          ? { borderColor: "primary.light", bgcolor: "action.hover" }
-          : undefined,
+        "&:hover": { borderColor: "primary.light", bgcolor: "action.hover" },
       }}
-      onClick={clickable ? onOpen : undefined}
+      onClick={onOpen}
     >
       <IconButton
         size="small"

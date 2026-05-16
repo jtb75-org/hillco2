@@ -56,6 +56,7 @@ import { StudentDiscoveryCard } from "./StudentDiscoveryCard";
 import type {
   EngagementTypeOption,
   IntakeDetail,
+  IntakeGuardian,
   IntakeStudent,
 } from "./intakeTypes";
 
@@ -307,7 +308,11 @@ export function IntakeForm() {
 
       <FamilyContextCard
         intake={intake.data}
-        guardians={intake.data.guardians ?? []}
+        // Decision-makers are family-scoped, not intake-scoped — they
+        // can be anyone on the family's roster, not just the curated
+        // subset on this intake. The dropdown + drawer-lookup needs
+        // the full family.parents list.
+        guardians={(family.data?.parents as IntakeGuardian[]) ?? []}
         onPatch={(body) => patch.mutate(body as Record<string, unknown>)}
       />
 
