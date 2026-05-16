@@ -20,8 +20,6 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import { DatePicker } from "@mui/x-date-pickers";
-import dayjs from "dayjs";
 
 import { LabeledField } from "../../components/LabeledField";
 
@@ -29,10 +27,9 @@ import type {
   EngagementTypeOption,
   IntakeDetail,
   IntakeStudent,
-  NextStepOwner,
   Outcome,
 } from "./intakeTypes";
-import { NEXT_STEP_OWNER_LABEL, OUTCOME_LABEL } from "./intakeTypes";
+import { OUTCOME_LABEL } from "./intakeTypes";
 
 /** Fit, outcome & next steps card. Wraps the per-student candidacy
  *  toggles, the outcome enum, next-step fields, and the contextual
@@ -54,65 +51,42 @@ export function FitOutcomeCard({
   converting: boolean;
 }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [resultMessage, setResultMessage] = useState<string | null>(null);
 
-  // Local mirrors for the inputs that PATCH on blur.
+  // Local mirror for the disposition textarea — PATCH-on-blur to avoid
+  // a write per keystroke. The other fields all PATCH on change.
   const [reason, setReason] = useState(intake.disposition_reason ?? "");
-  const [blocker, setBlocker] = useState(intake.blocker ?? "");
   useEffect(() => setReason(intake.disposition_reason ?? ""), [intake.disposition_reason]);
-  useEffect(() => setBlocker(intake.blocker ?? ""), [intake.blocker]);
 
   const candidates = intake.students.filter((s) => s.candidate);
   const candidateCount = candidates.length;
   const isConverting = intake.outcome === "converting";
   const alreadyConverted = intake.converted_at != null;
 
-  const primaryLabel = isConverting ? "Convert to engagement →" : "Save outcome";
-  const primaryDisabled =
-    intake.outcome == null ||
-    alreadyConverted ||
-    (isConverting && candidateCount === 0) ||
-    (isConverting &&
-      candidates.some((c) => !c.recommended_engagement_type));
-  const primaryHint = (() => {
-    if (alreadyConverted) return "Already converted.";
-    if (intake.outcome == null) return "Pick an intake outcome to enable.";
-    if (isConverting && candidateCount === 0)
-      return "Toggle at least one student as a candidate.";
-    if (
-      isConverting &&
-      candidates.some((c) => !c.recommended_engagement_type)
-    )
+  // Convert button shows ONLY when outcome=converting + there's
+  // something to convert. Every other outcome saves on Select change —
+  // no Save button needed, matches the rest of the form.
+  const showConvertButton = isConverting && !alreadyConverted;
+  const convertDisabled =
+    candidateCount === 0 ||
+    candidates.some((c) => !c.recommended_engagement_type);
+  const convertHint = (() => {
+    if (candidateCount === 0) return "Toggle at least one student as a candidate.";
+    if (candidates.some((c) => !c.recommended_engagement_type))
       return "Each candidate needs a recommended engagement type.";
     return "";
   })();
 
-  const handlePrimary = async () => {
-    if (isConverting && candidateCount >= 2) {
+  const handleConvertClick = async () => {
+    if (candidateCount >= 2) {
       setConfirmOpen(true);
       return;
     }
-    if (isConverting && candidateCount === 1) {
-      await fireConvert();
-      return;
-    }
-    setResultMessage(
-      `Saved outcome${
-        intake.outcome ? ` — ${OUTCOME_LABEL[intake.outcome]}` : ""
-      }.`,
-    );
+    await fireConvert();
   };
 
   const fireConvert = async () => {
     setConfirmOpen(false);
-    const result = await onConvert();
-    if (result) {
-      setResultMessage(
-        `Created ${result.engagement_ids.length} engagement${
-          result.engagement_ids.length === 1 ? "" : "s"
-        }.`,
-      );
-    }
+    await onConvert();
   };
 
   return (
@@ -193,76 +167,6 @@ export function FitOutcomeCard({
             </LabeledField>
           </Grid>
 
-          <Grid item xs={12} md={4}>
-            <LabeledField label="Next step owner">
-              <TextField
-                select
-                size="small"
-                fullWidth
-                value={intake.next_step_owner ?? ""}
-                onChange={(e) =>
-                  onPatchIntake({
-                    next_step_owner:
-                      (e.target.value || null) as NextStepOwner | null,
-                  })
-                }
-                SelectProps={{ displayEmpty: true }}
-              >
-                <MenuItem value="">
-                  <em>— Not set —</em>
-                </MenuItem>
-                {(Object.keys(NEXT_STEP_OWNER_LABEL) as NextStepOwner[]).map(
-                  (o) => (
-                    <MenuItem key={o} value={o}>
-                      {NEXT_STEP_OWNER_LABEL[o]}
-                    </MenuItem>
-                  ),
-                )}
-              </TextField>
-            </LabeledField>
-          </Grid>
-          <Grid item xs={12} md={4}>
-            <LabeledField label="Next step due">
-              <DatePicker
-                value={intake.next_step_due ? dayjs(intake.next_step_due) : null}
-                onChange={(d) =>
-                  onPatchIntake({
-                    next_step_due: d && d.isValid() ? d.format("YYYY-MM-DD") : null,
-                  })
-                }
-                slotProps={{ textField: { size: "small", fullWidth: true } }}
-              />
-            </LabeledField>
-          </Grid>
-          <Grid item xs={12} md={4}>
-            <LabeledField label="Blocker (if any)">
-              <TextField
-                size="small"
-                fullWidth
-                placeholder="e.g. waiting on IEP from Clayton"
-                value={blocker}
-                onChange={(e) => setBlocker(e.target.value)}
-                onBlur={() => {
-                  if (blocker !== (intake.blocker ?? "")) {
-                    onPatchIntake({ blocker: blocker || null });
-                  }
-                }}
-              />
-            </LabeledField>
-          </Grid>
-
-          {resultMessage && (
-            <Grid item xs={12}>
-              <Alert
-                severity="success"
-                onClose={() => setResultMessage(null)}
-                variant="outlined"
-              >
-                {resultMessage}
-              </Alert>
-            </Grid>
-          )}
-
           {alreadyConverted && (
             <Grid item xs={12}>
               <Alert severity="info" variant="outlined">
@@ -271,21 +175,23 @@ export function FitOutcomeCard({
             </Grid>
           )}
 
-          <Grid item xs={12}>
-            <Stack direction="row" justifyContent="flex-end" sx={{ mt: 1 }}>
-              <Tooltip title={primaryHint} disableHoverListener={!primaryDisabled}>
-                <span>
-                  <Button
-                    variant="contained"
-                    disabled={primaryDisabled || converting}
-                    onClick={handlePrimary}
-                  >
-                    {converting ? "Working…" : primaryLabel}
-                  </Button>
-                </span>
-              </Tooltip>
-            </Stack>
-          </Grid>
+          {showConvertButton && (
+            <Grid item xs={12}>
+              <Stack direction="row" justifyContent="flex-end" sx={{ mt: 1 }}>
+                <Tooltip title={convertHint} disableHoverListener={!convertDisabled}>
+                  <span>
+                    <Button
+                      variant="contained"
+                      disabled={convertDisabled || converting}
+                      onClick={handleConvertClick}
+                    >
+                      {converting ? "Working…" : "Convert to engagement →"}
+                    </Button>
+                  </span>
+                </Tooltip>
+              </Stack>
+            </Grid>
+          )}
         </Grid>
       </CardContent>
 

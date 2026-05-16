@@ -654,22 +654,24 @@ function GuardianCard({
       )}
       <CardActionArea onClick={onOpen} sx={{ height: "100%" }}>
         <CardContent>
-          <Stack direction="row" spacing={0.5} sx={{ mb: 0.75, minHeight: 24, pr: 4 }}>
-            {guardian.is_primary_contact && (
-              <Chip size="small" label="primary" color="primary" variant="outlined" />
-            )}
-            {guardian.is_billing_contact && (
-              <Chip size="small" label="billing" color="success" variant="outlined" />
-            )}
-            {role && (
-              <Chip
-                size="small"
-                label={role.replace(/_/g, " ")}
-                variant="outlined"
-                sx={{ textTransform: "capitalize" }}
-              />
-            )}
-          </Stack>
+          {(guardian.is_primary_contact || guardian.is_billing_contact || role) && (
+            <Stack direction="row" spacing={0.5} sx={{ mb: 0.75, pr: 4 }}>
+              {guardian.is_primary_contact && (
+                <Chip size="small" label="primary" color="primary" variant="outlined" />
+              )}
+              {guardian.is_billing_contact && (
+                <Chip size="small" label="billing" color="success" variant="outlined" />
+              )}
+              {role && (
+                <Chip
+                  size="small"
+                  label={role.replace(/_/g, " ")}
+                  variant="outlined"
+                  sx={{ textTransform: "capitalize" }}
+                />
+              )}
+            </Stack>
+          )}
           <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
             {guardian.name || "(no name)"}
           </Typography>
