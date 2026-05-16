@@ -14,6 +14,7 @@ import { FamilyDetail } from "./pages/families/FamilyDetail";
 import { EngagementDetail } from "./pages/engagements/EngagementDetail";
 import { EngagementsList } from "./pages/engagements/EngagementsList";
 import { CatalogPage } from "./pages/catalog/CatalogPage";
+import { SchoolsList } from "./pages/schools/SchoolsList";
 import { IntakeWizard } from "./pages/intake/IntakeWizard";
 import { IntakeForm } from "./pages/intake/IntakeForm";
 import { IntakesList } from "./pages/intake/IntakesList";
@@ -88,6 +89,7 @@ export function App() {
             <Route path="/intakes" element={<IntakesList />} />
             <Route path="/intakes/:id" element={<IntakeForm />} />
             <Route path="/contacts" element={<ContactsList />} />
+            <Route path="/schools" element={<SchoolsList />} />
             <Route path="/catalog" element={<CatalogPage />} />
             <Route path="/admin" element={<AdminLayout />}>
               <Route index element={<Navigate to="users" replace />} />
