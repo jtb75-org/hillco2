@@ -92,7 +92,8 @@ async def test_auth_callback_oauth_error_redirects_and_clears_session(
 
     assert r.status_code == 303
     assert r.headers["location"] == "/?login_error=oauth_failed"
-    assert "session" not in client.cookies
+    me = await client.get("/api/me")
+    assert me.status_code == 401
 
 
 async def test_auth_callback_deactivated_identity_redirects_without_insert_crash(
