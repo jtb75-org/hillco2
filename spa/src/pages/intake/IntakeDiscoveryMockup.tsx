@@ -33,6 +33,7 @@ import { Link as RouterLink } from "react-router-dom";
 
 import { LabeledField } from "../../components/LabeledField";
 import { PageHeader } from "../../components/PageHeader";
+import { RichTextEditor } from "../../components/RichTextEditor";
 
 /**
  * MOCKUP — not wired to any API. Renders the proposed three-card
@@ -94,6 +95,18 @@ export function IntakeDiscoveryMockup() {
           health_impairment_notes: null,
           emotional_disturbance_notes: null,
           diagnosis_other: null,
+        }}
+        prefill={{
+          working:
+            "<ul><li>Math — keeps up, enjoys word problems.</li><li>Strong bond with his Tuesday social-skills group leader.</li><li>Loves <strong>music elective</strong> — only place he raises his hand.</li></ul>",
+          notWorking:
+            "<ul><li>Lost in unstructured time (lunch, recess, transitions).</li><li><em>\"He just goes silent\"</em> when called on cold.</li><li>Written-output meltdowns 2-3×/week despite extended-time accommodation.</li><li>Peer group has thinned out — last two close friends moved schools.</li></ul>",
+          history:
+            "<p>Identified for IEP in <strong>3rd grade</strong> (written-expression LD). Neuropsych eval in 2024 added ADHD + ASD Level 1. Switched from public → Clayton Middle for 6th. Mom reports the 4th-grade year was the inflection point.</p>",
+          schoolFit:
+            "<ul><li>Class size 25+ is too loud.</li><li>No structured social piece — needs guided lunch / clubs.</li></ul>",
+          supportsTried:
+            "<ul><li>Tutoring (writing) — helpful but expensive, kept on retainer.</li><li>OT — discharged 2025; gains held.</li><li>Tried 504 first; escalated to IEP after eval.</li></ul>",
         }}
       />
       <StudentDiscoveryCard
@@ -237,12 +250,9 @@ function FamilyContextCard() {
 
           <Grid item xs={12}>
             <LabeledField label="Additional family notes">
-              <TextField
-                multiline
-                minRows={2}
-                fullWidth
+              <MockRichText
                 placeholder="Free-form context that doesn't fit above."
-                defaultValue=""
+                minRows={3}
               />
             </LabeledField>
           </Grid>
@@ -851,6 +861,7 @@ function StudentDiscoveryCard({
   schoolLabel,
   reach,
   flags,
+  prefill,
 }: {
   name: string;
   firstName: string;
@@ -860,6 +871,13 @@ function StudentDiscoveryCard({
   schoolLabel: string;
   reach: { name: string; email: string; phone: string };
   flags: StudentFlagState;
+  prefill?: {
+    working?: string;
+    notWorking?: string;
+    history?: string;
+    schoolFit?: string;
+    supportsTried?: string;
+  };
 }) {
   return (
     <Card variant="outlined">
@@ -896,53 +914,48 @@ function StudentDiscoveryCard({
         <Grid container spacing={2}>
           <Grid item xs={12} md={6}>
             <LabeledField label="What's working">
-              <TextField
-                multiline
-                minRows={3}
-                fullWidth
+              <MockRichText
                 placeholder="Current supports, classes, relationships, routines that are landing."
+                minRows={3}
+                initial={prefill?.working}
               />
             </LabeledField>
           </Grid>
           <Grid item xs={12} md={6}>
             <LabeledField label="What's not working">
-              <TextField
-                multiline
-                minRows={3}
-                fullWidth
+              <MockRichText
                 placeholder="Friction points, gaps, recent regressions, accommodations being denied."
+                minRows={3}
+                initial={prefill?.notWorking}
               />
             </LabeledField>
           </Grid>
 
           <Grid item xs={12}>
             <LabeledField label="History / timeline">
-              <TextField
-                multiline
-                minRows={3}
-                fullWidth
+              <MockRichText
                 placeholder="School history, evaluations, diagnoses, prior placements — chronological if possible."
+                minRows={3}
+                initial={prefill?.history}
               />
             </LabeledField>
           </Grid>
 
           <Grid item xs={12} md={6}>
             <LabeledField label="School-fit concerns">
-              <TextField
-                multiline
-                minRows={2}
-                fullWidth
+              <MockRichText
                 placeholder="What's their current school not delivering? Class size? Curriculum? Peer group?"
+                minRows={2}
+                initial={prefill?.schoolFit}
               />
             </LabeledField>
           </Grid>
           <Grid item xs={12} md={6}>
             <LabeledField label="Supports tried">
-              <TextField
-                multiline
-                minRows={2}
-                fullWidth
+              <MockRichText
                 placeholder="Tutors, therapists, accommodations, programs — what worked, what didn't."
+                minRows={2}
+                initial={prefill?.supportsTried}
               />
             </LabeledField>
           </Grid>
@@ -1116,11 +1129,9 @@ function NotesCard() {
           title="Intake notes"
           hint="Free-form narrative, quotes, judgment. Kept as-is from today's form."
         />
-        <TextField
-          multiline
-          minRows={6}
-          fullWidth
+        <MockRichText
           placeholder="Anything the structured prompts missed. Direct quotes are helpful here."
+          minRows={8}
         />
       </CardContent>
     </Card>
@@ -1141,6 +1152,29 @@ function SectionHeader({ title, hint }: { title: string; hint?: string }) {
         </Typography>
       )}
     </Stack>
+  );
+}
+
+/** Mockup-only wrapper around the real RichTextEditor: owns its own
+ *  local state so each instance can be edited independently with no
+ *  persistence. Throw away when the real form is built. */
+function MockRichText({
+  initial,
+  placeholder,
+  minRows,
+}: {
+  initial?: string;
+  placeholder?: string;
+  minRows?: number;
+}) {
+  const [value, setValue] = useState(initial ?? "");
+  return (
+    <RichTextEditor
+      value={value}
+      onChange={setValue}
+      placeholder={placeholder}
+      minRows={minRows}
+    />
   );
 }
 
