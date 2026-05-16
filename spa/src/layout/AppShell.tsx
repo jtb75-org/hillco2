@@ -24,6 +24,7 @@ import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 import GroupsIcon from "@mui/icons-material/Groups";
 import HomeIcon from "@mui/icons-material/Home";
 import LogoutIcon from "@mui/icons-material/Logout";
+import SchoolIcon from "@mui/icons-material/School";
 import { Link, Outlet, useLocation } from "react-router-dom";
 
 import { signOut, useAuth } from "../auth";
@@ -43,6 +44,7 @@ const NAV_ITEMS: ReadonlyArray<NavEntry> = [
   { kind: "separator" },
   { kind: "item", to: "/families", label: "Families", icon: <GroupsIcon /> },
   { kind: "item", to: "/contacts", label: "Contacts", icon: <ContactsIcon /> },
+  { kind: "item", to: "/schools", label: "Schools", icon: <SchoolIcon /> },
   { kind: "item", to: "/catalog", label: "Catalog", icon: <AutoStoriesOutlinedIcon /> },
   // Practice configuration.
   { kind: "separator" },
