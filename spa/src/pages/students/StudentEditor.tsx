@@ -16,11 +16,13 @@ import {
   Typography,
 } from "@mui/material";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import { DatePicker } from "@mui/x-date-pickers";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import dayjs from "dayjs";
 
 import { api } from "../../api/client";
 import { LabeledField } from "../../components/LabeledField";
+import { ghostFieldSx } from "../../components/ghostFieldSx";
 import { useSnackbar } from "../../components/Snackbar";
 
 // /api/students/{id} returns a plain dict — hand-typed here for the
@@ -195,7 +197,17 @@ function HeaderStrip({
   student: StudentEditorData;
   onPatch: (body: Record<string, unknown>) => void;
 }) {
-  const reach = student.primary_parent;
+  // Schools catalog for the editable school picker. Cached across all
+  // editor instances; small list.
+  const schools = useQuery<{ id: string; name: string }[], Error>({
+    queryKey: ["schools", "list"],
+    queryFn: async () => {
+      const res = await fetch("/api/schools", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load schools.");
+      return (await res.json()) as { id: string; name: string }[];
+    },
+    staleTime: 5 * 60 * 1000,
+  });
   return (
     <Paper variant="outlined" sx={{ p: 2.5 }}>
       <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
@@ -225,42 +237,47 @@ function HeaderStrip({
           </LabeledField>
         </Box>
       </Stack>
-      <Box
-        sx={{
-          mt: 2,
-          display: "grid",
-          gridTemplateColumns: "auto 1fr auto 1fr",
-          columnGap: 2,
-          rowGap: 1,
-        }}
-      >
-        <Label>DOB</Label>
-        <Value>{student.dob ? dayjs(student.dob).format("MMM D, YYYY") : "—"}</Value>
-        <Label>School</Label>
-        <Value>{student.school?.name ?? "—"}</Value>
-        <Label>Reach</Label>
-        <Box sx={{ gridColumn: "2 / 5" }}>
-          {reach ? (
-            <Stack direction="row" spacing={2} flexWrap="wrap" alignItems="baseline">
-              <Typography variant="body2">{reach.name}</Typography>
-              {reach.email && (
-                <Typography variant="body2" color="text.secondary">
-                  {reach.email}
-                </Typography>
-              )}
-              {reach.phone && (
-                <Typography variant="body2" color="text.secondary">
-                  {reach.phone}
-                </Typography>
-              )}
-            </Stack>
-          ) : (
-            <Typography variant="body2" color="text.disabled">
-              No primary parent on this family.
-            </Typography>
-          )}
+      <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ mt: 2 }}>
+        <Box sx={{ flex: 1 }}>
+          <LabeledField label="DOB">
+            <DatePicker
+              value={student.dob ? dayjs(student.dob) : null}
+              onChange={(d) =>
+                onPatch({
+                  dob: d && d.isValid() ? d.format("YYYY-MM-DD") : null,
+                })
+              }
+              slotProps={{
+                textField: { size: "small", fullWidth: true, sx: ghostFieldSx },
+              }}
+            />
+          </LabeledField>
         </Box>
-      </Box>
+        <Box sx={{ flex: 2 }}>
+          <LabeledField label="School">
+            <TextField
+              select
+              size="small"
+              fullWidth
+              sx={ghostFieldSx}
+              value={student.current_school_id ?? ""}
+              onChange={(e) =>
+                onPatch({ current_school_id: e.target.value || null })
+              }
+              SelectProps={{ displayEmpty: true }}
+            >
+              <MenuItem value="">
+                <em>— None —</em>
+              </MenuItem>
+              {(schools.data ?? []).map((s) => (
+                <MenuItem key={s.id} value={s.id}>
+                  {s.name}
+                </MenuItem>
+              ))}
+            </TextField>
+          </LabeledField>
+        </Box>
+      </Stack>
     </Paper>
   );
 }
@@ -283,6 +300,7 @@ function NameField({
       fullWidth
       size="small"
       placeholder={placeholder}
+      sx={ghostFieldSx}
       value={value}
       onChange={(e) => setValue(e.target.value)}
       onBlur={() => {
@@ -728,18 +746,3 @@ function DebouncedTextField({
   );
 }
 
-function Label({ children }: { children: React.ReactNode }) {
-  return (
-    <Typography
-      variant="caption"
-      color="text.secondary"
-      sx={{ textTransform: "uppercase", letterSpacing: 0.5, alignSelf: "center" }}
-    >
-      {children}
-    </Typography>
-  );
-}
-
-function Value({ children }: { children: React.ReactNode }) {
-  return <Typography variant="body2">{children}</Typography>;
-}
