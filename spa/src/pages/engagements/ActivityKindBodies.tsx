@@ -4,29 +4,33 @@ import {
   Box,
   Chip,
   IconButton,
+  MenuItem,
+  Select,
   Stack,
   TextField,
   Typography,
 } from "@mui/material";
 import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 import CloseIcon from "@mui/icons-material/Close";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { RichTextEditor } from "../../components/RichTextEditor";
+import { useSnackbar } from "../../components/Snackbar";
 
 import type { ActivityRow } from "./ActivitiesCard";
 
-/** Which activity_kinds render an expanded body below the row.
- *  - task: no body (notes inline edit covers it)
- *  - school_visit / school_recommendation: body lives in card 4c
- *    where it'll wire to the external tables. Not in this card. */
+/** Which activity_kinds render an expanded body below the row. The
+ *  external-table kinds (school_visit, school_recommendation) keep
+ *  their data on dedicated tables (school_visits, school_recommendations)
+ *  linked from engagement_tasks via engagement_task_id; the body
+ *  fetches + edits that row, not structured_content. */
 export const KIND_HAS_BODY: Record<ActivityRow["activity_kind"], boolean> = {
   task: false,
   document_review: true,
   best_environment: true,
   feedback_meeting: true,
-  school_visit: false,
-  school_recommendation: false,
+  school_visit: true,
+  school_recommendation: true,
 };
 
 export function ActivityKindBody({
@@ -61,6 +65,10 @@ export function ActivityKindBody({
           onCommit={(next) => onCommit(next as unknown as Record<string, unknown>)}
         />
       );
+    case "school_visit":
+      return <SchoolVisitBody taskId={row.id} engagementId={engagementId} />;
+    case "school_recommendation":
+      return <SchoolRecommendationBody taskId={row.id} engagementId={engagementId} />;
     default:
       return null;
   }
@@ -361,3 +369,307 @@ function DocPicker({
     </Box>
   );
 }
+
+// ---- school_visit ----------------------------------------------------------
+
+interface VisitRow {
+  id: string;
+  engagement_id: string;
+  school_id: string;
+  school_name: string;
+  visit_date: string | null;
+  attendees: string | null;
+  facts_notes: string | null;
+  opinion_notes: string | null;
+  hours: string | null;
+  engagement_task_id: string | null;
+}
+
+function SchoolVisitBody({
+  taskId,
+  engagementId,
+}: {
+  taskId: string;
+  engagementId: string;
+}) {
+  const visits = useQuery<VisitRow[], Error>({
+    queryKey: ["engagements", engagementId, "visits"],
+    queryFn: async () => {
+      const res = await fetch(`/api/engagements/${engagementId}/visits`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to load visits.");
+      return res.json();
+    },
+  });
+
+  const visit = visits.data?.find((v) => v.engagement_task_id === taskId) ?? null;
+
+  if (visits.isPending) {
+    return <Typography variant="body2" color="text.disabled">Loading visit…</Typography>;
+  }
+  if (!visit) {
+    return (
+      <Typography variant="body2" color="text.disabled">
+        This activity isn't linked to a school visit row. (Was the task created
+        before A2's atomic-create endpoint, or was the visit deleted?)
+      </Typography>
+    );
+  }
+
+  return (
+    <VisitEditor
+      visit={visit}
+      onSaved={() =>
+        visits.refetch()
+      }
+    />
+  );
+}
+
+function VisitEditor({
+  visit,
+  onSaved,
+}: {
+  visit: VisitRow;
+  onSaved: () => void;
+}) {
+  const snackbar = useSnackbar();
+  const qc = useQueryClient();
+  const patch = useMutation({
+    mutationFn: async (body: Partial<VisitRow>) => {
+      const res = await fetch(`/api/visits/${visit.id}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error((j as { detail?: string }).detail ?? "Update failed.");
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["engagements", visit.engagement_id, "visits"] });
+      onSaved();
+    },
+    onError: (e: Error) => snackbar.show(e.message, "error"),
+  });
+  return (
+    <Stack spacing={1.5}>
+      <Typography variant="caption" color="text.secondary">
+        At <strong>{visit.school_name}</strong>
+      </Typography>
+      <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+        <Box sx={{ flex: 1 }}>
+          <FieldLabel>Visit date</FieldLabel>
+          <TextField
+            size="small"
+            fullWidth
+            type="date"
+            value={visit.visit_date ?? ""}
+            onChange={(e) => patch.mutate({ visit_date: e.target.value || null })}
+          />
+        </Box>
+        <Box sx={{ flex: 1 }}>
+          <FieldLabel>Hours</FieldLabel>
+          <TextField
+            size="small"
+            fullWidth
+            type="number"
+            inputProps={{ step: "0.25", min: 0 }}
+            defaultValue={visit.hours ?? ""}
+            onBlur={(e) => {
+              const next = e.target.value === "" ? null : e.target.value;
+              if (next !== visit.hours) patch.mutate({ hours: next });
+            }}
+          />
+        </Box>
+        <Box sx={{ flex: 2 }}>
+          <FieldLabel>Attendees (free text)</FieldLabel>
+          <TextField
+            size="small"
+            fullWidth
+            placeholder="e.g. Admissions director, Maria S., Mr. Kelly"
+            defaultValue={visit.attendees ?? ""}
+            onBlur={(e) => {
+              const next = e.target.value.trim() || null;
+              if (next !== visit.attendees) patch.mutate({ attendees: next });
+            }}
+          />
+        </Box>
+      </Stack>
+      <Box>
+        <FieldLabel>Facts</FieldLabel>
+        <RichBodyEditor
+          initial={visit.facts_notes ?? ""}
+          placeholder="What we saw — class sizes, schedule, programs offered…"
+          onCommit={(html) => patch.mutate({ facts_notes: html })}
+        />
+      </Box>
+      <Box>
+        <FieldLabel>Opinion</FieldLabel>
+        <RichBodyEditor
+          initial={visit.opinion_notes ?? ""}
+          placeholder="Our read — fit assessment, concerns, gut take…"
+          onCommit={(html) => patch.mutate({ opinion_notes: html })}
+        />
+      </Box>
+    </Stack>
+  );
+}
+
+// ---- school_recommendation -------------------------------------------------
+
+type RecStatus =
+  | "considered"
+  | "recommended"
+  | "applied"
+  | "accepted"
+  | "enrolled"
+  | "rejected";
+
+interface RecRow {
+  id: string;
+  engagement_id: string;
+  school_id: string;
+  school_name: string;
+  rank: number | null;
+  status: RecStatus;
+  notes: string | null;
+  engagement_task_id: string | null;
+}
+
+const REC_STATUS_OPTIONS: Array<{ value: RecStatus; label: string }> = [
+  { value: "considered",  label: "Considered" },
+  { value: "recommended", label: "Recommended" },
+  { value: "applied",     label: "Applied" },
+  { value: "accepted",    label: "Accepted" },
+  { value: "enrolled",    label: "Enrolled" },
+  { value: "rejected",    label: "Rejected" },
+];
+
+function SchoolRecommendationBody({
+  taskId,
+  engagementId,
+}: {
+  taskId: string;
+  engagementId: string;
+}) {
+  const recs = useQuery<RecRow[], Error>({
+    queryKey: ["engagements", engagementId, "recommendations"],
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/engagements/${engagementId}/recommendations`,
+        { credentials: "include" },
+      );
+      if (!res.ok) throw new Error("Failed to load recommendations.");
+      return res.json();
+    },
+  });
+  const rec = recs.data?.find((r) => r.engagement_task_id === taskId) ?? null;
+  if (recs.isPending) {
+    return <Typography variant="body2" color="text.disabled">Loading…</Typography>;
+  }
+  if (!rec) {
+    return (
+      <Typography variant="body2" color="text.disabled">
+        This activity isn't linked to a school recommendation row.
+      </Typography>
+    );
+  }
+  return <RecEditor rec={rec} />;
+}
+
+function RecEditor({ rec }: { rec: RecRow }) {
+  const qc = useQueryClient();
+  const snackbar = useSnackbar();
+  const patch = useMutation({
+    mutationFn: async (body: Partial<RecRow>) => {
+      const res = await fetch(`/api/recommendations/${rec.id}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error((j as { detail?: string }).detail ?? "Update failed.");
+      }
+    },
+    onSuccess: () =>
+      qc.invalidateQueries({
+        queryKey: ["engagements", rec.engagement_id, "recommendations"],
+      }),
+    onError: (e: Error) => snackbar.show(e.message, "error"),
+  });
+  return (
+    <Stack spacing={1.5}>
+      <Typography variant="caption" color="text.secondary">
+        For <strong>{rec.school_name}</strong>
+      </Typography>
+      <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+        <Box sx={{ flex: 1 }}>
+          <FieldLabel>Status</FieldLabel>
+          <Select
+            size="small"
+            fullWidth
+            value={rec.status}
+            onChange={(e) => patch.mutate({ status: e.target.value as RecStatus })}
+          >
+            {REC_STATUS_OPTIONS.map((o) => (
+              <MenuItem key={o.value} value={o.value}>
+                {o.label}
+              </MenuItem>
+            ))}
+          </Select>
+        </Box>
+        <Box sx={{ flex: 1 }}>
+          <FieldLabel>Rank</FieldLabel>
+          <TextField
+            size="small"
+            fullWidth
+            type="number"
+            inputProps={{ min: 1 }}
+            placeholder="(none)"
+            defaultValue={rec.rank ?? ""}
+            onBlur={(e) => {
+              const next = e.target.value === "" ? null : Number(e.target.value);
+              if (next !== rec.rank) patch.mutate({ rank: next });
+            }}
+          />
+        </Box>
+      </Stack>
+      <Box>
+        <FieldLabel>Notes</FieldLabel>
+        <TextField
+          size="small"
+          fullWidth
+          multiline
+          minRows={2}
+          placeholder="Why this school is on the list, application notes, follow-ups…"
+          defaultValue={rec.notes ?? ""}
+          onBlur={(e) => {
+            const next = e.target.value.trim() || null;
+            if (next !== rec.notes) patch.mutate({ notes: next });
+          }}
+        />
+      </Box>
+    </Stack>
+  );
+}
+
+// ---- shared field label ---------------------------------------------------
+
+function FieldLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <Typography
+      variant="caption"
+      color="text.secondary"
+      sx={{ display: "block", mb: 0.5, fontWeight: 600 }}
+    >
+      {children}
+    </Typography>
+  );
+}
+
