@@ -79,6 +79,11 @@ export function ContactDrawer({
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["contacts", "detail", personId] });
       qc.invalidateQueries({ queryKey: ["contacts", "list"] });
+      // A contact can be a guardian or a student on a family — name /
+      // email / phone edits should refresh the family roster cards.
+      qc.invalidateQueries({ queryKey: ["families"] });
+      // Student detail queries are keyed on the student's person_id.
+      qc.invalidateQueries({ queryKey: ["students"] });
     },
     onError: (e: Error) => snackbar.show(e.message, "error"),
   });
@@ -97,6 +102,10 @@ export function ContactDrawer({
     onSuccess: () => {
       snackbar.show(`${data ? [data.first_name, data.last_name].filter(Boolean).join(" ") : "Contact"} removed`);
       qc.invalidateQueries({ queryKey: ["contacts", "list"] });
+      // Deleting a guardian / student from /contacts removes them from
+      // their family page too; force the family roster to refetch.
+      qc.invalidateQueries({ queryKey: ["families"] });
+      qc.invalidateQueries({ queryKey: ["students"] });
       onClose();
     },
     onError: (e: Error) => snackbar.show(e.message, "error"),
