@@ -1,9 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
+import { PDFParse } from "pdf-parse";
 
 const E2E_AUTH_TOKEN = process.env.E2E_AUTH_BYPASS_TOKEN ?? "playwright-token";
 const E2E_HOUSEHOLD = "E2E Golden Household";
+const E2E_CONTRACT_HOUSEHOLD = "E2E Contract Household";
 const E2E_ACTIVITY_TITLE = "E2E status selection activity";
 const E2E_SCHOOL_NAME = "E2E Test Academy";
+const SERVICES_TEMPLATE_NAME = "Standard educational consulting services agreement";
+const MEDICAL_TEMPLATE_NAME = "Standard authorization for release of medical and educational information";
 
 async function login(page: Page, baseURL: string | undefined) {
   const response = await page.context().request.get(new URL("/api/me", baseURL).toString(), {
@@ -76,6 +80,27 @@ async function expandActivityPhase(page: Page, phaseName: string) {
   if ((await phase.getAttribute("aria-expanded")) !== "true") {
     await phase.click();
   }
+}
+
+async function openEngagement(page: Page, householdName: string) {
+  await page.goto("/engagements");
+  await page.getByPlaceholder("Search by family, student, lead, or type").fill(householdName);
+  await page.getByRole("row", { name: new RegExp(householdName) }).click();
+  await expect(page.getByText(householdName)).toBeVisible();
+}
+
+async function pdfTextFromAgreementPreview(page: Page, agreementRow: ReturnType<Page["locator"]>) {
+  const href = await agreementRow.getByRole("link", { name: "Preview PDF" }).getAttribute("href");
+  expect(href).toBeTruthy();
+
+  const response = await page.context().request.get(href!);
+  expect(response.ok()).toBeTruthy();
+  expect(response.headers()["content-type"]).toContain("application/pdf");
+
+  const parser = new PDFParse({ data: await response.body() });
+  const result = await parser.getText();
+  await parser.destroy();
+  return result.text;
 }
 
 test("authenticated app shell loads", async ({ page, baseURL }) => {
@@ -175,6 +200,109 @@ test("school recommendation duplicate stays in dialog with 409 detail", async ({
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText("Recommendation already exists")).toBeVisible();
   await expect(page.locator(`input[value="Recommendation: ${E2E_SCHOOL_NAME}"]`)).toHaveCount(1);
+});
+
+test.describe.serial("contract template agreements", () => {
+  test("creates a templated draft agreement and previews the PDF", async ({
+    page,
+    baseURL,
+  }) => {
+    await login(page, baseURL);
+    await openEngagement(page, E2E_CONTRACT_HOUSEHOLD);
+
+    await page.getByRole("button", { name: "New agreement" }).click();
+    const dialog = page.getByRole("dialog", { name: "New agreement" });
+    await dialog.getByTestId("agreement-template-select").getByRole("combobox").click();
+    await expect(page.getByRole("option", { name: SERVICES_TEMPLATE_NAME })).toBeVisible();
+    await page.getByRole("option", { name: SERVICES_TEMPLATE_NAME }).click();
+    await dialog.getByLabel("Amount").fill("2500");
+    await dialog.getByRole("button", { name: "Create draft" }).click();
+    await expect(dialog).toBeHidden();
+
+    const agreementRow = page.locator('[data-agreement-type="services_contract"]').first();
+    await expect(agreementRow.getByText("Drafted")).toBeVisible();
+    await expect(agreementRow.getByRole("button", { name: "View / Edit" })).toBeVisible();
+    await expect(agreementRow.getByRole("link", { name: "Preview PDF" })).toBeVisible();
+
+    const pdfText = await pdfTextFromAgreementPreview(page, agreementRow);
+    expect(pdfText).toContain("EDUCATIONAL CONSULTING SERVICES AGREEMENT");
+    expect(pdfText).toContain(`the ${E2E_CONTRACT_HOUSEHOLD} family`);
+    expect(pdfText).toContain("175.00");
+  });
+
+  test("contract body edits propagate to the rendered PDF", async ({
+    page,
+    baseURL,
+  }) => {
+    await login(page, baseURL);
+    await openEngagement(page, E2E_CONTRACT_HOUSEHOLD);
+
+    const agreementRow = page.locator('[data-agreement-type="services_contract"]').first();
+    await agreementRow.getByRole("button", { name: "View / Edit" }).click();
+
+    const dialog = page.getByRole("dialog", { name: "Contract body" });
+    const editor = dialog.getByTestId("agreement-body-editor");
+    const originalBody = await editor.inputValue();
+    expect(originalBody).toContain("{{governing_state}}");
+    await editor.fill(originalBody.replace("{{governing_state}}", "Indiana"));
+    await dialog.getByRole("button", { name: "Save" }).click();
+    await expect(dialog).toBeHidden();
+    await expect(agreementRow).toBeVisible();
+
+    const pdfText = await pdfTextFromAgreementPreview(page, agreementRow);
+    expect(pdfText).toContain("Indiana");
+    expect(pdfText).not.toContain("{{governing_state}}");
+  });
+});
+
+test("catalog contract templates can be created, edited, and deleted", async ({
+  page,
+  baseURL,
+}) => {
+  await login(page, baseURL);
+
+  await page.goto("/catalog");
+  await expect(page).toHaveURL(/\/catalog\/activities$/);
+  await page.getByRole("tab", { name: "Contracts" }).click();
+  await expect(page).toHaveURL(/\/catalog\/contracts$/);
+
+  const servicesRow = page.getByRole("row", { name: new RegExp(SERVICES_TEMPLATE_NAME) });
+  await expect(servicesRow).toContainText("client_name");
+  await expect(servicesRow).toContainText("governing_state");
+  const medicalRow = page.getByRole("row", { name: new RegExp(MEDICAL_TEMPLATE_NAME) });
+  await expect(medicalRow).toContainText("patient_full_name");
+
+  await page.getByRole("button", { name: "New template" }).click();
+  let dialog = page.getByRole("dialog", { name: "New template" });
+  await dialog.getByLabel("Name").fill("E2E test contract");
+  await dialog.getByTestId("contract-template-kind-select").getByRole("combobox").click();
+  await page.getByRole("option", { name: "Services contract" }).click();
+  await dialog.getByTestId("contract-template-body-editor").fill("Hello {{world}} and {{universe}}");
+  await expect(dialog.getByText("Detected variables (2)")).toBeVisible();
+  await expect(dialog.getByTestId("contract-template-variable-chip").filter({ hasText: "world" })).toBeVisible();
+  await expect(dialog.getByTestId("contract-template-variable-chip").filter({ hasText: "universe" })).toBeVisible();
+  await dialog.getByRole("button", { name: "Save" }).click();
+  await expect(dialog).toBeHidden();
+
+  const createdRow = page.getByRole("row", { name: /E2E test contract/ });
+  await expect(createdRow).toContainText("world");
+  await expect(createdRow).toContainText("universe");
+
+  await page.getByLabel("Edit E2E test contract").click();
+  dialog = page.getByRole("dialog", { name: "Edit template" });
+  const bodyEditor = dialog.getByTestId("contract-template-body-editor");
+  await expect(bodyEditor).toHaveValue("Hello {{world}} and {{universe}}");
+  await bodyEditor.fill("Hello {{world}} and {{universe}} and {{galaxy}}");
+  await expect(dialog.getByText("Detected variables (3)")).toBeVisible();
+  await expect(dialog.getByTestId("contract-template-variable-chip").filter({ hasText: "galaxy" })).toBeVisible();
+  await dialog.getByRole("button", { name: "Save" }).click();
+  await expect(dialog).toBeHidden();
+
+  await page.getByLabel("Delete E2E test contract").click();
+  const confirm = page.getByRole("dialog", { name: "Delete template?" });
+  await confirm.getByRole("button", { name: "Delete" }).click();
+  await expect(confirm).toBeHidden();
+  await expect(page.getByRole("row", { name: /E2E test contract/ })).toHaveCount(0);
 });
 
 test.describe.serial("intake conversion lifecycle", () => {

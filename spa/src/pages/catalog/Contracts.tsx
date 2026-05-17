@@ -139,7 +139,11 @@ export function CatalogContracts() {
             </TableHead>
             <TableBody>
               {rows.map((t) => (
-                <TableRow key={t.id}>
+                <TableRow
+                  key={t.id}
+                  data-testid={`contract-template-row-${t.id}`}
+                  data-template-name={t.name}
+                >
                   <TableCell>{t.name}</TableCell>
                   <TableCell>
                     <Chip size="small" variant="outlined" label={TYPE_LABEL[t.kind]} />
@@ -175,13 +179,18 @@ export function CatalogContracts() {
                   </TableCell>
                   <TableCell align="right">
                     <Tooltip title="Edit">
-                      <IconButton size="small" onClick={() => setEditing(t)}>
+                      <IconButton
+                        size="small"
+                        aria-label={`Edit ${t.name}`}
+                        onClick={() => setEditing(t)}
+                      >
                         <EditOutlinedIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
                     <Tooltip title="Delete">
                       <IconButton
                         size="small"
+                        aria-label={`Delete ${t.name}`}
                         onClick={() => setConfirmDelete(t)}
                         sx={{ color: "text.disabled", "&:hover": { color: "error.main" } }}
                       >
@@ -322,6 +331,7 @@ function TemplateDialog({
               autoFocus
             />
             <Select
+              data-testid="contract-template-kind-select"
               size="small"
               value={kind}
               onChange={(e) => setKind(e.target.value as AgreementType)}
@@ -347,6 +357,7 @@ function TemplateDialog({
             <TextField
               fullWidth
               multiline
+              inputProps={{ "data-testid": "contract-template-body-editor" } as Record<string, string>}
               minRows={20}
               maxRows={40}
               value={body}
@@ -374,6 +385,7 @@ function TemplateDialog({
                   <Chip
                     key={v}
                     size="small"
+                    data-testid="contract-template-variable-chip"
                     label={v}
                     sx={{ fontFamily: "monospace", fontSize: 12 }}
                   />

@@ -296,6 +296,8 @@ function AgreementRow({
   const fileRef = useRef<HTMLInputElement | null>(null);
   return (
     <Box
+      data-testid={`agreement-row-${agreement.id}`}
+      data-agreement-type={agreement.type}
       sx={{
         border: 1,
         borderColor: "divider",
@@ -325,6 +327,7 @@ function AgreementRow({
           <>
             <Button
               size="small"
+              data-testid={`agreement-edit-${agreement.id}`}
               startIcon={<DescriptionOutlinedIcon fontSize="small" />}
               onClick={onEditBody}
               sx={{ color: "text.secondary" }}
@@ -333,6 +336,7 @@ function AgreementRow({
             </Button>
             <Button
               size="small"
+              data-testid={`agreement-pdf-${agreement.id}`}
               href={`/api/agreements/${agreement.id}/pdf`}
               target="_blank"
               startIcon={<PictureAsPdfOutlinedIcon fontSize="small" />}
@@ -520,6 +524,7 @@ function AddAgreementDialog({
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 1 }}>
           <Select
+            data-testid="agreement-type-select"
             size="small"
             value={type}
             onChange={(e) => {
@@ -539,6 +544,7 @@ function AddAgreementDialog({
               Template
             </Typography>
             <Select
+              data-testid="agreement-template-select"
               size="small"
               fullWidth
               value={templateId}
@@ -732,6 +738,7 @@ function ContractBodyDialog({
           <TextField
             fullWidth
             multiline
+            inputProps={{ "data-testid": "agreement-body-editor" } as Record<string, string>}
             minRows={20}
             maxRows={40}
             value={body}
