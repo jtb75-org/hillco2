@@ -1,5 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Box,
   Button,
   Chip,
@@ -67,6 +70,21 @@ export interface ActivityRow {
   phase_id: string | null;
 }
 
+interface CatalogPhase {
+  id: string;
+  sort_order: number;
+  title: string;
+}
+
+// "Other / bespoke" bucket for rows with no phase_id. Sorted last.
+const BESPOKE_PHASE_KEY = "__bespoke__";
+
+interface PhaseGroup {
+  key: string;
+  title: string;
+  rows: ActivityRow[];
+}
+
 const STATUS_OPTIONS: Array<{ value: TaskStatus; label: string; icon: React.ReactNode; tone: "default" | "info" | "success" | "warning" }> = [
   { value: "not_started",    label: "Not started", icon: <CircleOutlinedIcon fontSize="small" />,       tone: "default" },
   { value: "in_progress",    label: "In progress", icon: <PlayCircleOutlineIcon fontSize="small" />,    tone: "info" },
@@ -113,6 +131,17 @@ export function ActivitiesCard({ engagementId }: { engagementId: string }) {
         credentials: "include",
       });
       if (!res.ok) throw new Error("Failed to load activities.");
+      return res.json();
+    },
+  });
+
+  const catalog = useQuery<CatalogPhase[], Error>({
+    queryKey: ["engagements", engagementId, "catalog"],
+    queryFn: async () => {
+      const res = await fetch(`/api/engagements/${engagementId}/catalog`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to load catalog.");
       return res.json();
     },
   });
@@ -182,6 +211,70 @@ export function ActivitiesCard({ engagementId }: { engagementId: string }) {
     const eff = Math.max(total - skipped, 0);
     return { total, done, skipped, eff };
   }, [tasks.data]);
+
+  // Group rows by phase. The catalog gives us phase titles + their
+  // sort order; bespoke rows (no phase_id, or phase_id pointing at a
+  // phase not in this engagement type's catalog) fall into a trailing
+  // "Other" bucket.
+  const phaseGroups = useMemo<PhaseGroup[]>(() => {
+    const phaseById = new Map<string, CatalogPhase>(
+      (catalog.data ?? []).map((p) => [p.id, p]),
+    );
+    const byKey = new Map<string, ActivityRow[]>();
+    for (const r of rows) {
+      const key = r.phase_id && phaseById.has(r.phase_id) ? r.phase_id : BESPOKE_PHASE_KEY;
+      if (!byKey.has(key)) byKey.set(key, []);
+      byKey.get(key)!.push(r);
+    }
+    const out: PhaseGroup[] = [];
+    for (const p of catalog.data ?? []) {
+      const rs = byKey.get(p.id);
+      if (rs && rs.length > 0) {
+        out.push({ key: p.id, title: p.title, rows: rs });
+      }
+    }
+    const bespoke = byKey.get(BESPOKE_PHASE_KEY);
+    if (bespoke && bespoke.length > 0) {
+      out.push({ key: BESPOKE_PHASE_KEY, title: "Other", rows: bespoke });
+    }
+    return out;
+  }, [rows, catalog.data]);
+
+  // Phase accordion state — auto-expand the first phase that still
+  // has open work; collapse fully-done phases. User toggles override
+  // and persist for the lifetime of this view.
+  const [phaseExpanded, setPhaseExpanded] = useState<Set<string>>(new Set());
+  const [phaseDefaultsApplied, setPhaseDefaultsApplied] = useState(false);
+  useEffect(() => {
+    if (phaseDefaultsApplied || phaseGroups.length === 0) return;
+    const initial = new Set<string>();
+    let firstActiveFound = false;
+    for (const g of phaseGroups) {
+      const hasActive = g.rows.some(
+        (r) => r.status !== "completed" && r.status !== "not_applicable",
+      );
+      if (hasActive && !firstActiveFound) {
+        initial.add(g.key);
+        firstActiveFound = true;
+      }
+    }
+    // If every phase is done, expand the last one so the operator sees
+    // something rather than a wall of collapsed accordions.
+    if (initial.size === 0) {
+      initial.add(phaseGroups[phaseGroups.length - 1].key);
+    }
+    setPhaseExpanded(initial);
+    setPhaseDefaultsApplied(true);
+  }, [phaseGroups, phaseDefaultsApplied]);
+
+  const togglePhase = (key: string) => {
+    setPhaseExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
 
   return (
     <Paper variant="outlined" sx={{ p: 2.5 }}>
@@ -264,38 +357,86 @@ export function ActivitiesCard({ engagementId }: { engagementId: string }) {
           No activities yet. Use Add activity to start a bespoke item.
         </Typography>
       ) : (
-        <Stack divider={<Box sx={{ borderTop: 1, borderColor: "divider" }} />}>
-          {rows.map((row) => (
-            <ActivityRowView
-              key={row.id}
-              row={row}
-              engagementId={engagementId}
-              isExpanded={expanded.has(row.id)}
-              onToggleExpand={() => toggleExpand(row.id)}
-              onStatusChange={(status) => patchStatus.mutate({ id: row.id, status })}
-              onSkipToggle={() => {
-                const next: TaskStatus =
-                  row.status === "not_applicable" ? "not_started" : "not_applicable";
-                patchStatus.mutate({ id: row.id, status: next });
-              }}
-              onTitleCommit={(title) =>
-                patchFields.mutate({ id: row.id, body: { title } as Partial<ActivityRow> })
-              }
-              onDescriptionCommit={(description) =>
-                patchFields.mutate({
-                  id: row.id,
-                  body: { description } as Partial<ActivityRow>,
-                })
-              }
-              onStructuredContentCommit={(structured_content) =>
-                patchFields.mutate({
-                  id: row.id,
-                  body: { structured_content } as Partial<ActivityRow>,
-                })
-              }
-              onDelete={() => remove.mutate(row.id)}
-            />
-          ))}
+        <Stack spacing={0.75}>
+          {phaseGroups.map((group) => {
+            const done = group.rows.filter((r) => r.status === "completed").length;
+            const skipped = group.rows.filter((r) => r.status === "not_applicable").length;
+            const effective = Math.max(group.rows.length - skipped, 0);
+            const allDone = effective > 0 && done === effective;
+            return (
+              <Accordion
+                key={group.key}
+                expanded={phaseExpanded.has(group.key)}
+                onChange={() => togglePhase(group.key)}
+                variant="outlined"
+                disableGutters
+                sx={{
+                  "&:before": { display: "none" },
+                  borderRadius: 1,
+                }}
+              >
+                <AccordionSummary
+                  expandIcon={<ExpandMoreIcon />}
+                  sx={{
+                    "& .MuiAccordionSummary-content": {
+                      my: 0.5,
+                      alignItems: "center",
+                      gap: 1,
+                    },
+                  }}
+                >
+                  {allDone && (
+                    <CheckCircleOutlineIcon
+                      fontSize="small"
+                      sx={{ color: "success.main" }}
+                    />
+                  )}
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, flex: 1 }}>
+                    {group.title}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {done} / {effective} complete
+                    {skipped > 0 ? ` · ${skipped} skipped` : ""}
+                  </Typography>
+                </AccordionSummary>
+                <AccordionDetails sx={{ px: 2, py: 0.5 }}>
+                  <Stack divider={<Box sx={{ borderTop: 1, borderColor: "divider" }} />}>
+                    {group.rows.map((row) => (
+                      <ActivityRowView
+                        key={row.id}
+                        row={row}
+                        engagementId={engagementId}
+                        isExpanded={expanded.has(row.id)}
+                        onToggleExpand={() => toggleExpand(row.id)}
+                        onStatusChange={(status) => patchStatus.mutate({ id: row.id, status })}
+                        onSkipToggle={() => {
+                          const next: TaskStatus =
+                            row.status === "not_applicable" ? "not_started" : "not_applicable";
+                          patchStatus.mutate({ id: row.id, status: next });
+                        }}
+                        onTitleCommit={(title) =>
+                          patchFields.mutate({ id: row.id, body: { title } as Partial<ActivityRow> })
+                        }
+                        onDescriptionCommit={(description) =>
+                          patchFields.mutate({
+                            id: row.id,
+                            body: { description } as Partial<ActivityRow>,
+                          })
+                        }
+                        onStructuredContentCommit={(structured_content) =>
+                          patchFields.mutate({
+                            id: row.id,
+                            body: { structured_content } as Partial<ActivityRow>,
+                          })
+                        }
+                        onDelete={() => remove.mutate(row.id)}
+                      />
+                    ))}
+                  </Stack>
+                </AccordionDetails>
+              </Accordion>
+            );
+          })}
         </Stack>
       )}
 
