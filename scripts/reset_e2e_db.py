@@ -22,8 +22,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 E2E_USER_EMAIL = "browser-e2e@example.com"
 E2E_USER_NAME = "Browser E2E"
 E2E_HOUSEHOLD = "E2E Golden Household"
+E2E_CONTRACT_HOUSEHOLD = "E2E Contract Household"
 E2E_STUDENT_FIRST = "Golden"
 E2E_STUDENT_LAST = "Student"
+E2E_CONTRACT_STUDENT_FIRST = "Contract"
+E2E_CONTRACT_STUDENT_LAST = "Student"
 E2E_ACTIVITY_TITLE = "E2E status selection activity"
 E2E_SCHOOL_NAME = "E2E Test Academy"
 LOCAL_OBJECT_STORE = Path(tempfile.gettempdir()) / "hillco2-local-object-store"
@@ -153,6 +156,39 @@ async def _seed_golden_path(conn: asyncpg.Connection) -> None:
         )
         """,
         E2E_SCHOOL_NAME,
+    )
+    contract_family_id = await conn.fetchval(
+        "INSERT INTO families (household_name) VALUES ($1) RETURNING id",
+        E2E_CONTRACT_HOUSEHOLD,
+    )
+    contract_student_id = await conn.fetchval(
+        """
+        INSERT INTO people (kind, first_name, last_name)
+        VALUES ('student', $1, $2)
+        RETURNING id
+        """,
+        E2E_CONTRACT_STUDENT_FIRST,
+        E2E_CONTRACT_STUDENT_LAST,
+    )
+    await conn.execute(
+        "INSERT INTO family_students (family_id, person_id) VALUES ($1, $2)",
+        contract_family_id,
+        contract_student_id,
+    )
+    await conn.execute(
+        "INSERT INTO student_details (person_id, current_grade) VALUES ($1, '9')",
+        contract_student_id,
+    )
+    await conn.execute(
+        """
+        INSERT INTO engagements (
+          family_id, student_id, engagement_type, status, start_date,
+          default_hourly_rate, lead_consultant_id
+        ) VALUES ($1, $2, 'assessment', 'in_progress', CURRENT_DATE, 175.00, $3)
+        """,
+        contract_family_id,
+        contract_student_id,
+        user_id,
     )
 
 
