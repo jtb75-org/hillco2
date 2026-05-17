@@ -35,6 +35,8 @@ interface TimeEntry {
   hourly_rate: string | null;
   invoice_id: string | null;
   invoice_number: string | null;
+  engagement_task_id: string | null;
+  task_title: string | null;
 }
 
 export function TimeEntriesCard({ engagementId }: { engagementId: string }) {
@@ -203,6 +205,14 @@ function TimeEntryRow({
             }
           }}
         />
+        {entry.task_title && (
+          <Chip
+            size="small"
+            variant="outlined"
+            label={entry.task_title}
+            sx={{ mt: 0.5, height: 20, fontSize: 11 }}
+          />
+        )}
       </Box>
       <Stack direction="row" spacing={0.5} alignItems="center">
         <FormControlLabel
