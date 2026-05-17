@@ -223,6 +223,7 @@ test.describe.serial("contract template agreements", () => {
     // on the create + preview path rather than the firm-settings UI.
     const missingFieldLabels = [
       "Consultant Address",
+      "Client Address",
       "Governing State",
       "Billing Increment Minutes",
       "Invoice Frequency",
@@ -233,6 +234,21 @@ test.describe.serial("contract template agreements", () => {
       const field = dialog.getByLabel(label);
       if ((await field.count()) > 0) {
         await field.first().fill("E2E");
+      }
+    }
+    // Guarantee any other unforeseen missing inputs get filled too so
+    // a template tweak doesn't silently re-break this test.
+    const missingAlert = dialog.getByText(/variables? need a value/i);
+    if (await missingAlert.count()) {
+      const inputs = dialog
+        .locator(".MuiTextField-root")
+        .locator("input, textarea");
+      const n = await inputs.count();
+      for (let i = 0; i < n; i++) {
+        const inp = inputs.nth(i);
+        if ((await inp.inputValue()) === "") {
+          await inp.fill("E2E");
+        }
       }
     }
     await dialog.getByRole("button", { name: "Create draft" }).click();
