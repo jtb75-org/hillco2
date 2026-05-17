@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Alert,
   Box,
@@ -9,6 +9,7 @@ import {
   DialogContent,
   DialogTitle,
   IconButton,
+  InputAdornment,
   ListItemIcon,
   ListItemText,
   Menu,
@@ -16,6 +17,7 @@ import {
   Link as MuiLink,
   Paper,
   Stack,
+  TextField,
   Tooltip,
   Typography,
 } from "@mui/material";
@@ -360,7 +362,7 @@ function HeaderStrip({ engagement }: { engagement: EngagementDetail }) {
         </Value>
         <Label>Rate</Label>
         <Value>
-          {engagement.default_hourly_rate ? `$${engagement.default_hourly_rate}/hr` : "—"}
+          <RateEditor engagement={engagement} />
         </Value>
         <Label>Tasks</Label>
         <Value>
@@ -382,6 +384,70 @@ function HeaderStrip({ engagement }: { engagement: EngagementDetail }) {
   );
 }
 
+
+function RateEditor({ engagement }: { engagement: EngagementDetail }) {
+  const qc = useQueryClient();
+  const snackbar = useSnackbar();
+  const initial = engagement.default_hourly_rate ?? "";
+  const [draft, setDraft] = useState<string>(initial);
+  useEffect(() => {
+    setDraft(initial);
+  }, [initial]);
+
+  const patch = useMutation({
+    mutationFn: async (value: string | null) => {
+      const { error } = await api.PATCH(
+        "/api/engagements/{engagement_id}",
+        {
+          params: { path: { engagement_id: engagement.id } },
+          body: { default_hourly_rate: value } as never,
+        },
+      );
+      if (error) {
+        const msg = (error as { detail?: string }).detail ?? "Rate update failed.";
+        throw new Error(msg);
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["engagements", engagement.id] });
+    },
+    onError: (e: Error) => snackbar.show(e.message, "error"),
+  });
+
+  return (
+    <TextField
+      variant="standard"
+      size="small"
+      placeholder="—"
+      type="number"
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => {
+        const next = draft.trim() === "" ? null : draft.trim();
+        const original = initial === "" ? null : String(initial);
+        if (next !== original) patch.mutate(next);
+      }}
+      inputProps={{ step: "0.01", min: 0, "aria-label": "Hourly rate" }}
+      InputProps={{
+        disableUnderline: !patch.isPending && draft === initial,
+        startAdornment: (
+          <InputAdornment position="start" sx={{ mr: 0.25 }}>
+            $
+          </InputAdornment>
+        ),
+        endAdornment: (
+          <InputAdornment position="end" sx={{ ml: 0.25, color: "text.secondary" }}>
+            /hr
+          </InputAdornment>
+        ),
+      }}
+      sx={{
+        width: 140,
+        "& .MuiInput-input": { textAlign: "left" },
+      }}
+    />
+  );
+}
 
 function Label({ children }: { children: React.ReactNode }) {
   return (
