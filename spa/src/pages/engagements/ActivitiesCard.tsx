@@ -32,6 +32,7 @@ import PlayCircleOutlineIcon from "@mui/icons-material/PlayCircleOutline";
 import RemoveCircleOutlineIcon from "@mui/icons-material/RemoveCircleOutline";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { RichTextEditor } from "../../components/RichTextEditor";
 import { useSnackbar } from "../../components/Snackbar";
 import {
   ActivityKindBody,
@@ -687,22 +688,74 @@ function NotesInput({
   value: string;
   onCommit: (v: string) => void;
 }) {
-  // Plain TextField. We considered swapping in RichTextEditor here
-  // for B/I/lists, but Tiptap is heavy and 19-28 mounted editors
-  // per engagement page made the activity list feel sluggish.
-  // Rich formatting still lives on the kind-specific accordion
-  // bodies (best_environment, feedback_meeting) where it actually
-  // pays off.
+  // Click-to-edit. Read mode is a small div rendering the notes as
+  // HTML (or showing a placeholder); edit mode lazy-mounts Tiptap with
+  // the B / I / list toolbar. Only ONE editor is alive at a time across
+  // the whole activities list — no perf hit when the page loads with
+  // 19-28 activities.
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  useEffect(() => {
+    if (!editing) setDraft(value);
+  }, [editing, value]);
+
+  if (!editing) {
+    const empty = !value || value === "<p></p>";
+    return (
+      <Box
+        role="button"
+        tabIndex={0}
+        onClick={() => setEditing(true)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setEditing(true);
+          }
+        }}
+        sx={{
+          minHeight: 32,
+          py: 0.5,
+          fontSize: 13,
+          color: empty ? "text.disabled" : "text.secondary",
+          fontStyle: empty ? "italic" : "normal",
+          cursor: "text",
+          "& p": { m: 0, mb: 0.5 },
+          "& p:last-child": { mb: 0 },
+          "& ul, & ol": { my: 0.5, pl: 3 },
+          "&:hover": { color: empty ? "text.secondary" : "text.primary" },
+        }}
+        dangerouslySetInnerHTML={
+          empty ? undefined : { __html: value }
+        }
+      >
+        {empty ? "Add notes…" : null}
+      </Box>
+    );
+  }
   return (
-    <DebouncedInput
-      value={value}
-      placeholder="Add notes…"
-      multiline
-      onCommit={onCommit}
+    <Box
       sx={{
-        ".MuiInput-input": { fontSize: 13, color: "text.secondary" },
+        display: "flex",
+        "& .rich-text-editor-body": {
+          minHeight: "3em",
+          fontSize: 13,
+          color: "text.secondary",
+        },
       }}
-    />
+      onBlur={(e) => {
+        if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+        if (draft !== value) onCommit(draft);
+        setEditing(false);
+      }}
+    >
+      <RichTextEditor
+        value={draft}
+        onChange={setDraft}
+        placeholder="Add notes…"
+        minRows={2}
+        autoFocus
+      />
+    </Box>
   );
 }
 
