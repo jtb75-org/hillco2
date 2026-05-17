@@ -87,6 +87,37 @@ async def _seed_golden_path(conn: asyncpg.Connection) -> None:
     user_id = await _seed_user(conn)
     await conn.execute("SELECT set_config('app.user_id', $1, true)", str(user_id))
 
+    # Firm settings: populate so the New Agreement dialog's
+    # auto-fill resolves the firm-wide variables (governing_state,
+    # billing_increment_minutes, etc.) and only agreement-override
+    # variables remain in the missing list.
+    await conn.execute(
+        """
+        UPDATE org_settings SET
+          firm_name = $1,
+          firm_street1 = $2,
+          firm_city = $3,
+          firm_state = $4,
+          firm_postal_code = $5,
+          governing_state = $6,
+          billing_increment_minutes = $7,
+          invoice_frequency = $8,
+          payment_terms_days = $9,
+          expense_approval_threshold = $10
+        WHERE id = 1
+        """,
+        "E2E Educational Consulting",
+        "1 Main St",
+        "Indianapolis",
+        "IN",
+        "46202",
+        "Indiana",
+        15,
+        "monthly",
+        30,
+        "250.00",
+    )
+
     family_id = await conn.fetchval(
         "INSERT INTO families (household_name) VALUES ($1) RETURNING id",
         E2E_HOUSEHOLD,
