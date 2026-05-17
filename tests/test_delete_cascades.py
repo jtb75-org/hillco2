@@ -320,26 +320,34 @@ async def test_family_hard_delete_preserves_listed_people_and_soft_deletes_other
 # ---- Engagement delete ---------------------------------------------------
 
 
-async def test_engagement_delete_clean_engagement_hard_deletes(
+async def test_engagement_delete_soft_deletes_row(
     authed_client, db_pool, test_user
 ):
-    """A clean engagement can be hard-deleted."""
+    """Engagement delete is a soft-delete: the row stays put but
+    deleted_at is stamped so it falls out of lists / family rollups."""
     engagement_id = await _create_engagement(db_pool, test_user)
     r = await authed_client.delete(f"/api/engagements/{engagement_id}")
     assert r.status_code == 204, r.text
-    assert await _exists(db_pool, "engagements", engagement_id) is None
+    async with db_pool.acquire() as conn:
+        deleted_at = await conn.fetchval(
+            "SELECT deleted_at FROM engagements WHERE id = $1",
+            engagement_id,
+        )
+    assert deleted_at is not None
 
 
-async def test_engagement_delete_with_tasks_cascades_tasks(
+async def test_engagement_soft_delete_preserves_tasks(
     authed_client, db_pool, test_user
 ):
-    """Engagement tasks cascade when the engagement is hard-deleted."""
+    """Soft delete leaves engagement_tasks untouched. The engagement is
+    hidden from queries but the underlying records remain so audit and
+    rollup work survives the deletion."""
     engagement_id = await _create_engagement(db_pool, test_user)
     async with db_pool.acquire() as conn:
         task_id = await conn.fetchval(
             """
             INSERT INTO engagement_tasks (engagement_id, title, created_by)
-            VALUES ($1, 'Task to cascade', $2)
+            VALUES ($1, 'Task to keep', $2)
             RETURNING id
             """,
             engagement_id,
@@ -347,29 +355,31 @@ async def test_engagement_delete_with_tasks_cascades_tasks(
         )
     r = await authed_client.delete(f"/api/engagements/{engagement_id}")
     assert r.status_code == 204, r.text
-    assert await _exists(db_pool, "engagement_tasks", task_id) is None
+    # Tasks persist; only the engagement is soft-deleted.
+    assert await _exists(db_pool, "engagement_tasks", task_id) is not None
 
 
-async def test_engagement_delete_with_agreement_returns_409(
+async def test_engagement_soft_delete_with_agreement_succeeds(
     authed_client, db_pool, test_user
 ):
-    """Agreements FK-restrict engagement hard-delete."""
+    """Agreements no longer block deletion — soft-delete sidesteps the
+    FK RESTRICT that hard-delete previously tripped. The agreement row
+    stays intact for billing audit; the engagement is just hidden."""
     engagement_id = await _create_engagement(db_pool, test_user)
     await _insert_agreement(db_pool, engagement_id, test_user)
     r = await authed_client.delete(f"/api/engagements/{engagement_id}")
-    assert r.status_code == 409
-    assert "dependent records" in r.json()["detail"]
+    assert r.status_code == 204, r.text
 
 
-async def test_engagement_delete_with_invoice_returns_409(
+async def test_engagement_soft_delete_with_invoice_succeeds(
     authed_client, db_pool, test_user
 ):
-    """Invoices FK-restrict engagement hard-delete."""
+    """Same as above: invoices used to FK-restrict; soft-delete leaves
+    the invoice intact and the engagement hidden."""
     engagement_id = await _create_engagement(db_pool, test_user)
     await _insert_invoice(db_pool, engagement_id, test_user)
     r = await authed_client.delete(f"/api/engagements/{engagement_id}")
-    assert r.status_code == 409
-    assert "dependent records" in r.json()["detail"]
+    assert r.status_code == 204, r.text
 
 
 # ---- Person delete -------------------------------------------------------
