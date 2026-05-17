@@ -45,7 +45,11 @@ VARIABLE_HINTS: dict[str, str] = {
     "effective_date":  "engagement",
     # Family
     "client_name":     "family",
-    "client_address":  "family",
+    # client_address has no UI on the family page today, so treat it as
+    # an agreement-level override until the family detail page learns
+    # to capture a structured billing address. Then this can flip back
+    # to "family".
+    "client_address":  "agreement-override",
     # Student
     "patient_full_name": "student",
     "patient_dob":       "student",
@@ -229,16 +233,20 @@ async def template_render_context(
     engagement, returning what's auto-filled, what's missing, and a
     hint about where each missing variable's value would come from.
 
-    Used by the New Agreement dialog to surface a variable input form
-    for placeholders that don't auto-fill, gated so the operator can't
-    create a half-filled contract."""
+    Used by the New Agreement dialog to surface "go fix it at the
+    source" links for missing variables, gated so the operator can't
+    create a half-filled contract. The engagement / family / student
+    ids in the response let the SPA build deep links to the right
+    edit pages."""
     template = await _template_or_404(conn, template_id)
-    # Confirm engagement exists (don't leak details on no-permission;
-    # require_user already authenticated).
-    if not await conn.fetchval(
-        "SELECT 1 FROM engagements WHERE id = $1 AND deleted_at IS NULL",
+    eng = await conn.fetchrow(
+        """
+        SELECT id, family_id, student_id, lead_consultant_id
+        FROM engagements WHERE id = $1 AND deleted_at IS NULL
+        """,
         engagement_id,
-    ):
+    )
+    if eng is None:
         raise HTTPException(status_code=404, detail="Engagement not found")
 
     body = template["body_markdown"]
@@ -258,4 +266,8 @@ async def template_render_context(
         "filled": filled,
         "missing": missing,
         "hints": hints,
+        "engagement_id": str(eng["id"]),
+        "family_id": str(eng["family_id"]),
+        "student_id": str(eng["student_id"]) if eng["student_id"] else None,
+        "lead_consultant_id": str(eng["lead_consultant_id"]) if eng["lead_consultant_id"] else None,
     }

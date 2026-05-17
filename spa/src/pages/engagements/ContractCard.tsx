@@ -26,6 +26,7 @@ import PictureAsPdfOutlinedIcon from "@mui/icons-material/PictureAsPdfOutlined";
 import SendOutlinedIcon from "@mui/icons-material/SendOutlined";
 import dayjs from "dayjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link as RouterLink } from "react-router-dom";
 
 import { useSnackbar } from "../../components/Snackbar";
 
@@ -74,17 +75,42 @@ interface RenderContext {
   filled: Record<string, unknown>;
   missing: string[];
   hints: Record<string, string>;
+  engagement_id: string;
+  family_id: string;
+  student_id: string | null;
+  lead_consultant_id: string | null;
 }
 
 const HINT_LABEL: Record<string, string> = {
-  lead_consultant: "Pulled from the lead consultant's profile",
-  lead_consultant_or_firm_settings: "Pulled from lead consultant, or Firm settings as fallback",
-  firm_settings: "Pulled from Catalog → Firm settings",
-  engagement: "Pulled from this engagement",
-  family: "Pulled from the family record",
-  student: "Pulled from the student record",
-  "agreement-override": "Specific to this agreement only",
+  lead_consultant: "Set on the lead consultant's profile",
+  lead_consultant_or_firm_settings: "Set on the lead consultant or Firm settings as fallback",
+  firm_settings: "Set in Catalog → Firm settings",
+  engagement: "Set on this engagement",
+  family: "Set on the family record",
+  student: "Set on the student record",
+  "agreement-override": "No source — fill below",
 };
+
+function hrefForHint(
+  hint: string,
+  ctx: { engagement_id: string; family_id: string; student_id: string | null },
+): string | null {
+  switch (hint) {
+    case "firm_settings":
+    case "lead_consultant_or_firm_settings":
+      return "/catalog/firm-settings";
+    case "engagement":
+      return `/engagements/${ctx.engagement_id}`;
+    case "family":
+      return `/families/${ctx.family_id}`;
+    case "student":
+      return ctx.student_id ? `/students/${ctx.student_id}` : null;
+    case "lead_consultant":
+    case "agreement-override":
+    default:
+      return null;
+  }
+}
 
 function prettyVariable(name: string): string {
   return name
@@ -525,7 +551,15 @@ function AddAgreementDialog({
 
   const missing = renderContext.data?.missing ?? [];
   const hints = renderContext.data?.hints ?? {};
-  const allMissingFilled = missing.every((v) => (varInputs[v] ?? "").trim() !== "");
+  // Two-bucket gate: variables with a known source must be resolved
+  // at that source (the dialog auto-refetches on window focus, so
+  // tabbing back after fixing it picks up the new value). Variables
+  // with no source ("agreement-override") still need an inline value.
+  const overrideMissing = missing.filter((v) => (hints[v] ?? "agreement-override") === "agreement-override");
+  const sourceMissing = missing.filter((v) => (hints[v] ?? "agreement-override") !== "agreement-override");
+  const allMissingFilled =
+    sourceMissing.length === 0 &&
+    overrideMissing.every((v) => (varInputs[v] ?? "").trim() !== "");
 
   const reset = () => {
     setType("services_contract");
@@ -661,29 +695,77 @@ function AddAgreementDialog({
                 <Stack spacing={1.25}>
                   <Alert severity="warning" variant="outlined">
                     {missing.length} variable{missing.length === 1 ? "" : "s"} need a value
-                    before this contract can be created.
-                    {renderContext.data.detected.length - missing.length > 0 &&
-                      ` (${renderContext.data.detected.length - missing.length} already
-                       filled from engagement / firm settings.)`}
+                    before this contract can be created. Fix at the source so future
+                    contracts auto-fill too.
                   </Alert>
                   <Stack spacing={1}>
-                    {missing.map((v) => (
-                      <TextField
-                        key={v}
-                        size="small"
-                        label={prettyVariable(v)}
-                        value={varInputs[v] ?? ""}
-                        onChange={(e) =>
-                          setVarInputs((prev) => ({ ...prev, [v]: e.target.value }))
-                        }
-                        helperText={
-                          HINT_LABEL[hints[v]] ?? `Fillin: ${v}`
-                        }
-                        InputProps={{
-                          sx: { fontSize: 14 },
-                        }}
-                      />
-                    ))}
+                    {missing.map((v) => {
+                      const hint = hints[v] ?? "agreement-override";
+                      const href = hrefForHint(hint, {
+                        engagement_id: renderContext.data!.engagement_id,
+                        family_id: renderContext.data!.family_id,
+                        student_id: renderContext.data!.student_id,
+                      });
+                      const label = prettyVariable(v);
+                      const hintLabel = HINT_LABEL[hint] ?? "No source";
+                      if (hint === "agreement-override") {
+                        return (
+                          <TextField
+                            key={v}
+                            size="small"
+                            label={label}
+                            value={varInputs[v] ?? ""}
+                            onChange={(e) =>
+                              setVarInputs((prev) => ({ ...prev, [v]: e.target.value }))
+                            }
+                            helperText={hintLabel}
+                            InputProps={{ sx: { fontSize: 14 } }}
+                          />
+                        );
+                      }
+                      return (
+                        <Box
+                          key={v}
+                          sx={{
+                            border: 1,
+                            borderColor: "divider",
+                            borderRadius: 1,
+                            px: 1.5,
+                            py: 1,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 1.5,
+                          }}
+                        >
+                          <Box sx={{ flex: 1, minWidth: 0 }}>
+                            {href ? (
+                              <Typography
+                                component={RouterLink}
+                                to={href}
+                                target="_blank"
+                                rel="noreferrer"
+                                variant="body2"
+                                sx={{
+                                  fontWeight: 500,
+                                  color: "primary.main",
+                                  textDecoration: "none",
+                                  "&:hover": { textDecoration: "underline" },
+                                }}
+                              >
+                                {label} →
+                              </Typography>
+                            ) : (
+                              <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                                {label}
+                              </Typography>
+                            )}
+                            <Typography variant="caption" color="text.secondary">
+                              {hintLabel}
+                            </Typography>
+                          </Box>
+                        </Box>
+                      );
+                    })}
                   </Stack>
                 </Stack>
               )}
