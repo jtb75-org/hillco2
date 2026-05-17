@@ -22,6 +22,7 @@ import AttachFileIcon from "@mui/icons-material/AttachFile";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 import HistoryIcon from "@mui/icons-material/History";
+import PictureAsPdfOutlinedIcon from "@mui/icons-material/PictureAsPdfOutlined";
 import SendOutlinedIcon from "@mui/icons-material/SendOutlined";
 import dayjs from "dayjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -52,6 +53,7 @@ interface Agreement {
   notes: string | null;
   template_id: string | null;
   body_markdown: string | null;
+  variables: Record<string, unknown>;
   created_at: string;
   updated_at: string;
   created_by_name?: string | null;
@@ -320,14 +322,25 @@ function AgreementRow({
         )}
         <Box sx={{ ml: "auto" }} />
         {agreement.body_markdown !== null && (
-          <Button
-            size="small"
-            startIcon={<DescriptionOutlinedIcon fontSize="small" />}
-            onClick={onEditBody}
-            sx={{ color: "text.secondary" }}
-          >
-            View / Edit
-          </Button>
+          <>
+            <Button
+              size="small"
+              startIcon={<DescriptionOutlinedIcon fontSize="small" />}
+              onClick={onEditBody}
+              sx={{ color: "text.secondary" }}
+            >
+              View / Edit
+            </Button>
+            <Button
+              size="small"
+              href={`/api/agreements/${agreement.id}/pdf`}
+              target="_blank"
+              startIcon={<PictureAsPdfOutlinedIcon fontSize="small" />}
+              sx={{ color: "text.secondary" }}
+            >
+              Preview PDF
+            </Button>
+          </>
         )}
         {state === "drafted" && (
           <>
