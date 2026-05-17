@@ -5,7 +5,6 @@ import {
   Button,
   MenuItem,
   Paper,
-  Select,
   Stack,
   TextField,
   Typography,
@@ -198,33 +197,25 @@ export function CatalogFirmSettings() {
             />
           </Stack>
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
-            <Box sx={{ flex: 1 }}>
-              <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.5 }}>
-                Invoice frequency
-              </Typography>
-              <Select
-                size="small"
-                fullWidth
-                value={draft.invoice_frequency ?? ""}
-                onChange={(e) =>
-                  setDraft((prev) => ({
-                    ...prev,
-                    invoice_frequency: e.target.value || null,
-                  }))
-                }
-                displayEmpty
-              >
-                <MenuItem value="">
-                  <em>—</em>
-                </MenuItem>
-                <MenuItem value="weekly">Weekly</MenuItem>
-                <MenuItem value="biweekly">Biweekly</MenuItem>
-                <MenuItem value="monthly">Monthly</MenuItem>
-              </Select>
-              <Typography variant="caption" color="text.disabled">
-                {`{{invoice_frequency}}`}
-              </Typography>
-            </Box>
+            <TextField
+              select
+              label="Invoice frequency"
+              size="small"
+              value={draft.invoice_frequency ?? ""}
+              onChange={(e) =>
+                setDraft((prev) => ({
+                  ...prev,
+                  invoice_frequency: e.target.value || null,
+                }))
+              }
+              helperText={`{{invoice_frequency}}`}
+              sx={{ flex: 1 }}
+            >
+              <MenuItem value="">—</MenuItem>
+              <MenuItem value="weekly">Weekly</MenuItem>
+              <MenuItem value="biweekly">Biweekly</MenuItem>
+              <MenuItem value="monthly">Monthly</MenuItem>
+            </TextField>
             <TextField
               label="Payment terms (days)"
               type="number"
