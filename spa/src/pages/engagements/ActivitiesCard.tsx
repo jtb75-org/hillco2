@@ -110,6 +110,7 @@ export function ActivitiesCard({ engagementId }: { engagementId: string }) {
   const [addOpen, setAddOpen] = useState<"task" | "visit" | "recommendation" | null>(null);
   const [addMenuAnchor, setAddMenuAnchor] = useState<HTMLElement | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [logTimeFor, setLogTimeFor] = useState<ActivityRow | null>(null);
 
   const toggleExpand = (id: string) => {
     setExpanded((prev) => {
@@ -430,6 +431,7 @@ export function ActivitiesCard({ engagementId }: { engagementId: string }) {
                             body: { structured_content } as Partial<ActivityRow>,
                           })
                         }
+                        onLogTime={() => setLogTimeFor(row)}
                         onDelete={() => remove.mutate(row.id)}
                       />
                     ))}
@@ -471,6 +473,20 @@ export function ActivitiesCard({ engagementId }: { engagementId: string }) {
           invalidate();
         }}
       />
+
+      <LogTimeForTaskDialog
+        engagementId={engagementId}
+        activity={logTimeFor}
+        onClose={() => setLogTimeFor(null)}
+        onLogged={() => {
+          setLogTimeFor(null);
+          // The Time Entries card watches its own query; invalidate so
+          // the new entry shows up there immediately.
+          qc.invalidateQueries({
+            queryKey: ["engagements", engagementId, "time-entries"],
+          });
+        }}
+      />
     </Paper>
   );
 }
@@ -485,6 +501,7 @@ function ActivityRowView({
   onTitleCommit,
   onNotesCommit,
   onStructuredContentCommit,
+  onLogTime,
   onDelete,
 }: {
   row: ActivityRow;
@@ -496,6 +513,7 @@ function ActivityRowView({
   onTitleCommit: (next: string) => void;
   onNotesCommit: (next: string | null) => void;
   onStructuredContentCommit: (next: Record<string, unknown>) => void;
+  onLogTime: () => void;
   onDelete: () => void;
 }) {
   const skipped = row.status === "not_applicable";
@@ -574,7 +592,12 @@ function ActivityRowView({
             <ExpandMoreIcon fontSize="small" />
           </IconButton>
         )}
-        <RowMenu skipped={skipped} onSkipToggle={onSkipToggle} onDelete={onDelete} />
+        <RowMenu
+          skipped={skipped}
+          onLogTime={onLogTime}
+          onSkipToggle={onSkipToggle}
+          onDelete={onDelete}
+        />
       </Stack>
       {hasBody && isExpanded && (
         <Box sx={{ mt: 1.5, ml: { md: "172px" } }}>
@@ -707,10 +730,12 @@ function DebouncedInput({
 
 function RowMenu({
   skipped,
+  onLogTime,
   onSkipToggle,
   onDelete,
 }: {
   skipped: boolean;
+  onLogTime: () => void;
   onSkipToggle: () => void;
   onDelete: () => void;
 }) {
@@ -726,6 +751,14 @@ function RowMenu({
         <MoreVertIcon fontSize="small" />
       </IconButton>
       <Menu anchorEl={anchor} open={!!anchor} onClose={() => setAnchor(null)}>
+        <MenuItem
+          onClick={() => {
+            setAnchor(null);
+            onLogTime();
+          }}
+        >
+          Log time
+        </MenuItem>
         <MenuItem
           onClick={() => {
             setAnchor(null);
@@ -854,6 +887,144 @@ function AddActivityDialog({
           disabled={!title.trim() || create.isPending}
         >
           {create.isPending ? "Adding…" : "Add"}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+function LogTimeForTaskDialog({
+  engagementId,
+  activity,
+  onClose,
+  onLogged,
+}: {
+  engagementId: string;
+  activity: ActivityRow | null;
+  onClose: () => void;
+  onLogged: () => void;
+}) {
+  const snackbar = useSnackbar();
+  const [workDate, setWorkDate] = useState<string>(
+    new Date().toISOString().slice(0, 10),
+  );
+  const [hours, setHours] = useState("");
+  const [description, setDescription] = useState("");
+  const [billable, setBillable] = useState(true);
+
+  // Re-seed local state every time a new activity is opened so a
+  // previously-dismissed dialog's drafts don't carry over.
+  const seedKey = activity?.id ?? "";
+  const [lastSeed, setLastSeed] = useState<string>("");
+  if (activity && lastSeed !== seedKey) {
+    setWorkDate(new Date().toISOString().slice(0, 10));
+    setHours("");
+    setDescription("");
+    setBillable(activity.billable);
+    setLastSeed(seedKey);
+  }
+
+  const create = useMutation({
+    mutationFn: async () => {
+      if (!activity) return;
+      const res = await fetch(`/api/engagements/${engagementId}/time-entries`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          work_date: workDate || null,
+          hours,
+          description: description.trim() || null,
+          billable,
+          engagement_task_id: activity.id,
+        }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error((j as { detail?: string }).detail ?? "Log failed.");
+      }
+    },
+    onSuccess: () => {
+      setHours("");
+      setDescription("");
+      onLogged();
+    },
+    onError: (e: Error) => snackbar.show(e.message, "error"),
+  });
+
+  return (
+    <Dialog
+      open={activity !== null}
+      onClose={() => !create.isPending && onClose()}
+      maxWidth="sm"
+      fullWidth
+    >
+      <DialogTitle>
+        Log time
+        {activity && (
+          <Typography
+            component="span"
+            variant="caption"
+            color="text.secondary"
+            sx={{ ml: 1 }}
+          >
+            on “{activity.title}”
+          </Typography>
+        )}
+      </DialogTitle>
+      <DialogContent>
+        <Stack spacing={2} sx={{ mt: 1 }}>
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+            <TextField
+              label="Date"
+              type="date"
+              size="small"
+              value={workDate}
+              onChange={(e) => setWorkDate(e.target.value)}
+              sx={{ flex: 1 }}
+            />
+            <TextField
+              label="Hours"
+              type="number"
+              inputProps={{ step: "0.25", min: "0.01" }}
+              size="small"
+              value={hours}
+              onChange={(e) => setHours(e.target.value)}
+              autoFocus
+              sx={{ flex: 1 }}
+            />
+          </Stack>
+          <TextField
+            label="Description"
+            placeholder="What did you do on this task?"
+            size="small"
+            multiline
+            minRows={2}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+          <FormControlLabel
+            control={
+              <Switch
+                checked={billable}
+                onChange={(e) => setBillable(e.target.checked)}
+                size="small"
+              />
+            }
+            label="Billable"
+          />
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose} disabled={create.isPending}>
+          Cancel
+        </Button>
+        <Button
+          variant="contained"
+          onClick={() => create.mutate()}
+          disabled={!hours || Number(hours) <= 0 || create.isPending}
+        >
+          {create.isPending ? "Logging…" : "Log"}
         </Button>
       </DialogActions>
     </Dialog>
