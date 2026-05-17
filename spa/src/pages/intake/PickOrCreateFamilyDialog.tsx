@@ -208,6 +208,14 @@ export function PickOrCreateFamilyDialog({
         initialHouseholdName={prefillName}
         navigateOnSuccess={false}
         onCreated={(id) => {
+          const created = {
+            id,
+            household_name: prefillName,
+            primary_parent_name: null,
+            student_names: [],
+          };
+          setPicked(created);
+          setInput(prefillName);
           setPendingSelectId(id);
           qc.invalidateQueries({ queryKey: ["families", "intake-picker"] });
         }}
