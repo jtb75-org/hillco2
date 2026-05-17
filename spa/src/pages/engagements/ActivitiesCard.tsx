@@ -32,6 +32,7 @@ import PlayCircleOutlineIcon from "@mui/icons-material/PlayCircleOutline";
 import RemoveCircleOutlineIcon from "@mui/icons-material/RemoveCircleOutline";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { RichTextEditor } from "../../components/RichTextEditor";
 import { useSnackbar } from "../../components/Snackbar";
 import {
   ActivityKindBody,
@@ -477,6 +478,11 @@ export function ActivitiesCard({ engagementId }: { engagementId: string }) {
       <LogTimeForTaskDialog
         engagementId={engagementId}
         activity={logTimeFor}
+        phaseTitle={
+          logTimeFor
+            ? catalog.data?.find((p) => p.id === logTimeFor.phase_id)?.title ?? null
+            : null
+        }
         onClose={() => setLogTimeFor(null)}
         onLogged={() => {
           setLogTimeFor(null);
@@ -682,16 +688,26 @@ function NotesInput({
   value: string;
   onCommit: (v: string) => void;
 }) {
+  const [draft, setDraft] = useState(value);
+  // Re-sync if upstream refreshes (e.g. PATCH echo after a kind change).
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
   return (
-    <DebouncedInput
-      value={value}
-      placeholder="Add notes…"
-      multiline
-      onCommit={onCommit}
-      sx={{
-        ".MuiInput-input": { fontSize: 13, color: "text.secondary" },
+    <Box
+      sx={{ display: "flex", "& .ProseMirror": { fontSize: 13, color: "text.secondary" } }}
+      onBlur={(e) => {
+        if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+        if (draft !== value) onCommit(draft);
       }}
-    />
+    >
+      <RichTextEditor
+        value={draft}
+        onChange={setDraft}
+        placeholder="Add notes…"
+        minRows={2}
+      />
+    </Box>
   );
 }
 
@@ -896,11 +912,13 @@ function AddActivityDialog({
 function LogTimeForTaskDialog({
   engagementId,
   activity,
+  phaseTitle,
   onClose,
   onLogged,
 }: {
   engagementId: string;
   activity: ActivityRow | null;
+  phaseTitle: string | null;
   onClose: () => void;
   onLogged: () => void;
 }) {
@@ -919,7 +937,12 @@ function LogTimeForTaskDialog({
   if (activity && lastSeed !== seedKey) {
     setWorkDate(new Date().toISOString().slice(0, 10));
     setHours("");
-    setDescription("");
+    // Default description: "Phase Name: Activity Name" so the time
+    // entry is self-explanatory in the rollup even before the operator
+    // adds detail. They can still edit / blank it out.
+    setDescription(
+      phaseTitle ? `${phaseTitle}: ${activity.title}` : activity.title,
+    );
     setBillable(activity.billable);
     setLastSeed(seedKey);
   }

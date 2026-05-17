@@ -31,6 +31,16 @@ class PhaseUpdate(BaseModel):
     default_billable: bool | None = None
 
 
+ActivityKind = Literal[
+    "task",
+    "document_review",
+    "best_environment",
+    "feedback_meeting",
+    "school_visit",
+    "school_recommendation",
+]
+
+
 class ItemCreate(BaseModel):
     phase_id: UUID
     title: str = Field(..., min_length=1)
@@ -40,6 +50,7 @@ class ItemCreate(BaseModel):
     default_billable: bool = True
     default_deliverable: str | None = None
     default_owner_role: OwnerRole | None = None
+    default_activity_kind: ActivityKind = "task"
     # If omitted, the item gets no engagement-type membership and won't
     # be seeded onto any engagement. SPA picker controls this.
     engagement_type_ids: list[UUID] | None = None
@@ -54,6 +65,7 @@ class ItemUpdate(BaseModel):
     default_billable: bool | None = None
     default_deliverable: str | None = None
     default_owner_role: OwnerRole | None = None
+    default_activity_kind: ActivityKind | None = None
     # Replaces the item's full engagement-type membership when present.
     # Pass an empty list to clear it. Omit to leave existing memberships
     # alone (so partial PATCHes don't accidentally wipe the M2M).
@@ -278,6 +290,7 @@ async def list_items(
         SELECT si.id, si.phase_id, si.title, si.description, si.sort_order,
                si.default_est_hours, si.default_billable,
                si.default_deliverable, si.default_owner_role,
+               si.default_activity_kind,
                si.created_at, si.updated_at,
                cp.title AS phase_title,
                cp.sort_order AS phase_sort_order,
@@ -313,13 +326,14 @@ async def create_item(
         INSERT INTO service_items (
           phase_id, title, description, sort_order,
           default_est_hours, default_billable,
-          default_deliverable, default_owner_role
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::owner_role)
+          default_deliverable, default_owner_role,
+          default_activity_kind
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::owner_role, $9::activity_kind)
         RETURNING *
         """,
         body.phase_id, title, description, body.sort_order,
         body.default_est_hours, body.default_billable,
-        deliverable, body.default_owner_role,
+        deliverable, body.default_owner_role, body.default_activity_kind,
     )
     out = dict(row)
     if body.engagement_type_ids:
@@ -358,6 +372,8 @@ async def update_item(
             values.append(val)
             if col == "default_owner_role":
                 set_sql_parts.append(f"default_owner_role = ${len(values)+1}::owner_role")
+            elif col == "default_activity_kind":
+                set_sql_parts.append(f"default_activity_kind = ${len(values)+1}::activity_kind")
             else:
                 set_sql_parts.append(f"{col} = ${len(values)+1}")
         set_sql = ", ".join(set_sql_parts)
