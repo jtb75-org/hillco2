@@ -265,19 +265,29 @@ interface KanbanColumnDef {
   match: (row: IntakeRow) => boolean;
 }
 
-// Five buckets keyed on the outcome lifecycle the consultant works
-// through: open → converting (decision to convert, no engagement yet)
-// → converted (engagement(s) spawned) OR nurturing (follow up later)
-// → closed (declined / no_response / duplicate). Converting vs converted
-// is derived from converted_at: outcome stays 'converting' even after
-// the convert flow has run, but converted_at flips non-null at that
-// point.
+// Four buckets keyed on what work is actually left:
+//   In Progress → no outcome yet, OR outcome='converting' but the
+//     convert flow hasn't run (the operator still has to click
+//     Convert; the work is unfinished).
+//   Converted → outcome='converting' AND converted_at IS NOT NULL —
+//     engagement(s) spawned, this intake is done.
+//   Nurturing → outcome='nurture'.
+//   Closed → any negative terminal outcome (declined / no_response /
+//     duplicate).
+//
+// We intentionally don't show a separate "Converting" column. The
+// time between "decided to convert" and "actually converted" is
+// usually seconds; surfacing it as its own column adds noise without
+// flagging unfinished work the operator needs to revisit. The list
+// view still labels those rows "Converting" via OutcomeChip so the
+// stated intent stays visible.
 const KANBAN_COLUMNS: KanbanColumnDef[] = [
-  { key: "in_progress", title: "In Progress", match: (r) => r.outcome == null },
   {
-    key: "converting",
-    title: "Converting",
-    match: (r) => r.outcome === "converting" && r.converted_at == null,
+    key: "in_progress",
+    title: "In Progress",
+    match: (r) =>
+      r.outcome == null ||
+      (r.outcome === "converting" && r.converted_at == null),
   },
   {
     key: "converted",
