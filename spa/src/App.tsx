@@ -16,6 +16,7 @@ import { EngagementsList } from "./pages/engagements/EngagementsList";
 import { CatalogLayout } from "./pages/catalog/CatalogLayout";
 import { CatalogPage } from "./pages/catalog/CatalogPage";
 import { CatalogContracts } from "./pages/catalog/Contracts";
+import { CatalogFirmSettings } from "./pages/catalog/FirmSettings";
 import { SchoolsList } from "./pages/schools/SchoolsList";
 import { IntakeForm } from "./pages/intake/IntakeForm";
 import { IntakesList } from "./pages/intake/IntakesList";
@@ -94,6 +95,7 @@ export function App() {
               <Route index element={<Navigate to="activities" replace />} />
               <Route path="activities" element={<CatalogPage />} />
               <Route path="contracts" element={<CatalogContracts />} />
+              <Route path="firm-settings" element={<CatalogFirmSettings />} />
             </Route>
             <Route path="/admin" element={<AdminLayout />}>
               <Route index element={<Navigate to="users" replace />} />
