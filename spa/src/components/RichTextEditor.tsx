@@ -15,11 +15,13 @@ export function RichTextEditor({
   onChange,
   placeholder,
   minRows = 12,
+  autoFocus = false,
 }: {
   value: string;
   onChange: (html: string) => void;
   placeholder?: string;
   minRows?: number;
+  autoFocus?: boolean;
 }) {
   // Track the raw HTML we last emitted to the consumer. The sync
   // effect below uses this to tell "the parent is just echoing back
@@ -60,6 +62,17 @@ export function RichTextEditor({
     editor.commands.setContent(value || "", { emitUpdate: false });
     lastEmittedRef.current = value;
   }, [value, editor]);
+
+  // Autofocus once the editor instance is ready. We can't pass
+  // autofocus via useEditor's options because the option only applies
+  // on construction and our consumers conditionally mount; doing it in
+  // a one-shot effect handles either path.
+  const focusedOnceRef = useRef(false);
+  useEffect(() => {
+    if (!editor || !autoFocus || focusedOnceRef.current) return;
+    focusedOnceRef.current = true;
+    editor.commands.focus("end");
+  }, [editor, autoFocus]);
 
   return (
     <Box
