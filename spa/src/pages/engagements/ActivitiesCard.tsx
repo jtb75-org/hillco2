@@ -701,35 +701,51 @@ function NotesInput({
 
   if (!editing) {
     const empty = !value || value === "<p></p>";
+    const commonSx = {
+      minHeight: 32,
+      py: 0.5,
+      fontSize: 13,
+      cursor: "text",
+      "& p": { m: 0, mb: 0.5 },
+      "& p:last-child": { mb: 0 },
+      "& ul, & ol": { my: 0.5, pl: 3 },
+    };
+    const handlers = {
+      role: "button",
+      tabIndex: 0,
+      onClick: () => setEditing(true),
+      onKeyDown: (e: React.KeyboardEvent) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          setEditing(true);
+        }
+      },
+    };
+    if (empty) {
+      return (
+        <Box
+          {...handlers}
+          sx={{
+            ...commonSx,
+            color: "text.disabled",
+            fontStyle: "italic",
+            "&:hover": { color: "text.secondary" },
+          }}
+        >
+          Add notes…
+        </Box>
+      );
+    }
     return (
       <Box
-        role="button"
-        tabIndex={0}
-        onClick={() => setEditing(true)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            setEditing(true);
-          }
-        }}
+        {...handlers}
         sx={{
-          minHeight: 32,
-          py: 0.5,
-          fontSize: 13,
-          color: empty ? "text.disabled" : "text.secondary",
-          fontStyle: empty ? "italic" : "normal",
-          cursor: "text",
-          "& p": { m: 0, mb: 0.5 },
-          "& p:last-child": { mb: 0 },
-          "& ul, & ol": { my: 0.5, pl: 3 },
-          "&:hover": { color: empty ? "text.secondary" : "text.primary" },
+          ...commonSx,
+          color: "text.secondary",
+          "&:hover": { color: "text.primary" },
         }}
-        dangerouslySetInnerHTML={
-          empty ? undefined : { __html: value }
-        }
-      >
-        {empty ? "Add notes…" : null}
-      </Box>
+        dangerouslySetInnerHTML={{ __html: value }}
+      />
     );
   }
   return (
