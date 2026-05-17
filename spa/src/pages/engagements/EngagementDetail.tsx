@@ -2,16 +2,25 @@ import { useState } from "react";
 import {
   Alert,
   Box,
-  Breadcrumbs,
   Button,
   CircularProgress,
-  Divider,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  IconButton,
+  ListItemIcon,
+  ListItemText,
+  Menu,
+  MenuItem,
   Link as MuiLink,
   Paper,
   Stack,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import MoreVertIcon from "@mui/icons-material/MoreVert";
 import PauseCircleOutlineIcon from "@mui/icons-material/PauseCircleOutline";
 import ReplayIcon from "@mui/icons-material/Replay";
 import dayjs from "dayjs";
@@ -19,6 +28,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link as RouterLink, useNavigate, useParams } from "react-router-dom";
 
 import { api } from "../../api/client";
+import { PageHeader } from "../../components/PageHeader";
 import { useSnackbar } from "../../components/Snackbar";
 import { StatusChip } from "../../components/StatusChip";
 import { useEngagementTypes } from "../../hooks/useEngagementTypes";
@@ -92,22 +102,49 @@ export function EngagementDetail() {
 
   return (
     <Stack spacing={3}>
-      <Breadcrumbs>
-        <MuiLink component={RouterLink} to="/families" color="inherit" underline="hover">
-          Families
-        </MuiLink>
-        <MuiLink
-          component={RouterLink}
-          to={`/families/${engagement.data.family.id}`}
-          color="inherit"
-          underline="hover"
-        >
-          {engagement.data.family.household_name}
-        </MuiLink>
-        <Typography color="text.primary">
-          {labelForType(engagement.data.engagement_type)}
-        </Typography>
-      </Breadcrumbs>
+      <PageHeader
+        title={
+          <Stack
+            direction="row"
+            alignItems="center"
+            spacing={1.5}
+            sx={{ flexWrap: "wrap" }}
+          >
+            <span>{labelForType(engagement.data.engagement_type)}</span>
+            <StatusChip
+              size="small"
+              label={engagement.data.status.replace(/_/g, " ")}
+              tone={
+                engagement.data.status === "in_progress"
+                  ? "info"
+                  : engagement.data.status === "completed"
+                    ? "success"
+                    : "neutral"
+              }
+              variant="outlined"
+            />
+          </Stack>
+        }
+        breadcrumbs={
+          <>
+            <MuiLink component={RouterLink} to="/families" color="inherit" underline="hover">
+              Families
+            </MuiLink>
+            <MuiLink
+              component={RouterLink}
+              to={`/families/${engagement.data.family.id}`}
+              color="inherit"
+              underline="hover"
+            >
+              {engagement.data.family.household_name}
+            </MuiLink>
+            <Typography color="text.primary">
+              {labelForType(engagement.data.engagement_type)}
+            </Typography>
+          </>
+        }
+        actions={<EngagementActionsMenu engagement={engagement.data} />}
+      />
 
       <HeaderStrip engagement={engagement.data} />
 
@@ -124,17 +161,16 @@ export function EngagementDetail() {
       <ExpensesCard engagementId={id!} />
 
       <NotesCard engagementId={id!} />
-
-      <DangerZoneCard engagement={engagement.data} />
     </Stack>
   );
 }
 
-function DangerZoneCard({ engagement }: { engagement: EngagementDetail }) {
+function EngagementActionsMenu({ engagement }: { engagement: EngagementDetail }) {
   const qc = useQueryClient();
   const snackbar = useSnackbar();
   const navigate = useNavigate();
-  const [confirming, setConfirming] = useState(false);
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const setStatus = useMutation({
     mutationFn: async (status: "in_progress" | "cancelled") => {
@@ -179,83 +215,102 @@ function DangerZoneCard({ engagement }: { engagement: EngagementDetail }) {
 
   const isCancelled = engagement.status === "cancelled";
   return (
-    <Paper variant="outlined" sx={{ p: 2.5 }}>
-      <Typography variant="overline" color="error.main" sx={{ display: "block", mb: 1 }}>
-        Danger zone
-      </Typography>
-      <Divider sx={{ mb: 1.5 }} />
-      <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems="flex-start">
+    <>
+      <Tooltip title="Engagement actions">
+        <IconButton
+          onClick={(e) => setAnchor(e.currentTarget)}
+          aria-label="Engagement actions"
+          size="medium"
+        >
+          <MoreVertIcon />
+        </IconButton>
+      </Tooltip>
+      <Menu
+        anchorEl={anchor}
+        open={!!anchor}
+        onClose={() => setAnchor(null)}
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+        transformOrigin={{ vertical: "top", horizontal: "right" }}
+      >
         {isCancelled ? (
-          <Button
-            variant="outlined"
-            startIcon={<ReplayIcon />}
-            onClick={() => setStatus.mutate("in_progress")}
+          <MenuItem
+            onClick={() => {
+              setAnchor(null);
+              setStatus.mutate("in_progress");
+            }}
             disabled={setStatus.isPending}
           >
-            Reopen engagement
-          </Button>
+            <ListItemIcon>
+              <ReplayIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>Reopen engagement</ListItemText>
+          </MenuItem>
         ) : (
-          <Button
-            color="warning"
-            variant="outlined"
-            startIcon={<PauseCircleOutlineIcon />}
-            onClick={() => setStatus.mutate("cancelled")}
+          <MenuItem
+            onClick={() => {
+              setAnchor(null);
+              setStatus.mutate("cancelled");
+            }}
             disabled={setStatus.isPending}
+            sx={{ color: "warning.main" }}
           >
-            Cancel engagement
-          </Button>
+            <ListItemIcon>
+              <PauseCircleOutlineIcon fontSize="small" sx={{ color: "warning.main" }} />
+            </ListItemIcon>
+            <ListItemText>Cancel engagement</ListItemText>
+          </MenuItem>
         )}
-        {!confirming ? (
+        <MenuItem
+          onClick={() => {
+            setAnchor(null);
+            setConfirmingDelete(true);
+          }}
+          sx={{ color: "error.main" }}
+        >
+          <ListItemIcon>
+            <DeleteOutlineIcon fontSize="small" sx={{ color: "error.main" }} />
+          </ListItemIcon>
+          <ListItemText>Delete engagement</ListItemText>
+        </MenuItem>
+      </Menu>
+      <Dialog
+        open={confirmingDelete}
+        onClose={() => {
+          if (!remove.isPending) setConfirmingDelete(false);
+        }}
+        maxWidth="xs"
+      >
+        <DialogTitle>Delete engagement?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary">
+            Soft-deletes this engagement. It disappears from lists but the
+            underlying records (notes, time, invoices) stay intact, and the
+            originating intake re-opens if this was its last engagement.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmingDelete(false)} disabled={remove.isPending}>
+            Cancel
+          </Button>
           <Button
             color="error"
-            variant="outlined"
-            startIcon={<DeleteOutlineIcon />}
-            onClick={() => setConfirming(true)}
+            variant="contained"
+            onClick={() => remove.mutate()}
+            disabled={remove.isPending}
           >
-            Delete engagement
+            {remove.isPending ? "Deleting…" : "Delete"}
           </Button>
-        ) : (
-          <Stack spacing={1}>
-            <Typography variant="body2" color="text.secondary">
-              Soft-delete this engagement? It disappears from lists but the
-              underlying records (notes, time, invoices) stay intact.
-            </Typography>
-            <Stack direction="row" spacing={1}>
-              <Button
-                color="error"
-                variant="contained"
-                onClick={() => remove.mutate()}
-                disabled={remove.isPending}
-              >
-                Confirm delete
-              </Button>
-              <Button onClick={() => setConfirming(false)}>Cancel</Button>
-            </Stack>
-          </Stack>
-        )}
-      </Stack>
-    </Paper>
+        </DialogActions>
+      </Dialog>
+    </>
   );
 }
 
 function HeaderStrip({ engagement }: { engagement: EngagementDetail }) {
-  const { labelFor: labelForType } = useEngagementTypes();
   return (
     <Paper variant="outlined" sx={{ p: 2.5 }}>
-      <Stack direction="row" alignItems="baseline" spacing={2} sx={{ mb: 1, flexWrap: "wrap" }}>
-        <Typography variant="h4" sx={{ fontWeight: 600 }}>
-          {labelForType(engagement.engagement_type)}
-        </Typography>
-        <StatusChip
-          size="small"
-          label={engagement.status.replace(/_/g, " ")}
-          tone={engagement.status === "in_progress" ? "info" : engagement.status === "completed" ? "success" : "neutral"}
-          variant="outlined"
-        />
-      </Stack>
       <Box
         sx={{
-          mt: 2,
           display: "grid",
           gridTemplateColumns: "auto 1fr auto 1fr",
           columnGap: 2,
