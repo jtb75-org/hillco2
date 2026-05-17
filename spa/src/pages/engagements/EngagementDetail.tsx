@@ -35,6 +35,7 @@ import { useEngagementTypes } from "../../hooks/useEngagementTypes";
 import { ActivitiesCard } from "./ActivitiesCard";
 import { ContractCard } from "./ContractCard";
 import { ExpensesCard } from "./ExpensesCard";
+import { GuardiansCard } from "./GuardiansCard";
 import { IntakeContextCard, type IntakeSnapshot } from "./IntakeContextCard";
 import { NotesCard } from "./NotesCard";
 import { RequirementsCard } from "./RequirementsCard";
@@ -147,6 +148,8 @@ export function EngagementDetail() {
       />
 
       <HeaderStrip engagement={engagement.data} />
+
+      <GuardiansCard familyId={engagement.data.family.id} />
 
       <IntakeContextCard snapshot={engagement.data.intake_snapshot} />
 
