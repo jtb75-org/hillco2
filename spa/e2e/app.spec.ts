@@ -216,6 +216,41 @@ test.describe.serial("contract template agreements", () => {
     await expect(page.getByRole("option", { name: SERVICES_TEMPLATE_NAME })).toBeVisible();
     await page.getByRole("option", { name: SERVICES_TEMPLATE_NAME }).click();
     await dialog.getByLabel("Amount").fill("2500");
+    // The standard services template has firm-wide placeholders that
+    // don't auto-fill in the fresh E2E fixture (no firm settings).
+    // The dialog forces them to be filled before Create enables —
+    // satisfy that gate with placeholder values so the test focuses
+    // on the create + preview path rather than the firm-settings UI.
+    const missingFieldLabels = [
+      "Consultant Address",
+      "Client Address",
+      "Governing State",
+      "Billing Increment Minutes",
+      "Invoice Frequency",
+      "Payment Terms Days",
+      "Expense Approval Threshold",
+    ];
+    for (const label of missingFieldLabels) {
+      const field = dialog.getByLabel(label);
+      if ((await field.count()) > 0) {
+        await field.first().fill("E2E");
+      }
+    }
+    // Guarantee any other unforeseen missing inputs get filled too so
+    // a template tweak doesn't silently re-break this test.
+    const missingAlert = dialog.getByText(/variables? need a value/i);
+    if (await missingAlert.count()) {
+      const inputs = dialog
+        .locator(".MuiTextField-root")
+        .locator("input, textarea");
+      const n = await inputs.count();
+      for (let i = 0; i < n; i++) {
+        const inp = inputs.nth(i);
+        if ((await inp.inputValue()) === "") {
+          await inp.fill("E2E");
+        }
+      }
+    }
     await dialog.getByRole("button", { name: "Create draft" }).click();
     await expect(dialog).toBeHidden();
 

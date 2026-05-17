@@ -16,8 +16,40 @@ from pydantic import BaseModel, Field
 
 from ..auth import require_user
 from ..db import get_conn
+from .agreements import build_render_context
 
 router = APIRouter(prefix="/api", tags=["contract_templates"])
+
+
+# Each variable name maps to a hint about where its auto-fill value
+# WOULD come from. The SPA uses this to render a "(read from X)" badge
+# beside each missing variable and a deep link to fix it at the source.
+# Variables not in this map default to 'agreement-override' — the
+# operator types the value inline.
+VARIABLE_HINTS: dict[str, str] = {
+    # Lead consultant's people record
+    "consultant_name":    "lead_consultant",
+    "consultant_email":   "lead_consultant",
+    "consultant_phone":   "lead_consultant",
+    "consultant_address": "lead_consultant_or_firm_settings",
+    # Firm-wide
+    "governing_state":               "firm_settings",
+    "billing_increment_minutes":     "firm_settings",
+    "invoice_frequency":             "firm_settings",
+    "payment_terms_days":            "firm_settings",
+    "expense_approval_threshold":    "firm_settings",
+    "firm_name":                     "firm_settings",
+    "firm_address":                  "firm_settings",
+    # Engagement
+    "hourly_rate":     "engagement",
+    "effective_date":  "engagement",
+    # Family
+    "client_name":     "family",
+    "client_address":  "family",
+    # Student
+    "patient_full_name": "student",
+    "patient_dob":       "student",
+}
 
 
 AgreementType = Literal["services_contract", "medical_release"]
@@ -184,3 +216,46 @@ async def delete_template(
         template_id,
     )
     return None
+
+
+@router.get("/contract-templates/{template_id}/render-context")
+async def template_render_context(
+    template_id: UUID,
+    engagement_id: UUID = Query(..., description="Engagement to compute defaults for"),
+    _user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    """Preview the render context for a template against a specific
+    engagement, returning what's auto-filled, what's missing, and a
+    hint about where each missing variable's value would come from.
+
+    Used by the New Agreement dialog to surface a variable input form
+    for placeholders that don't auto-fill, gated so the operator can't
+    create a half-filled contract."""
+    template = await _template_or_404(conn, template_id)
+    # Confirm engagement exists (don't leak details on no-permission;
+    # require_user already authenticated).
+    if not await conn.fetchval(
+        "SELECT 1 FROM engagements WHERE id = $1 AND deleted_at IS NULL",
+        engagement_id,
+    ):
+        raise HTTPException(status_code=404, detail="Engagement not found")
+
+    body = template["body_markdown"]
+    detected = _extract_variables(body or "")
+    defaults = await build_render_context(conn, engagement_id)
+
+    # A variable is "filled" iff the merged context has a truthy value
+    # for it — blank strings count as missing so the operator can't
+    # ship a contract with an unfilled placeholder hidden as "".
+    filled = {k: v for k, v in defaults.items() if k in detected and v not in (None, "")}
+    missing = [v for v in detected if v not in filled]
+    hints = {v: VARIABLE_HINTS.get(v, "agreement-override") for v in missing}
+
+    return {
+        "template_id": str(template_id),
+        "detected": detected,
+        "filled": filled,
+        "missing": missing,
+        "hints": hints,
+    }

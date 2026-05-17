@@ -47,6 +47,10 @@ class AgreementCreate(BaseModel):
     # unset and start with a blank body — most existing draft agreements
     # have no body.
     template_id: UUID | None = None
+    # Initial variable overrides supplied at create time (e.g. the
+    # dialog's inline variable form). Merged on top of auto-fill
+    # defaults at render time, same as PATCH-set variables.
+    variables: dict[str, Any] | None = None
 
 
 class AgreementUpdate(BaseModel):
@@ -196,10 +200,10 @@ async def create_agreement(
           engagement_id, type, status, contract_number, amount,
           signed_at, effective_date, expires_at,
           document_id, notes, created_by,
-          template_id, body_markdown
+          template_id, body_markdown, variables
         ) VALUES (
           $1, $2::agreement_type, 'draft', $3, $4, $5, $6, $7, $8, $9, $10,
-          $11, $12
+          $11, $12, $13::jsonb
         )
         RETURNING *
         """,
@@ -207,6 +211,7 @@ async def create_agreement(
         body.signed_at, body.effective_date, body.expires_at,
         body.document_id, (body.notes or "").strip() or None, user["id"],
         body.template_id, body_markdown,
+        json.dumps(body.variables or {}),
     )
     return dict(row)
 
@@ -531,6 +536,31 @@ async def _build_default_context(conn, agreement: dict) -> dict[str, str]:
         if org["expense_approval_threshold"] is not None:
             ctx["expense_approval_threshold"] = str(org["expense_approval_threshold"])
     return ctx
+
+
+async def build_render_context(
+    conn,
+    engagement_id: UUID,
+    *,
+    signed_at: Any = None,
+    effective_date: Any = None,
+    overrides: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Public wrapper around _build_default_context for callers that
+    don't have a fully-formed agreement row (e.g. the template
+    render-context preview that runs BEFORE the agreement exists).
+    Merges operator-supplied overrides on top so the same code path
+    drives both the PDF endpoint and the New Agreement dialog's
+    'what's still missing' computation."""
+    stub = {
+        "engagement_id": engagement_id,
+        "signed_at": signed_at,
+        "effective_date": effective_date,
+    }
+    defaults = await _build_default_context(conn, stub)
+    if overrides:
+        return {**defaults, **overrides}
+    return defaults
 
 
 def _substitute(body: str, ctx: dict[str, Any]) -> str:

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Alert,
   Box,
@@ -66,6 +66,30 @@ interface ContractTemplate {
   body_markdown: string;
   variables: string[];
   is_active: boolean;
+}
+
+interface RenderContext {
+  template_id: string;
+  detected: string[];
+  filled: Record<string, unknown>;
+  missing: string[];
+  hints: Record<string, string>;
+}
+
+const HINT_LABEL: Record<string, string> = {
+  lead_consultant: "Pulled from the lead consultant's profile",
+  lead_consultant_or_firm_settings: "Pulled from lead consultant, or Firm settings as fallback",
+  firm_settings: "Pulled from Catalog → Firm settings",
+  engagement: "Pulled from this engagement",
+  family: "Pulled from the family record",
+  student: "Pulled from the student record",
+  "agreement-override": "Specific to this agreement only",
+};
+
+function prettyVariable(name: string): string {
+  return name
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 type LifecycleState =
@@ -455,6 +479,7 @@ function AddAgreementDialog({
   const [amount, setAmount] = useState("");
   const [notes, setNotes] = useState("");
   const [templateId, setTemplateId] = useState<string>("");
+  const [varInputs, setVarInputs] = useState<Record<string, string>>({});
   const alreadyHasActive = existingTypes.has(type);
 
   const templates = useQuery<ContractTemplate[], Error>({
@@ -476,11 +501,38 @@ function AddAgreementDialog({
     setTemplateId(firstTemplateId);
   }
 
+  // Render-context preview: what's filled / missing for the chosen
+  // template against this engagement. Drives the inline variable form
+  // + the Create-button gate.
+  const renderContext = useQuery<RenderContext, Error>({
+    queryKey: ["contract-templates", templateId, "render-context", engagementId],
+    enabled: open && !!templateId,
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/contract-templates/${templateId}/render-context?engagement_id=${engagementId}`,
+        { credentials: "include" },
+      );
+      if (!res.ok) throw new Error("Failed to load render context.");
+      return res.json();
+    },
+  });
+
+  // Reset typed values when the template changes — values from the
+  // previous template's missing-list don't apply to the new one.
+  useEffect(() => {
+    setVarInputs({});
+  }, [templateId]);
+
+  const missing = renderContext.data?.missing ?? [];
+  const hints = renderContext.data?.hints ?? {};
+  const allMissingFilled = missing.every((v) => (varInputs[v] ?? "").trim() !== "");
+
   const reset = () => {
     setType("services_contract");
     setAmount("");
     setNotes("");
     setTemplateId("");
+    setVarInputs({});
   };
 
   const create = useMutation({
@@ -494,6 +546,11 @@ function AddAgreementDialog({
           amount: amount.trim() || null,
           notes: notes.trim() || null,
           template_id: templateId || null,
+          variables: Object.fromEntries(
+            Object.entries(varInputs)
+              .filter(([, v]) => (v ?? "").trim() !== "")
+              .map(([k, v]) => [k, v.trim()]),
+          ),
         }),
       });
       if (!res.ok) {
@@ -593,6 +650,45 @@ function AddAgreementDialog({
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
           />
+          {templateId && renderContext.data && (
+            <Box>
+              {missing.length === 0 ? (
+                <Alert severity="success" variant="outlined">
+                  All {renderContext.data.detected.length} variables auto-fill from
+                  this engagement's data — no fillins needed.
+                </Alert>
+              ) : (
+                <Stack spacing={1.25}>
+                  <Alert severity="warning" variant="outlined">
+                    {missing.length} variable{missing.length === 1 ? "" : "s"} need a value
+                    before this contract can be created.
+                    {renderContext.data.detected.length - missing.length > 0 &&
+                      ` (${renderContext.data.detected.length - missing.length} already
+                       filled from engagement / firm settings.)`}
+                  </Alert>
+                  <Stack spacing={1}>
+                    {missing.map((v) => (
+                      <TextField
+                        key={v}
+                        size="small"
+                        label={prettyVariable(v)}
+                        value={varInputs[v] ?? ""}
+                        onChange={(e) =>
+                          setVarInputs((prev) => ({ ...prev, [v]: e.target.value }))
+                        }
+                        helperText={
+                          HINT_LABEL[hints[v]] ?? `Fillin: ${v}`
+                        }
+                        InputProps={{
+                          sx: { fontSize: 14 },
+                        }}
+                      />
+                    ))}
+                  </Stack>
+                </Stack>
+              )}
+            </Box>
+          )}
         </Stack>
       </DialogContent>
       <DialogActions>
@@ -608,7 +704,7 @@ function AddAgreementDialog({
         <Button
           variant="contained"
           onClick={() => create.mutate()}
-          disabled={create.isPending}
+          disabled={create.isPending || (!!templateId && !allMissingFilled)}
         >
           {create.isPending ? "Creating…" : "Create draft"}
         </Button>
