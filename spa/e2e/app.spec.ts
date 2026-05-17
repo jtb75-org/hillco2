@@ -145,6 +145,10 @@ test("engagement golden path", async ({ page, baseURL }) => {
   await page.getByLabel("Hours").fill("1.25");
   await page.getByLabel("Description").fill("E2E consultation prep");
   await page.getByRole("button", { name: "Log", exact: true }).click();
+  // Wait for the dialog to fully fade out so its still-mounted
+  // "What did you do?" placeholder doesn't collide with the new row's
+  // input under Playwright strict mode.
+  await expect(page.getByRole("dialog", { name: /log time/i })).toBeHidden();
   await expect(page.locator('input[value="1.25"]')).toBeVisible();
   await expect(page.getByPlaceholder("What did you do?")).toHaveValue("E2E consultation prep");
 
