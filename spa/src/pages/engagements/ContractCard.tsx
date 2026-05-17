@@ -50,9 +50,20 @@ interface Agreement {
   supersedes_id: string | null;
   document_id: string | null;
   notes: string | null;
+  template_id: string | null;
+  body_markdown: string | null;
   created_at: string;
   updated_at: string;
   created_by_name?: string | null;
+}
+
+interface ContractTemplate {
+  id: string;
+  kind: AgreementType;
+  name: string;
+  body_markdown: string;
+  variables: string[];
+  is_active: boolean;
 }
 
 type LifecycleState =
@@ -97,6 +108,7 @@ export function ContractCard({ engagementId }: { engagementId: string }) {
   const snackbar = useSnackbar();
   const [addOpen, setAddOpen] = useState(false);
   const [historyFor, setHistoryFor] = useState<AgreementType | null>(null);
+  const [editBodyFor, setEditBodyFor] = useState<Agreement | null>(null);
 
   const agreements = useQuery<Agreement[], Error>({
     queryKey: ["engagements", engagementId, "agreements"],
@@ -215,6 +227,7 @@ export function ContractCard({ engagementId }: { engagementId: string }) {
                 onMarkSent={() => markSent.mutate(current.id)}
                 onUploadSigned={(file) => uploadSigned.mutate({ id: current.id, file })}
                 onRemove={() => remove.mutate(current.id)}
+                onEditBody={() => setEditBodyFor(current)}
                 busy={markSent.isPending || uploadSigned.isPending || remove.isPending}
               />
             ) : (
@@ -245,6 +258,15 @@ export function ContractCard({ engagementId }: { engagementId: string }) {
         rows={historyFor ? byType(historyFor) : []}
         onClose={() => setHistoryFor(null)}
       />
+
+      <ContractBodyDialog
+        agreement={editBodyFor}
+        onClose={() => setEditBodyFor(null)}
+        onSaved={() => {
+          setEditBodyFor(null);
+          invalidate();
+        }}
+      />
     </Paper>
   );
 }
@@ -258,12 +280,14 @@ function AgreementRow({
   onMarkSent,
   onUploadSigned,
   onRemove,
+  onEditBody,
   busy,
 }: {
   agreement: Agreement;
   onMarkSent: () => void;
   onUploadSigned: (file: File) => void;
   onRemove: () => void;
+  onEditBody: () => void;
   busy: boolean;
 }) {
   const state = lifecycleOf(agreement);
@@ -295,6 +319,16 @@ function AgreementRow({
           </Typography>
         )}
         <Box sx={{ ml: "auto" }} />
+        {agreement.body_markdown !== null && (
+          <Button
+            size="small"
+            startIcon={<DescriptionOutlinedIcon fontSize="small" />}
+            onClick={onEditBody}
+            sx={{ color: "text.secondary" }}
+          >
+            View / Edit
+          </Button>
+        )}
         {state === "drafted" && (
           <>
             <Button
@@ -403,12 +437,33 @@ function AddAgreementDialog({
   const [type, setType] = useState<AgreementType>("services_contract");
   const [amount, setAmount] = useState("");
   const [notes, setNotes] = useState("");
+  const [templateId, setTemplateId] = useState<string>("");
   const alreadyHasActive = existingTypes.has(type);
+
+  const templates = useQuery<ContractTemplate[], Error>({
+    queryKey: ["contract-templates", { kind: type }],
+    enabled: open,
+    queryFn: async () => {
+      const res = await fetch(`/api/contract-templates?kind=${type}`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to load templates.");
+      return res.json();
+    },
+  });
+
+  // Auto-select the first available template when the type changes
+  // (or when templates first arrive). User can switch to "(blank)".
+  const firstTemplateId = templates.data?.[0]?.id ?? "";
+  if (open && templates.data && templateId === "" && firstTemplateId) {
+    setTemplateId(firstTemplateId);
+  }
 
   const reset = () => {
     setType("services_contract");
     setAmount("");
     setNotes("");
+    setTemplateId("");
   };
 
   const create = useMutation({
@@ -421,6 +476,7 @@ function AddAgreementDialog({
           type,
           amount: amount.trim() || null,
           notes: notes.trim() || null,
+          template_id: templateId || null,
         }),
       });
       if (!res.ok) {
@@ -453,11 +509,45 @@ function AddAgreementDialog({
           <Select
             size="small"
             value={type}
-            onChange={(e) => setType(e.target.value as AgreementType)}
+            onChange={(e) => {
+              setType(e.target.value as AgreementType);
+              setTemplateId("");
+            }}
           >
             <MenuItem value="services_contract">Services contract</MenuItem>
             <MenuItem value="medical_release">Medical records release</MenuItem>
           </Select>
+          <Box>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ display: "block", mb: 0.5 }}
+            >
+              Template
+            </Typography>
+            <Select
+              size="small"
+              fullWidth
+              value={templateId}
+              onChange={(e) => setTemplateId(e.target.value)}
+              displayEmpty
+            >
+              <MenuItem value="">
+                <em>Blank (no template)</em>
+              </MenuItem>
+              {(templates.data ?? []).map((t) => (
+                <MenuItem key={t.id} value={t.id}>
+                  {t.name}
+                </MenuItem>
+              ))}
+            </Select>
+            {templates.data && templates.data.length === 0 && (
+              <Typography variant="caption" color="text.disabled" sx={{ display: "block", mt: 0.5 }}>
+                No templates configured for this type. Manage them in
+                Catalog → Contracts.
+              </Typography>
+            )}
+          </Box>
           {alreadyHasActive && (
             <Alert severity="info">
               This engagement already has an active or in-progress {TYPE_LABEL[type].toLowerCase()}.
@@ -553,6 +643,118 @@ function HistoryDialog({
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>Close</Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+// ---- per-agreement contract body editor ----------------------------------
+
+function ContractBodyDialog({
+  agreement,
+  onClose,
+  onSaved,
+}: {
+  agreement: Agreement | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const snackbar = useSnackbar();
+  const [body, setBody] = useState("");
+
+  // Re-seed local state when the dialog opens onto a different agreement.
+  // Tracked via the agreement id so consecutive opens don't carry stale text.
+  const [lastSeed, setLastSeed] = useState<string>("");
+  if (agreement && lastSeed !== agreement.id) {
+    setBody(agreement.body_markdown ?? "");
+    setLastSeed(agreement.id);
+  }
+
+  const save = useMutation({
+    mutationFn: async () => {
+      if (!agreement) return;
+      const res = await fetch(`/api/agreements/${agreement.id}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body_markdown: body }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error((j as { detail?: string }).detail ?? "Save failed.");
+      }
+    },
+    onSuccess: onSaved,
+    onError: (e: Error) => snackbar.show(e.message, "error"),
+  });
+
+  const liveVariables = (body.match(/\{\{\s*([a-z][a-z0-9_]+)\s*\}\}/g) ?? []).map(
+    (m) => m.replace(/[{}\s]/g, ""),
+  );
+  const uniqueVariables = [...new Set(liveVariables)];
+
+  return (
+    <Dialog
+      open={agreement !== null}
+      onClose={() => !save.isPending && onClose()}
+      maxWidth="lg"
+      fullWidth
+    >
+      <DialogTitle>
+        Contract body
+        {agreement?.contract_number && (
+          <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+            {agreement.contract_number}
+          </Typography>
+        )}
+      </DialogTitle>
+      <DialogContent>
+        <Stack spacing={1.5} sx={{ mt: 1 }}>
+          <Typography variant="caption" color="text.secondary">
+            Markdown. {`{{snake_case}}`} placeholders will be filled in
+            from engagement / family / consultant data when the PDF is
+            rendered (Tail-3). Edits are per-agreement and don't touch
+            the source template.
+          </Typography>
+          <TextField
+            fullWidth
+            multiline
+            minRows={20}
+            maxRows={40}
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            InputProps={{ sx: { fontFamily: "monospace", fontSize: 13 } }}
+          />
+          {uniqueVariables.length > 0 && (
+            <Box>
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.5 }}>
+                Detected placeholders ({uniqueVariables.length})
+              </Typography>
+              <Stack direction="row" useFlexGap flexWrap="wrap" sx={{ gap: 0.5 }}>
+                {uniqueVariables.map((v) => (
+                  <Chip
+                    key={v}
+                    size="small"
+                    label={v}
+                    sx={{ fontFamily: "monospace", fontSize: 12 }}
+                  />
+                ))}
+              </Stack>
+            </Box>
+          )}
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose} disabled={save.isPending}>
+          Cancel
+        </Button>
+        <Button
+          variant="contained"
+          onClick={() => save.mutate()}
+          disabled={save.isPending || body.trim().length === 0}
+        >
+          {save.isPending ? "Saving…" : "Save"}
+        </Button>
       </DialogActions>
     </Dialog>
   );

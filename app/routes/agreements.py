@@ -39,6 +39,11 @@ class AgreementCreate(BaseModel):
     expires_at: date | None = None
     document_id: UUID | None = None
     notes: str | None = None
+    # Optional template to snapshot into body_markdown. If supplied, the
+    # template's kind must match `type`. Operator can also leave both
+    # unset and start with a blank body — most existing draft agreements
+    # have no body.
+    template_id: UUID | None = None
 
 
 class AgreementUpdate(BaseModel):
@@ -50,6 +55,10 @@ class AgreementUpdate(BaseModel):
     expires_at: date | None = None
     document_id: UUID | None = None
     notes: str | None = None
+    # In-place edits to the per-agreement contract body. Template_id
+    # stays pinned to whatever the agreement was created from so the
+    # provenance is preserved even after edits.
+    body_markdown: str | None = None
 
 
 class AgreementSupersede(BaseModel):
@@ -120,6 +129,7 @@ async def list_for_engagement(
         SELECT a.id, a.engagement_id, a.type, a.status, a.contract_number,
                a.amount, a.sent_at, a.signed_at, a.effective_date, a.expires_at,
                a.supersedes_id, a.document_id, a.notes,
+               a.template_id, a.body_markdown,
                a.created_by, a.created_at, a.updated_at,
                TRIM(BOTH ' ' FROM COALESCE(u.first_name,'') || CASE WHEN u.last_name IS NOT NULL AND u.last_name <> '' THEN ' ' || u.last_name ELSE '' END) AS created_by_name
         FROM agreements a
@@ -141,7 +151,11 @@ async def create_agreement(
 ):
     """Creates a draft agreement. Use PATCH to flip status='active' once
     signed. services_contract auto-generates a contract_number (SC-YYYY-NNNN)
-    via next_contract_number(); medical_release leaves it NULL."""
+    via next_contract_number(); medical_release leaves it NULL.
+
+    If template_id is supplied, the template's body_markdown is
+    snapshotted into the new agreement. Operator edits via PATCH affect
+    the agreement copy only — the source template is untouched."""
     await _engagement_or_404(conn, engagement_id)
     await _validate_document_for_agreement(conn, body.document_id)
 
@@ -149,18 +163,44 @@ async def create_agreement(
     if body.type == "services_contract":
         contract_number = await conn.fetchval("SELECT next_contract_number()")
 
+    body_markdown: str | None = None
+    if body.template_id is not None:
+        tpl = await conn.fetchrow(
+            """
+            SELECT kind, body_markdown FROM contract_templates
+            WHERE id = $1 AND deleted_at IS NULL
+            """,
+            body.template_id,
+        )
+        if tpl is None:
+            raise HTTPException(status_code=400, detail="template_id not found.")
+        if tpl["kind"] != body.type:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"template kind '{tpl['kind']}' doesn't match "
+                    f"agreement type '{body.type}'."
+                ),
+            )
+        body_markdown = tpl["body_markdown"]
+
     row = await conn.fetchrow(
         """
         INSERT INTO agreements (
           engagement_id, type, status, contract_number, amount,
           signed_at, effective_date, expires_at,
-          document_id, notes, created_by
-        ) VALUES ($1, $2::agreement_type, 'draft', $3, $4, $5, $6, $7, $8, $9, $10)
+          document_id, notes, created_by,
+          template_id, body_markdown
+        ) VALUES (
+          $1, $2::agreement_type, 'draft', $3, $4, $5, $6, $7, $8, $9, $10,
+          $11, $12
+        )
         RETURNING *
         """,
         engagement_id, body.type, contract_number, body.amount,
         body.signed_at, body.effective_date, body.expires_at,
         body.document_id, (body.notes or "").strip() or None, user["id"],
+        body.template_id, body_markdown,
     )
     return dict(row)
 
