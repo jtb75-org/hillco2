@@ -206,9 +206,16 @@ function EngagementActionsMenu({ engagement }: { engagement: EngagementDetail })
       }
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["families", engagement.family.id] });
+      // Drop the now-gone engagement from every list that references
+      // it. The intake list also re-derives its "Converted" badge from
+      // converted_at, which the backend cleared if this was the
+      // intake's last engagement — so it needs to refetch too.
+      qc.removeQueries({ queryKey: ["engagements", engagement.id] });
+      qc.invalidateQueries({ queryKey: ["engagements"] });
+      qc.invalidateQueries({ queryKey: ["families"] });
+      qc.invalidateQueries({ queryKey: ["intakes"] });
       snackbar.show("Engagement deleted");
-      navigate(`/families/${engagement.family.id}`);
+      navigate("/engagements");
     },
     onError: (e: Error) => snackbar.show(e.message, "error"),
   });
