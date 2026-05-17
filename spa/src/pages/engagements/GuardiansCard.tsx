@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Accordion,
   AccordionDetails,
@@ -5,15 +6,19 @@ import {
   Box,
   Chip,
   FormControlLabel,
+  IconButton,
   Paper,
   Stack,
   Switch,
+  Tooltip,
   Typography,
 } from "@mui/material";
+import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useSnackbar } from "../../components/Snackbar";
+import { ParentDrawer, type ParentDrawerTarget } from "../families/ParentDrawer";
 
 interface Guardian {
   id: string;
@@ -44,6 +49,7 @@ const ROLE_LABEL: Record<string, string> = {
 export function GuardiansCard({ familyId }: { familyId: string }) {
   const qc = useQueryClient();
   const snackbar = useSnackbar();
+  const [drawerTarget, setDrawerTarget] = useState<ParentDrawerTarget | null>(null);
 
   const family = useQuery<FamilyDetail, Error>({
     queryKey: ["families", familyId],
@@ -141,6 +147,19 @@ export function GuardiansCard({ familyId }: { familyId: string }) {
                       body: { is_billing_contact: v },
                     })
                   }
+                  onEdit={() =>
+                    setDrawerTarget({
+                      id: g.id,
+                      name: g.name,
+                      email: g.email,
+                      phone: g.phone,
+                      role: g.role ?? "other",
+                      is_primary_contact: g.is_primary_contact,
+                      is_billing_contact: g.is_billing_contact,
+                      mailing_address: g.mailing_address,
+                      billing_address: g.billing_address,
+                    })
+                  }
                   busy={patchGuardian.isPending}
                 />
               ))}
@@ -148,6 +167,17 @@ export function GuardiansCard({ familyId }: { familyId: string }) {
           )}
         </AccordionDetails>
       </Accordion>
+
+      <ParentDrawer
+        open={!!drawerTarget}
+        parent={drawerTarget}
+        onClose={() => setDrawerTarget(null)}
+        onChanged={invalidate}
+        onRemoved={() => {
+          setDrawerTarget(null);
+          invalidate();
+        }}
+      />
     </Paper>
   );
 }
@@ -156,11 +186,13 @@ function GuardianRow({
   guardian,
   onTogglePrimary,
   onToggleBilling,
+  onEdit,
   busy,
 }: {
   guardian: Guardian;
   onTogglePrimary: (v: boolean) => void;
   onToggleBilling: (v: boolean) => void;
+  onEdit: () => void;
   busy: boolean;
 }) {
   return (
@@ -263,6 +295,11 @@ function GuardianRow({
           }
           sx={{ mr: 0 }}
         />
+        <Tooltip title="Edit guardian">
+          <IconButton size="small" onClick={onEdit} aria-label="Edit guardian">
+            <EditOutlinedIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
       </Stack>
     </Stack>
   );

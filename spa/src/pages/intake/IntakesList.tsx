@@ -289,12 +289,12 @@ const KANBAN_COLUMNS: KanbanColumnDef[] = [
       r.outcome == null ||
       (r.outcome === "converting" && r.converted_at == null),
   },
+  { key: "nurturing", title: "Nurturing", match: (r) => r.outcome === "nurture" },
   {
     key: "converted",
     title: "Converted",
     match: (r) => r.outcome === "converting" && r.converted_at != null,
   },
-  { key: "nurturing", title: "Nurturing", match: (r) => r.outcome === "nurture" },
   {
     key: "closed",
     title: "Closed",
