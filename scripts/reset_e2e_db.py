@@ -122,6 +122,38 @@ async def _seed_golden_path(conn: asyncpg.Connection) -> None:
         "INSERT INTO families (household_name) VALUES ($1) RETURNING id",
         E2E_HOUSEHOLD,
     )
+    # Seed a billing-flagged guardian with a structured address so the
+    # New Agreement dialog auto-fills {{client_address}} from the
+    # family rather than blocking on it.
+    guardian_id = await conn.fetchval(
+        """
+        INSERT INTO people (
+          kind, first_name, last_name, email, phone,
+          street1, city, state, postal_code, country
+        )
+        VALUES ('other', $1, $2, $3, $4, $5, $6, $7, $8, $9)
+        RETURNING id
+        """,
+        "Carol",
+        "GoldenHouse",
+        "carol@example.com",
+        "555-0100",
+        "100 Family Way",
+        "Indianapolis",
+        "IN",
+        "46202",
+        "USA",
+    )
+    await conn.execute(
+        """
+        INSERT INTO family_guardians (
+          family_id, person_id, relationship,
+          is_primary_contact, is_billing_contact
+        ) VALUES ($1, $2, 'mom', TRUE, TRUE)
+        """,
+        family_id,
+        guardian_id,
+    )
     student_id = await conn.fetchval(
         """
         INSERT INTO people (kind, first_name, last_name)
@@ -191,6 +223,35 @@ async def _seed_golden_path(conn: asyncpg.Connection) -> None:
     contract_family_id = await conn.fetchval(
         "INSERT INTO families (household_name) VALUES ($1) RETURNING id",
         E2E_CONTRACT_HOUSEHOLD,
+    )
+    contract_guardian_id = await conn.fetchval(
+        """
+        INSERT INTO people (
+          kind, first_name, last_name, email, phone,
+          street1, city, state, postal_code, country
+        )
+        VALUES ('other', $1, $2, $3, $4, $5, $6, $7, $8, $9)
+        RETURNING id
+        """,
+        "Paula",
+        "Contract",
+        "paula@example.com",
+        "555-0200",
+        "200 Contract Way",
+        "Indianapolis",
+        "IN",
+        "46202",
+        "USA",
+    )
+    await conn.execute(
+        """
+        INSERT INTO family_guardians (
+          family_id, person_id, relationship,
+          is_primary_contact, is_billing_contact
+        ) VALUES ($1, $2, 'mom', TRUE, TRUE)
+        """,
+        contract_family_id,
+        contract_guardian_id,
     )
     contract_student_id = await conn.fetchval(
         """

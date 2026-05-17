@@ -216,20 +216,10 @@ test.describe.serial("contract template agreements", () => {
     await expect(page.getByRole("option", { name: SERVICES_TEMPLATE_NAME })).toBeVisible();
     await page.getByRole("option", { name: SERVICES_TEMPLATE_NAME }).click();
     await dialog.getByLabel("Amount").fill("2500");
-    // Firm settings are pre-seeded in the E2E fixture so firm-wide
-    // variables auto-fill. The only remaining missing variable is
-    // client_address (agreement-override — no source UI today).
-    // Fill it inline so Create enables.
-    const inputs = dialog
-      .locator(".MuiTextField-root")
-      .locator("input, textarea");
-    const n = await inputs.count();
-    for (let i = 0; i < n; i++) {
-      const inp = inputs.nth(i);
-      if ((await inp.inputValue()) === "") {
-        await inp.fill("E2E");
-      }
-    }
+    // Firm settings + a billing-flagged guardian with address are
+    // pre-seeded in the E2E fixture, so all template variables
+    // auto-fill — Create draft should enable without any inline
+    // fillins.
     await dialog.getByRole("button", { name: "Create draft" }).click();
     await expect(dialog).toBeHidden();
 

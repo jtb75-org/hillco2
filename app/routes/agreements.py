@@ -424,6 +424,48 @@ def _compose_address(
     return composed or None
 
 
+async def _client_address_for_family(conn, family_id: UUID) -> str | None:
+    """Compose {{client_address}} from the family's billing-flagged
+    guardian, falling back to the primary-flagged guardian, then any
+    guardian. For each, prefer their billing_* address columns over
+    the home/mailing ones — billing_* is the per-person override
+    specifically intended for billing correspondence."""
+    if family_id is None:
+        return None
+    row = await conn.fetchrow(
+        """
+        SELECT
+          p.street1, p.street2, p.city, p.state, p.postal_code, p.country,
+          p.billing_street1, p.billing_street2, p.billing_city,
+          p.billing_state, p.billing_postal_code, p.billing_country
+        FROM family_guardians fg
+        JOIN people p ON p.id = fg.person_id AND p.deleted_at IS NULL
+        WHERE fg.family_id = $1
+        ORDER BY
+          fg.is_billing_contact DESC,
+          fg.is_primary_contact DESC,
+          p.last_name NULLS LAST, p.first_name
+        LIMIT 1
+        """,
+        family_id,
+    )
+    if row is None:
+        return None
+    # Try billing_* first, then mailing fields. We don't mix-and-match
+    # (e.g., billing street + mailing zip) — pick whichever block has
+    # actual content.
+    billing = _compose_address(
+        row["billing_street1"], row["billing_street2"], row["billing_city"],
+        row["billing_state"], row["billing_postal_code"], row["billing_country"],
+    )
+    if billing:
+        return billing
+    return _compose_address(
+        row["street1"], row["street2"], row["city"],
+        row["state"], row["postal_code"], row["country"],
+    )
+
+
 async def _build_default_context(conn, agreement: dict) -> dict[str, str]:
     """Compute the standard variable defaults from engagement / family /
     student / consultant data + firm-wide org_settings. Operator-supplied
@@ -433,7 +475,7 @@ async def _build_default_context(conn, agreement: dict) -> dict[str, str]:
     eng = await conn.fetchrow(
         """
         SELECT e.id, e.engagement_type, e.default_hourly_rate,
-               e.start_date, e.student_id,
+               e.start_date, e.student_id, e.family_id,
                f.household_name AS family_name,
                TRIM(BOTH ' ' FROM
                  COALESCE(u.first_name, '') ||
@@ -494,6 +536,10 @@ async def _build_default_context(conn, agreement: dict) -> dict[str, str]:
     # Client / family
     if eng and eng["family_name"]:
         ctx["client_name"] = f"the {eng['family_name']} family"
+    if eng and eng["family_id"]:
+        client_addr = await _client_address_for_family(conn, eng["family_id"])
+        if client_addr:
+            ctx["client_address"] = client_addr
 
     # Money / dates
     if eng and eng["default_hourly_rate"] is not None:

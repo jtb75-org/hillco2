@@ -45,11 +45,11 @@ VARIABLE_HINTS: dict[str, str] = {
     "effective_date":  "engagement",
     # Family
     "client_name":     "family",
-    # client_address has no UI on the family page today, so treat it as
-    # an agreement-level override until the family detail page learns
-    # to capture a structured billing address. Then this can flip back
-    # to "family".
-    "client_address":  "agreement-override",
+    # client_address auto-fills from the billing-flagged guardian's
+    # people.billing_* (or mailing) columns. When unset, the link
+    # sends the operator to the family page where they can flip the
+    # billing flag and fill in the address.
+    "client_address":  "family",
     # Student
     "patient_full_name": "student",
     "patient_dob":       "student",
