@@ -710,16 +710,13 @@ function NotesInput({
       "& p:last-child": { mb: 0 },
       "& ul, & ol": { my: 0.5, pl: 3 },
     };
+    // Intentionally not role="button" / tabIndex — those create dozens
+    // of phantom button-role nodes per page that slow down Playwright's
+    // getByRole queries and confuse keyboard nav. Click is the
+    // expected interaction; the editor itself takes care of focus
+    // once mounted.
     const handlers = {
-      role: "button",
-      tabIndex: 0,
       onClick: () => setEditing(true),
-      onKeyDown: (e: React.KeyboardEvent) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          setEditing(true);
-        }
-      },
     };
     if (empty) {
       return (
