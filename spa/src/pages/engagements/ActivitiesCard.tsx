@@ -152,8 +152,8 @@ export function ActivitiesCard({ engagementId }: { engagementId: string }) {
 
   const patchStatus = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: TaskStatus }) => {
-      const res = await fetch(`/api/tasks/${id}`, {
-        method: "PATCH",
+      const res = await fetch(`/api/tasks/${id}/status`, {
+        method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
@@ -597,6 +597,7 @@ function StatusSelect({
     <Select
       size="small"
       value={value}
+      inputProps={{ "aria-label": "Activity status" }}
       onChange={(e) => onChange(e.target.value as TaskStatus)}
       renderValue={() => (
         <Stack direction="row" spacing={0.75} alignItems="center">
