@@ -59,6 +59,7 @@ export interface ActivityRow {
   engagement_id: string;
   title: string;
   description: string | null;
+  notes: string | null;
   status: TaskStatus;
   billable: boolean;
   est_hours: string | null;
@@ -417,10 +418,10 @@ export function ActivitiesCard({ engagementId }: { engagementId: string }) {
                         onTitleCommit={(title) =>
                           patchFields.mutate({ id: row.id, body: { title } as Partial<ActivityRow> })
                         }
-                        onDescriptionCommit={(description) =>
+                        onNotesCommit={(notes) =>
                           patchFields.mutate({
                             id: row.id,
-                            body: { description } as Partial<ActivityRow>,
+                            body: { notes } as Partial<ActivityRow>,
                           })
                         }
                         onStructuredContentCommit={(structured_content) =>
@@ -482,7 +483,7 @@ function ActivityRowView({
   onStatusChange,
   onSkipToggle,
   onTitleCommit,
-  onDescriptionCommit,
+  onNotesCommit,
   onStructuredContentCommit,
   onDelete,
 }: {
@@ -493,12 +494,16 @@ function ActivityRowView({
   onStatusChange: (next: TaskStatus) => void;
   onSkipToggle: () => void;
   onTitleCommit: (next: string) => void;
-  onDescriptionCommit: (next: string | null) => void;
+  onNotesCommit: (next: string | null) => void;
   onStructuredContentCommit: (next: Record<string, unknown>) => void;
   onDelete: () => void;
 }) {
   const skipped = row.status === "not_applicable";
   const hasBody = KIND_HAS_BODY[row.activity_kind];
+  // Catalog-seeded rows (service_item_id IS NOT NULL) keep their
+  // title locked — the wording belongs to the catalog. Bespoke rows
+  // are the operator's, so they can be retitled freely.
+  const titleLocked = row.service_item_id !== null;
   return (
     <Box sx={{ py: 1.25, opacity: skipped ? 0.6 : 1 }}>
       <Stack
@@ -511,11 +516,24 @@ function ActivityRowView({
         </Box>
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.25 }}>
-            <TitleInput
-              value={row.title}
-              strikethrough={skipped}
-              onCommit={onTitleCommit}
-            />
+            {titleLocked ? (
+              <Typography
+                variant="body2"
+                sx={{
+                  flex: 1,
+                  fontWeight: 500,
+                  textDecoration: skipped ? "line-through" : "none",
+                }}
+              >
+                {row.title}
+              </Typography>
+            ) : (
+              <TitleInput
+                value={row.title}
+                strikethrough={skipped}
+                onCommit={onTitleCommit}
+              />
+            )}
             {row.activity_kind !== "task" && (
               <Chip
                 size="small"
@@ -533,9 +551,9 @@ function ActivityRowView({
               />
             )}
           </Stack>
-          <DescriptionInput
-            value={row.description ?? ""}
-            onCommit={(v) => onDescriptionCommit(v || null)}
+          <NotesInput
+            value={row.notes ?? ""}
+            onCommit={(v) => onNotesCommit(v || null)}
           />
         </Box>
         {hasBody && (
@@ -629,7 +647,7 @@ function TitleInput({
   );
 }
 
-function DescriptionInput({
+function NotesInput({
   value,
   onCommit,
 }: {
@@ -740,12 +758,12 @@ function AddActivityDialog({
 }) {
   const snackbar = useSnackbar();
   const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
+  const [notes, setNotes] = useState("");
   const [billable, setBillable] = useState(true);
 
   const reset = () => {
     setTitle("");
-    setDescription("");
+    setNotes("");
     setBillable(true);
   };
 
@@ -757,7 +775,7 @@ function AddActivityDialog({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: title.trim(),
-          description: description.trim() || null,
+          notes: notes.trim() || null,
           billable,
           sort_order: nextSortOrder,
         }),
@@ -800,8 +818,8 @@ function AddActivityDialog({
             size="small"
             multiline
             minRows={2}
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
           />
           <FormControlLabel
             control={
