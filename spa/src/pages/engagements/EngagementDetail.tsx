@@ -26,6 +26,7 @@ import { ActivitiesCard } from "./ActivitiesCard";
 import { ContractCard } from "./ContractCard";
 import { ExpensesCard } from "./ExpensesCard";
 import { IntakeContextCard, type IntakeSnapshot } from "./IntakeContextCard";
+import { NotesCard } from "./NotesCard";
 import { RequirementsCard } from "./RequirementsCard";
 import { TimeEntriesCard } from "./TimeEntriesCard";
 
@@ -121,6 +122,8 @@ export function EngagementDetail() {
       <TimeEntriesCard engagementId={id!} />
 
       <ExpensesCard engagementId={id!} />
+
+      <NotesCard engagementId={id!} />
 
       <DangerZoneCard engagement={engagement.data} />
     </Stack>
