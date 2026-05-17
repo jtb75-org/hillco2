@@ -305,14 +305,10 @@ export function IntakeForm() {
         onReferralSourceChange={(v) => patch.mutate({ referral_source: v })}
       />
 
-      <FamilyContextCard
-        intake={intake.data}
-        onPatch={(body) => patch.mutate(body as Record<string, unknown>)}
-      />
-
       {/* Roster accordions — the consultant picks who's on this
-          intake from the family. Guardian/student management is
-          unchanged from the previous form. */}
+          intake from the family. Sits above Family context because
+          discovery starts with "who's at the table" before "what
+          they're trying to do". */}
       <GuardiansSection
         intakeId={intake.data.id}
         familyId={intake.data.family_id}
@@ -326,6 +322,11 @@ export function IntakeForm() {
         intakeStudents={intake.data.students ?? []}
         familyStudents={family.data?.students ?? []}
         loading={family.isPending}
+      />
+
+      <FamilyContextCard
+        intake={intake.data}
+        onPatch={(body) => patch.mutate(body as Record<string, unknown>)}
       />
 
       {(intake.data.students ?? []).map((s) => (
