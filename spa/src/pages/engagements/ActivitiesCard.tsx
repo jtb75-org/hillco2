@@ -477,6 +477,11 @@ export function ActivitiesCard({ engagementId }: { engagementId: string }) {
       <LogTimeForTaskDialog
         engagementId={engagementId}
         activity={logTimeFor}
+        phaseTitle={
+          logTimeFor
+            ? catalog.data?.find((p) => p.id === logTimeFor.phase_id)?.title ?? null
+            : null
+        }
         onClose={() => setLogTimeFor(null)}
         onLogged={() => {
           setLogTimeFor(null);
@@ -682,6 +687,12 @@ function NotesInput({
   value: string;
   onCommit: (v: string) => void;
 }) {
+  // Plain TextField. We considered swapping in RichTextEditor here
+  // for B/I/lists, but Tiptap is heavy and 19-28 mounted editors
+  // per engagement page made the activity list feel sluggish.
+  // Rich formatting still lives on the kind-specific accordion
+  // bodies (best_environment, feedback_meeting) where it actually
+  // pays off.
   return (
     <DebouncedInput
       value={value}
@@ -701,12 +712,14 @@ function DebouncedInput({
   multiline,
   sx,
   onCommit,
+  onFocus,
 }: {
   value: string;
   placeholder?: string;
   multiline?: boolean;
   sx?: object;
   onCommit: (v: string) => void;
+  onFocus?: () => void;
 }) {
   const [local, setLocal] = useState(value);
   // Re-sync from parent on refetch — see RequirementsCard/IntakeForm
@@ -723,6 +736,7 @@ function DebouncedInput({
       onBlur={() => {
         if (local !== value) onCommit(local);
       }}
+      onFocus={onFocus}
       sx={sx}
     />
   );
@@ -896,11 +910,13 @@ function AddActivityDialog({
 function LogTimeForTaskDialog({
   engagementId,
   activity,
+  phaseTitle,
   onClose,
   onLogged,
 }: {
   engagementId: string;
   activity: ActivityRow | null;
+  phaseTitle: string | null;
   onClose: () => void;
   onLogged: () => void;
 }) {
@@ -919,7 +935,12 @@ function LogTimeForTaskDialog({
   if (activity && lastSeed !== seedKey) {
     setWorkDate(new Date().toISOString().slice(0, 10));
     setHours("");
-    setDescription("");
+    // Default description: "Phase Name: Activity Name" so the time
+    // entry is self-explanatory in the rollup even before the operator
+    // adds detail. They can still edit / blank it out.
+    setDescription(
+      phaseTitle ? `${phaseTitle}: ${activity.title}` : activity.title,
+    );
     setBillable(activity.billable);
     setLastSeed(seedKey);
   }

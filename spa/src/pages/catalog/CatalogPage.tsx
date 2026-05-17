@@ -63,6 +63,14 @@ interface Phase {
   item_count: number;
 }
 
+type ActivityKind =
+  | "task"
+  | "document_review"
+  | "best_environment"
+  | "feedback_meeting"
+  | "school_visit"
+  | "school_recommendation";
+
 interface Item {
   id: string;
   phase_id: string;
@@ -73,8 +81,18 @@ interface Item {
   default_billable: boolean;
   default_deliverable: string | null;
   default_owner_role: OwnerRole | null;
+  default_activity_kind: ActivityKind;
   engagement_type_ids: string[];
 }
+
+const KIND_OPTIONS: Array<{ value: ActivityKind; label: string; hint: string }> = [
+  { value: "task",                   label: "Task (notes)",       hint: "Plain checklist activity captured with notes" },
+  { value: "document_review",        label: "Document review",    hint: "Attach educational + medical documents" },
+  { value: "best_environment",       label: "Best environment",   hint: "Curriculum / placement / social-emotional / extras" },
+  { value: "feedback_meeting",       label: "Feedback meeting",   hint: "Recommendations / admissions strategy / follow-on" },
+  { value: "school_visit",           label: "Campus visit",       hint: "Backed by a school_visits row with hours + facts + opinions" },
+  { value: "school_recommendation",  label: "School recommendation", hint: "Backed by a school_recommendations row" },
+];
 
 interface EngagementType {
   id: string;
@@ -1101,6 +1119,25 @@ function ItemDetails({
         onCommit={(v) => onPatch({ description: v || null })}
       />
       <Stack direction="row" spacing={2} flexWrap="wrap">
+        <TextField
+          select
+          size="small"
+          label="Activity kind"
+          value={item.default_activity_kind}
+          onChange={(e) =>
+            onPatch({ default_activity_kind: e.target.value as ActivityKind })
+          }
+          helperText={
+            KIND_OPTIONS.find((o) => o.value === item.default_activity_kind)?.hint
+          }
+          sx={{ minWidth: 240 }}
+        >
+          {KIND_OPTIONS.map((o) => (
+            <MenuItem key={o.value} value={o.value}>
+              {o.label}
+            </MenuItem>
+          ))}
+        </TextField>
         <BlurField
           label="Est. hours"
           initial={item.default_est_hours ?? ""}
