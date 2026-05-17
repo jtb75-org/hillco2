@@ -4,7 +4,6 @@ from decimal import Decimal
 from typing import Any, Literal
 from uuid import UUID
 
-import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
@@ -352,31 +351,34 @@ async def delete_engagement(
     _user=Depends(require_user),
     conn=Depends(get_conn),
 ):
-    """Hard delete a clean engagement.
+    """Soft delete: stamp engagements.deleted_at = NOW(). All queries
+    in this module (and the SPA's downstream consumers) filter
+    deleted_at IS NULL, so the engagement drops out of lists, search,
+    family rollups, etc., but its agreements / invoices / notes / time
+    entries stay intact for audit + accounting.
 
-    Child operational records such as tasks cascade from the database
-    FK. Billing records (agreements / invoices) intentionally RESTRICT
-    and surface as a 409 so the operator clears financial history
-    explicitly.
+    Soft-delete sidesteps the FK RESTRICT constraints on agreements
+    and invoices that previously made hard delete fail with a 409
+    whenever any contract or invoice existed. The financial history
+    is exactly what we want to preserve.
 
     If the deleted engagement came from an intake convert AND no other
-    engagements remain on that intake, clear intake.converted_at so the
-    intake re-opens for another convert pass. Lifecycle_stage on the
-    family is left alone — that's a family-wide flag and other intakes
-    may still legitimately mark the family as a client.
+    live engagements remain on that intake, clear intake.converted_at
+    so the intake re-opens for another convert pass.
     """
     eng = await _engagement_or_404(conn, engagement_id)
     intake_id = eng["intake_id"]
-    try:
-        await conn.execute("DELETE FROM engagements WHERE id = $1", engagement_id)
-    except asyncpg.ForeignKeyViolationError as exc:
-        raise HTTPException(
-            status_code=409,
-            detail="Engagement still has dependent records that block deletion.",
-        ) from exc
+    await conn.execute(
+        "UPDATE engagements SET deleted_at = NOW() WHERE id = $1",
+        engagement_id,
+    )
     if intake_id is not None:
         remaining = await conn.fetchval(
-            "SELECT 1 FROM engagements WHERE intake_id = $1 LIMIT 1",
+            """
+            SELECT 1 FROM engagements
+            WHERE intake_id = $1 AND deleted_at IS NULL
+            LIMIT 1
+            """,
             intake_id,
         )
         if not remaining:
