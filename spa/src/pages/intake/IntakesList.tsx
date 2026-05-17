@@ -42,6 +42,7 @@ interface IntakeRow {
   completed_at: string | null;
   outcome: Outcome | null;
   outcome_at: string | null;
+  converted_at: string | null;
   created_at: string;
 }
 
@@ -239,7 +240,7 @@ function ListView({
               <TableCell sx={{ fontWeight: 500 }}>{row.household_name}</TableCell>
               <TableCell>{dayjs(row.intake_date).format("MMM D, YYYY")}</TableCell>
               <TableCell>
-                <OutcomeChip outcome={row.outcome} />
+                <OutcomeChip outcome={row.outcome} convertedAt={row.converted_at} />
               </TableCell>
               <TableCell>
                 {row.consultant_name ?? (
@@ -264,12 +265,25 @@ interface KanbanColumnDef {
   match: (row: IntakeRow) => boolean;
 }
 
-// Four buckets keyed on the outcome lifecycle the consultant works
-// through: open → either converting (becomes an engagement) → nurturing
-// (follow up later) → closed (declined / no_response / duplicate).
+// Five buckets keyed on the outcome lifecycle the consultant works
+// through: open → converting (decision to convert, no engagement yet)
+// → converted (engagement(s) spawned) OR nurturing (follow up later)
+// → closed (declined / no_response / duplicate). Converting vs converted
+// is derived from converted_at: outcome stays 'converting' even after
+// the convert flow has run, but converted_at flips non-null at that
+// point.
 const KANBAN_COLUMNS: KanbanColumnDef[] = [
   { key: "in_progress", title: "In Progress", match: (r) => r.outcome == null },
-  { key: "converting", title: "Converting", match: (r) => r.outcome === "converting" },
+  {
+    key: "converting",
+    title: "Converting",
+    match: (r) => r.outcome === "converting" && r.converted_at == null,
+  },
+  {
+    key: "converted",
+    title: "Converted",
+    match: (r) => r.outcome === "converting" && r.converted_at != null,
+  },
   { key: "nurturing", title: "Nurturing", match: (r) => r.outcome === "nurture" },
   {
     key: "closed",
@@ -409,11 +423,22 @@ function KanbanCard({ row }: { row: IntakeRow }) {
 
 // ---- Shared chip --------------------------------------------------------
 
-function OutcomeChip({ outcome }: { outcome: Outcome | null }) {
+function OutcomeChip({
+  outcome,
+  convertedAt,
+}: {
+  outcome: Outcome | null;
+  convertedAt: string | null;
+}) {
   if (!outcome) {
     return (
       <Chip size="small" label="In progress" color="primary" variant="outlined" />
     );
+  }
+  // Override the 'Converting' label once the convert flow has actually
+  // spawned engagements — at that point the work is done, not in flight.
+  if (outcome === "converting" && convertedAt) {
+    return <Chip size="small" label="Converted" color="success" />;
   }
   const display = OUTCOME_STATUS_DISPLAY[outcome];
   return <Chip size="small" label={display.label} color={display.color} />;

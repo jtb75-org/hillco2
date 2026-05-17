@@ -171,7 +171,7 @@ async def list_intakes(
     rows = await conn.fetch(
         f"""
         SELECT i.id, i.family_id, i.intake_date, i.consultant_id, i.notes,
-               i.completed_at, i.outcome, i.outcome_at,
+               i.completed_at, i.outcome, i.outcome_at, i.converted_at,
                i.next_step_owner, i.next_step_due, i.created_at, i.updated_at,
                f.household_name,
                TRIM(BOTH ' ' FROM
