@@ -32,7 +32,6 @@ import PlayCircleOutlineIcon from "@mui/icons-material/PlayCircleOutline";
 import RemoveCircleOutlineIcon from "@mui/icons-material/RemoveCircleOutline";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { RichTextEditor } from "../../components/RichTextEditor";
 import { useSnackbar } from "../../components/Snackbar";
 import {
   ActivityKindBody,
@@ -688,26 +687,22 @@ function NotesInput({
   value: string;
   onCommit: (v: string) => void;
 }) {
-  const [draft, setDraft] = useState(value);
-  // Re-sync if upstream refreshes (e.g. PATCH echo after a kind change).
-  useEffect(() => {
-    setDraft(value);
-  }, [value]);
+  // Plain TextField. We considered swapping in RichTextEditor here
+  // for B/I/lists, but Tiptap is heavy and 19-28 mounted editors
+  // per engagement page made the activity list feel sluggish.
+  // Rich formatting still lives on the kind-specific accordion
+  // bodies (best_environment, feedback_meeting) where it actually
+  // pays off.
   return (
-    <Box
-      sx={{ display: "flex", "& .ProseMirror": { fontSize: 13, color: "text.secondary" } }}
-      onBlur={(e) => {
-        if (e.currentTarget.contains(e.relatedTarget as Node)) return;
-        if (draft !== value) onCommit(draft);
+    <DebouncedInput
+      value={value}
+      placeholder="Add notes…"
+      multiline
+      onCommit={onCommit}
+      sx={{
+        ".MuiInput-input": { fontSize: 13, color: "text.secondary" },
       }}
-    >
-      <RichTextEditor
-        value={draft}
-        onChange={setDraft}
-        placeholder="Add notes…"
-        minRows={2}
-      />
-    </Box>
+    />
   );
 }
 
@@ -717,12 +712,14 @@ function DebouncedInput({
   multiline,
   sx,
   onCommit,
+  onFocus,
 }: {
   value: string;
   placeholder?: string;
   multiline?: boolean;
   sx?: object;
   onCommit: (v: string) => void;
+  onFocus?: () => void;
 }) {
   const [local, setLocal] = useState(value);
   // Re-sync from parent on refetch — see RequirementsCard/IntakeForm
@@ -739,6 +736,7 @@ function DebouncedInput({
       onBlur={() => {
         if (local !== value) onCommit(local);
       }}
+      onFocus={onFocus}
       sx={sx}
     />
   );
