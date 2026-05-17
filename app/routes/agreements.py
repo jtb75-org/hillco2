@@ -396,11 +396,34 @@ async def upload_signed_agreement(
 _VARIABLE_RE = re.compile(r"\{\{\s*([a-z][a-z0-9_]+)\s*\}\}")
 
 
+def _compose_address(
+    street1: str | None,
+    street2: str | None,
+    city: str | None,
+    state: str | None,
+    postal_code: str | None,
+    country: str | None,
+) -> str | None:
+    """Render a multi-line address into a single comma-separated line
+    that fits inline in the contract. None / empty parts are skipped
+    so partial addresses don't render with double commas."""
+    line1 = ", ".join(x for x in [street1, street2] if x)
+    line2_parts = [x for x in [city, state] if x]
+    line2 = ", ".join(line2_parts)
+    if line2 and postal_code:
+        line2 = f"{line2} {postal_code}"
+    elif postal_code:
+        line2 = postal_code
+    parts = [line1, line2, country if country and country.upper() not in ("US", "USA") else None]
+    composed = ", ".join(x for x in parts if x)
+    return composed or None
+
+
 async def _build_default_context(conn, agreement: dict) -> dict[str, str]:
     """Compute the standard variable defaults from engagement / family /
-    student / consultant data. Operator-supplied values in
-    agreement.variables override these at render time. Missing keys
-    stay missing — render then leaves the {{placeholder}} text alone
+    student / consultant data + firm-wide org_settings. Operator-supplied
+    values in agreement.variables override these at render time. Missing
+    keys stay missing — render then leaves the {{placeholder}} text alone
     so the operator can see what's unfilled."""
     eng = await conn.fetchrow(
         """
@@ -413,7 +436,13 @@ async def _build_default_context(conn, agreement: dict) -> dict[str, str]:
                       THEN ' ' || u.last_name ELSE '' END
                ) AS consultant_name,
                u.email AS consultant_email,
-               u.phone AS consultant_phone
+               u.phone AS consultant_phone,
+               u.street1 AS consultant_street1,
+               u.street2 AS consultant_street2,
+               u.city    AS consultant_city,
+               u.state   AS consultant_state,
+               u.postal_code AS consultant_postal_code,
+               u.country AS consultant_country
         FROM engagements e
         JOIN families f ON f.id = e.family_id
         LEFT JOIN people u ON u.id = e.lead_consultant_id
@@ -436,19 +465,31 @@ async def _build_default_context(conn, agreement: dict) -> dict[str, str]:
             """,
             eng["student_id"],
         )
+    org = await conn.fetchrow("SELECT * FROM org_settings WHERE id = 1")
 
     ctx: dict[str, str] = {}
     today = date.today().isoformat()
-    # Consultant block
+
+    # Consultant block (from the engagement's lead_consultant person row)
     if eng and eng["consultant_name"]:
         ctx["consultant_name"] = eng["consultant_name"]
     if eng and eng["consultant_email"]:
         ctx["consultant_email"] = eng["consultant_email"]
     if eng and eng["consultant_phone"]:
         ctx["consultant_phone"] = eng["consultant_phone"]
+    if eng:
+        consultant_addr = _compose_address(
+            eng["consultant_street1"], eng["consultant_street2"],
+            eng["consultant_city"], eng["consultant_state"],
+            eng["consultant_postal_code"], eng["consultant_country"],
+        )
+        if consultant_addr:
+            ctx["consultant_address"] = consultant_addr
+
     # Client / family
     if eng and eng["family_name"]:
         ctx["client_name"] = f"the {eng['family_name']} family"
+
     # Money / dates
     if eng and eng["default_hourly_rate"] is not None:
         ctx["hourly_rate"] = str(eng["default_hourly_rate"])
@@ -457,12 +498,38 @@ async def _build_default_context(conn, agreement: dict) -> dict[str, str]:
     )
     if isinstance(ctx["effective_date"], date):
         ctx["effective_date"] = ctx["effective_date"].isoformat()
+
     # Student / patient
     if student:
         if student["name"]:
             ctx["patient_full_name"] = student["name"]
         if student["birthday"]:
             ctx["patient_dob"] = student["birthday"].isoformat()
+
+    # Firm-wide constants (lowest priority — user/engagement values
+    # already set above take precedence via the {**defaults, **overrides}
+    # merge in the PDF endpoint, but within defaults we let real
+    # consultant-row values override org-level fallbacks).
+    if org:
+        firm_addr = _compose_address(
+            org["firm_street1"], org["firm_street2"],
+            org["firm_city"], org["firm_state"],
+            org["firm_postal_code"], org["firm_country"],
+        )
+        # consultant_address falls back to firm address if the
+        # consultant didn't fill in their own.
+        if firm_addr and "consultant_address" not in ctx:
+            ctx["consultant_address"] = firm_addr
+        if org["governing_state"]:
+            ctx["governing_state"] = org["governing_state"]
+        if org["billing_increment_minutes"] is not None:
+            ctx["billing_increment_minutes"] = str(org["billing_increment_minutes"])
+        if org["invoice_frequency"]:
+            ctx["invoice_frequency"] = org["invoice_frequency"]
+        if org["payment_terms_days"] is not None:
+            ctx["payment_terms_days"] = str(org["payment_terms_days"])
+        if org["expense_approval_threshold"] is not None:
+            ctx["expense_approval_threshold"] = str(org["expense_approval_threshold"])
     return ctx
 
 

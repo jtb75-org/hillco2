@@ -9,6 +9,7 @@ import { PageHeader } from "../../components/PageHeader";
 const TABS = [
   { value: "activities", label: "Activities", to: "/catalog/activities" },
   { value: "contracts", label: "Contracts", to: "/catalog/contracts" },
+  { value: "firm-settings", label: "Firm settings", to: "/catalog/firm-settings" },
 ] as const;
 
 type TabValue = (typeof TABS)[number]["value"];
