@@ -276,43 +276,6 @@ export function Dashboard() {
               </List>
             </SectionPanel>
 
-            <SectionPanel
-              title="Recent activity"
-              empty={data?.audit.length === 0}
-              emptyTitle="No recent activity"
-            >
-              <List dense disablePadding>
-                {data?.audit.map((a, i) => (
-                  <ListItem key={i} divider>
-                    <ListItemText
-                      primary={
-                        <>
-                          <Box
-                            component="span"
-                            sx={{
-                              fontFamily: "monospace",
-                              fontSize: 12,
-                              mr: 1,
-                              color: "text.secondary",
-                            }}
-                          >
-                            {a.action}
-                          </Box>
-                          {a.table_name}
-                        </>
-                      }
-                      secondary={
-                        <>
-                          {a.user_email ?? "system"}
-                          {" · "}
-                          {dayjs(a.ts).fromNow()}
-                        </>
-                      }
-                    />
-                  </ListItem>
-                ))}
-              </List>
-            </SectionPanel>
           </Stack>
         </Grid>
       </Grid>
