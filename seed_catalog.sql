@@ -244,3 +244,39 @@ SELECT si.id, et.id
   JOIN engagement_types et ON et.code = 'full_placement'
  WHERE cp.sort_order >= 1000
 ON CONFLICT DO NOTHING;
+
+-- ============================================================
+-- intake_summary upgrades
+-- ============================================================
+-- Tag the four canonical Client Intake activities with the
+-- intake_summary kind + section so the engagement page renders the
+-- read-only summary body for each. Both columns are set in one
+-- statement; the CHECK kind=intake_summary ⇔ section IS NOT NULL is
+-- evaluated post-UPDATE per row, so this is safe.
+UPDATE service_items
+SET default_activity_kind = 'intake_summary',
+    intake_summary_section = 'contacts'
+WHERE deleted_at IS NULL
+  AND default_activity_kind = 'task'
+  AND LOWER(title) LIKE '%names and contact%';
+
+UPDATE service_items
+SET default_activity_kind = 'intake_summary',
+    intake_summary_section = 'current_school'
+WHERE deleted_at IS NULL
+  AND default_activity_kind = 'task'
+  AND LOWER(title) LIKE '%current school%';
+
+UPDATE service_items
+SET default_activity_kind = 'intake_summary',
+    intake_summary_section = 'diagnoses'
+WHERE deleted_at IS NULL
+  AND default_activity_kind = 'task'
+  AND LOWER(title) LIKE '%background diagnoses%';
+
+UPDATE service_items
+SET default_activity_kind = 'intake_summary',
+    intake_summary_section = 'goals'
+WHERE deleted_at IS NULL
+  AND default_activity_kind = 'task'
+  AND LOWER(title) LIKE '%needs and goals%';
