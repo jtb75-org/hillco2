@@ -3,30 +3,27 @@ import { Link, Outlet, useLocation } from "react-router-dom";
 
 import { PageHeader } from "../../components/PageHeader";
 
-// URL-per-tab so each section is bookmarkable and the back button
-// behaves like a normal navigation. The `value` is derived from the
-// current path's second segment (`/admin/users` -> `users`); MUI's
-// Tabs is happy with whatever string we hand it as long as it matches
-// one of the Tab `value`s.
+// URL-per-tab so each section is bookmarkable. The `value` is derived
+// from the current path's second segment (`/catalog/activities` ->
+// `activities`).
 const TABS = [
-  { value: "users", label: "Users", to: "/admin/users" },
-  { value: "audit-log", label: "Audit Log", to: "/admin/audit-log" },
-  { value: "about", label: "About", to: "/admin/about" },
+  { value: "activities", label: "Activities", to: "/catalog/activities" },
+  { value: "contracts", label: "Contracts", to: "/catalog/contracts" },
 ] as const;
 
 type TabValue = (typeof TABS)[number]["value"];
 
-export function AdminLayout() {
+export function CatalogLayout() {
   const { pathname } = useLocation();
   const seg = pathname.split("/")[2] ?? "";
   const current: TabValue =
-    (TABS.find((t) => t.value === seg)?.value ?? "users");
+    (TABS.find((t) => t.value === seg)?.value ?? "activities");
 
   return (
     <Box>
       <PageHeader
-        title="Admin"
-        subtitle="Manage access, inspect audit history, and verify the deployed build."
+        title="Catalog"
+        subtitle="The user-editable building blocks of an engagement: activities, phases, engagement types, and contract templates."
       />
       <Tabs value={current} sx={{ borderBottom: 1, borderColor: "divider", mb: 3 }}>
         {TABS.map((t) => (

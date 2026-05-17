@@ -46,7 +46,6 @@ import { CSS } from "@dnd-kit/utilities";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "../../api/client";
-import { PageHeader } from "../../components/PageHeader";
 import { useSnackbar } from "../../components/Snackbar";
 
 // /api/catalog/* + /api/engagement-types return plain dicts. Hand-typed
@@ -328,11 +327,6 @@ export function CatalogPage() {
 
   return (
     <Stack spacing={2}>
-      <PageHeader
-        title="Catalog"
-        subtitle="Engagement types, phases, and activities. Drag to reorder; tag each activity with the engagement types it belongs to."
-      />
-
       <EngagementTypesPanel types={allTypes} />
 
       <Stack direction="row" alignItems="baseline" spacing={1}>

@@ -6,7 +6,6 @@ import { AuthProvider, redirectToLogin, useAuth } from "./auth";
 import { Dashboard } from "./pages/Dashboard";
 import { AdminLayout } from "./pages/admin/AdminLayout";
 import { AdminUsers } from "./pages/admin/Users";
-import { AdminContracts } from "./pages/admin/Contracts";
 import { AdminAuditLog } from "./pages/admin/AuditLog";
 import { AdminAbout } from "./pages/admin/About";
 import { ContactsList } from "./pages/contacts/ContactsList";
@@ -14,7 +13,9 @@ import { FamiliesList } from "./pages/families/FamiliesList";
 import { FamilyDetail } from "./pages/families/FamilyDetail";
 import { EngagementDetail } from "./pages/engagements/EngagementDetail";
 import { EngagementsList } from "./pages/engagements/EngagementsList";
+import { CatalogLayout } from "./pages/catalog/CatalogLayout";
 import { CatalogPage } from "./pages/catalog/CatalogPage";
+import { CatalogContracts } from "./pages/catalog/Contracts";
 import { SchoolsList } from "./pages/schools/SchoolsList";
 import { IntakeForm } from "./pages/intake/IntakeForm";
 import { IntakesList } from "./pages/intake/IntakesList";
@@ -89,11 +90,14 @@ export function App() {
             <Route path="/intakes/:id" element={<IntakeForm />} />
             <Route path="/contacts" element={<ContactsList />} />
             <Route path="/schools" element={<SchoolsList />} />
-            <Route path="/catalog" element={<CatalogPage />} />
+            <Route path="/catalog" element={<CatalogLayout />}>
+              <Route index element={<Navigate to="activities" replace />} />
+              <Route path="activities" element={<CatalogPage />} />
+              <Route path="contracts" element={<CatalogContracts />} />
+            </Route>
             <Route path="/admin" element={<AdminLayout />}>
               <Route index element={<Navigate to="users" replace />} />
               <Route path="users" element={<AdminUsers />} />
-              <Route path="contracts" element={<AdminContracts />} />
               <Route path="audit-log" element={<AdminAuditLog />} />
               <Route path="about" element={<AdminAbout />} />
             </Route>
