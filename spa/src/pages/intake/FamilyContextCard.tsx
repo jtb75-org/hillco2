@@ -49,6 +49,7 @@ export function FamilyContextCard({
                 minRows={3}
                 placeholder="A school where Peter feels seen…"
                 value={intake.desired_outcome ?? ""}
+                inputProps={{ "data-testid": "intake-desired-outcome" } as Record<string, string>}
                 onCommit={(v) => onPatch({ desired_outcome: v || null })}
               />
             </LabeledField>
@@ -80,12 +81,14 @@ export function FamilyContextCard({
                 </Typography>
               </Box>
               <FormControlLabel
+                data-testid="intake-consent-control"
                 control={
                   <Switch
                     checked={intake.consent_granted === true}
                     onChange={(e) =>
                       onPatch({ consent_granted: e.target.checked })
                     }
+                    inputProps={{ "data-testid": "intake-consent-toggle" } as Record<string, string>}
                   />
                 }
                 label={
@@ -125,12 +128,14 @@ function DebouncedTextField({
   multiline,
   minRows,
   onCommit,
+  inputProps,
 }: {
   value: string;
   placeholder?: string;
   multiline?: boolean;
   minRows?: number;
   onCommit: (v: string) => void;
+  inputProps?: Record<string, string>;
 }) {
   const [local, setLocal] = useState(value);
   useEffect(() => {
@@ -145,6 +150,7 @@ function DebouncedTextField({
       placeholder={placeholder}
       value={local}
       onChange={(e) => setLocal(e.target.value)}
+      inputProps={inputProps}
       onBlur={() => {
         if (local !== value) onCommit(local);
       }}

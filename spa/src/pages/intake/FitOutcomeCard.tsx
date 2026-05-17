@@ -131,6 +131,7 @@ export function FitOutcomeCard({
                 size="small"
                 fullWidth
                 value={intake.outcome ?? ""}
+                data-testid="intake-outcome-select"
                 onChange={(e) =>
                   onPatchIntake({
                     outcome: (e.target.value || null) as Outcome | null,
@@ -265,6 +266,7 @@ function StudentCandidacyRow({
     : undefined;
   return (
     <Stack
+      data-testid={`intake-candidacy-row-${student.id}`}
       direction={{ xs: "column", sm: "row" }}
       spacing={2}
       alignItems={{ xs: "stretch", sm: "flex-start" }}
@@ -277,10 +279,12 @@ function StudentCandidacyRow({
       }}
     >
       <FormControlLabel
+        data-testid={`intake-candidate-control-${student.id}`}
         control={
           <Switch
             checked={student.candidate}
             onChange={(e) => onChange({ candidate: e.target.checked })}
+            inputProps={{ "data-testid": `intake-candidate-toggle-${student.id}` } as Record<string, string>}
           />
         }
         label={
@@ -307,6 +311,7 @@ function StudentCandidacyRow({
             fullWidth
             disabled={!student.candidate}
             value={student.recommended_engagement_type ?? ""}
+            data-testid={`intake-recommended-type-${student.id}`}
             onChange={(e) =>
               onChange({
                 recommended_engagement_type: e.target.value || null,

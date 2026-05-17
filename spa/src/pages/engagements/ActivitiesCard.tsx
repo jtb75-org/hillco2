@@ -505,7 +505,11 @@ function ActivityRowView({
   // are the operator's, so they can be retitled freely.
   const titleLocked = row.service_item_id !== null;
   return (
-    <Box sx={{ py: 1.25, opacity: skipped ? 0.6 : 1 }}>
+    <Box
+      data-testid={`activity-row-${row.id}`}
+      data-activity-title={row.title}
+      sx={{ py: 1.25, opacity: skipped ? 0.6 : 1 }}
+    >
       <Stack
         direction={{ xs: "column", md: "row" }}
         spacing={1.5}

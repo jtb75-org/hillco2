@@ -25,6 +25,7 @@ E2E_HOUSEHOLD = "E2E Golden Household"
 E2E_STUDENT_FIRST = "Golden"
 E2E_STUDENT_LAST = "Student"
 E2E_ACTIVITY_TITLE = "E2E status selection activity"
+E2E_SCHOOL_NAME = "E2E Test Academy"
 LOCAL_OBJECT_STORE = Path(tempfile.gettempdir()) / "hillco2-local-object-store"
 
 
@@ -138,6 +139,20 @@ async def _seed_golden_path(conn: asyncpg.Connection) -> None:
         engagement_id,
         E2E_ACTIVITY_TITLE,
         user_id,
+    )
+    await conn.execute(
+        """
+        INSERT INTO schools (
+          name, location, school_type, grade_range_low, grade_range_high,
+          website, fit_profile, notes
+        ) VALUES (
+          $1, 'Testville, TX', 'Independent', '6', '12',
+          'https://example.test/e2e-academy',
+          'Seeded school for duplicate recommendation E2E coverage.',
+          'Created by reset_e2e_db.py'
+        )
+        """,
+        E2E_SCHOOL_NAME,
     )
 
 
