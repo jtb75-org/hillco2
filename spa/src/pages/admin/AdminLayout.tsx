@@ -10,6 +10,7 @@ import { PageHeader } from "../../components/PageHeader";
 // one of the Tab `value`s.
 const TABS = [
   { value: "users", label: "Users", to: "/admin/users" },
+  { value: "contracts", label: "Contracts", to: "/admin/contracts" },
   { value: "audit-log", label: "Audit Log", to: "/admin/audit-log" },
   { value: "about", label: "About", to: "/admin/about" },
 ] as const;

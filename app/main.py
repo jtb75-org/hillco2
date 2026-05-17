@@ -16,6 +16,7 @@ from .routes import agreements as agreements_routes
 from .routes import auth as auth_routes
 from .routes import catalog as catalog_routes
 from .routes import contacts as contacts_routes
+from .routes import contract_templates as contract_templates_routes
 from .routes import dashboard as dashboard_routes
 from .routes import documents as documents_routes
 from .routes import engagement_tasks as engagement_tasks_routes
@@ -195,4 +196,5 @@ app.include_router(invoices_routes.router)
 app.include_router(dashboard_routes.router)
 app.include_router(admin_routes.router)
 app.include_router(agreements_routes.router)
+app.include_router(contract_templates_routes.router)
 app.include_router(people_routes.router)
