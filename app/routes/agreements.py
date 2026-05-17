@@ -10,12 +10,15 @@ layer validates that an attached document_id actually owns this
 agreement; the DB FK on agreements.document_id only enforces basic
 referential integrity.
 """
+import json
+import re
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 from ..auth import require_user
@@ -59,6 +62,9 @@ class AgreementUpdate(BaseModel):
     # stays pinned to whatever the agreement was created from so the
     # provenance is preserved even after edits.
     body_markdown: str | None = None
+    # Operator-supplied {{variable}} fillins that override auto-fill
+    # defaults at render time.
+    variables: dict[str, Any] | None = None
 
 
 class AgreementSupersede(BaseModel):
@@ -129,7 +135,7 @@ async def list_for_engagement(
         SELECT a.id, a.engagement_id, a.type, a.status, a.contract_number,
                a.amount, a.sent_at, a.signed_at, a.effective_date, a.expires_at,
                a.supersedes_id, a.document_id, a.notes,
-               a.template_id, a.body_markdown,
+               a.template_id, a.body_markdown, a.variables,
                a.created_by, a.created_at, a.updated_at,
                TRIM(BOTH ' ' FROM COALESCE(u.first_name,'') || CASE WHEN u.last_name IS NOT NULL AND u.last_name <> '' THEN ' ' || u.last_name ELSE '' END) AS created_by_name
         FROM agreements a
@@ -253,6 +259,9 @@ async def update_agreement(
     for col, val in fields.items():
         if col == "status":
             sets.append(f"status = ${len(values)+2}::agreement_status")
+        elif col == "variables":
+            sets.append(f"variables = ${len(values)+2}::jsonb")
+            val = json.dumps(val or {})
         else:
             sets.append(f"{col} = ${len(values)+2}")
         values.append(val)
@@ -380,6 +389,182 @@ async def upload_signed_agreement(
         agreement_id, doc["id"],
     )
     return {"agreement": dict(updated), "document": doc}
+
+
+# ---- Render context + PDF -------------------------------------------------
+
+_VARIABLE_RE = re.compile(r"\{\{\s*([a-z][a-z0-9_]+)\s*\}\}")
+
+
+async def _build_default_context(conn, agreement: dict) -> dict[str, str]:
+    """Compute the standard variable defaults from engagement / family /
+    student / consultant data. Operator-supplied values in
+    agreement.variables override these at render time. Missing keys
+    stay missing — render then leaves the {{placeholder}} text alone
+    so the operator can see what's unfilled."""
+    eng = await conn.fetchrow(
+        """
+        SELECT e.id, e.engagement_type, e.default_hourly_rate,
+               e.start_date, e.student_id,
+               f.household_name AS family_name,
+               TRIM(BOTH ' ' FROM
+                 COALESCE(u.first_name, '') ||
+                 CASE WHEN u.last_name IS NOT NULL AND u.last_name <> ''
+                      THEN ' ' || u.last_name ELSE '' END
+               ) AS consultant_name,
+               u.email AS consultant_email,
+               u.phone AS consultant_phone
+        FROM engagements e
+        JOIN families f ON f.id = e.family_id
+        LEFT JOIN people u ON u.id = e.lead_consultant_id
+        WHERE e.id = $1
+        """,
+        agreement["engagement_id"],
+    )
+    student = None
+    if eng and eng["student_id"]:
+        student = await conn.fetchrow(
+            """
+            SELECT TRIM(BOTH ' ' FROM
+                     COALESCE(p.first_name, '') ||
+                     CASE WHEN p.last_name IS NOT NULL AND p.last_name <> ''
+                          THEN ' ' || p.last_name ELSE '' END
+                   ) AS name,
+                   p.birthday
+            FROM people p
+            WHERE p.id = $1 AND p.kind = 'student'
+            """,
+            eng["student_id"],
+        )
+
+    ctx: dict[str, str] = {}
+    today = date.today().isoformat()
+    # Consultant block
+    if eng and eng["consultant_name"]:
+        ctx["consultant_name"] = eng["consultant_name"]
+    if eng and eng["consultant_email"]:
+        ctx["consultant_email"] = eng["consultant_email"]
+    if eng and eng["consultant_phone"]:
+        ctx["consultant_phone"] = eng["consultant_phone"]
+    # Client / family
+    if eng and eng["family_name"]:
+        ctx["client_name"] = f"the {eng['family_name']} family"
+    # Money / dates
+    if eng and eng["default_hourly_rate"] is not None:
+        ctx["hourly_rate"] = str(eng["default_hourly_rate"])
+    ctx["effective_date"] = (
+        agreement.get("signed_at") or agreement.get("effective_date") or today
+    )
+    if isinstance(ctx["effective_date"], date):
+        ctx["effective_date"] = ctx["effective_date"].isoformat()
+    # Student / patient
+    if student:
+        if student["name"]:
+            ctx["patient_full_name"] = student["name"]
+        if student["birthday"]:
+            ctx["patient_dob"] = student["birthday"].isoformat()
+    return ctx
+
+
+def _substitute(body: str, ctx: dict[str, Any]) -> str:
+    """Replace {{var}} with ctx[var] string. Unknown variables stay
+    as {{var}} so the rendered PDF makes them visible — easier to spot
+    what's not filled than a silent blank."""
+
+    def _repl(m: re.Match[str]) -> str:
+        key = m.group(1)
+        val = ctx.get(key)
+        return str(val) if val not in (None, "") else m.group(0)
+
+    return _VARIABLE_RE.sub(_repl, body or "")
+
+
+def _markdown_to_html(body: str) -> str:
+    """Light markdown → HTML wrapped in a print-friendly stylesheet for
+    WeasyPrint. The stylesheet is intentionally narrow (just typography
+    + page margins) so the agreement looks like a legal document."""
+    from markdown import markdown  # noqa: PLC0415
+
+    body_html = markdown(
+        body or "",
+        extensions=["extra", "sane_lists"],
+        output_format="html5",
+    )
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Agreement</title>
+<style>
+  @page {{ size: Letter; margin: 0.75in; }}
+  body {{
+    font-family: "Georgia", "Times New Roman", serif;
+    font-size: 11pt;
+    line-height: 1.5;
+    color: #111;
+  }}
+  h1, h2, h3 {{ font-family: "Helvetica Neue", "Arial", sans-serif; }}
+  h1 {{ font-size: 14pt; margin-top: 1.4em; }}
+  h2 {{ font-size: 12pt; margin-top: 1em; }}
+  h3 {{ font-size: 11pt; margin-top: 0.8em; }}
+  hr {{ border: none; border-top: 1px solid #999; margin: 1.5em 0; }}
+  ul, ol {{ padding-left: 1.4em; }}
+  li {{ margin-bottom: 0.15em; }}
+  strong {{ font-weight: 700; }}
+  code {{ font-family: monospace; }}
+</style>
+</head>
+<body>
+{body_html}
+</body>
+</html>"""
+
+
+@router.get("/agreements/{agreement_id}/pdf")
+async def render_agreement_pdf(
+    agreement_id: UUID,
+    _user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    """Render the agreement's body_markdown to PDF. Variables are
+    substituted from defaults (computed from engagement context) merged
+    with the agreement's operator-supplied overrides. Unknown variables
+    stay visible in the output so the operator can spot fillins they
+    forgot. Streamed inline so a browser tab opens the PDF directly."""
+    agreement = await _agreement_or_404(conn, agreement_id)
+    body = agreement.get("body_markdown")
+    if not body:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Agreement has no body_markdown to render. "
+                "Pick a template when creating the agreement, or paste "
+                "markdown via the View / Edit dialog."
+            ),
+        )
+
+    defaults = await _build_default_context(conn, dict(agreement))
+    overrides = agreement.get("variables") or {}
+    if isinstance(overrides, str):
+        overrides = json.loads(overrides) if overrides else {}
+    ctx = {**defaults, **overrides}
+
+    rendered_md = _substitute(body, ctx)
+    html = _markdown_to_html(rendered_md)
+
+    from weasyprint import HTML  # noqa: PLC0415
+
+    from ..pdf import safe_url_fetcher  # noqa: PLC0415
+
+    pdf_bytes = HTML(string=html, url_fetcher=safe_url_fetcher).write_pdf()
+    filename = agreement.get("contract_number") or f"agreement-{str(agreement_id)[:8]}"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="{filename}.pdf"',
+        },
+    )
 
 
 @router.delete("/agreements/{agreement_id}", status_code=204)
