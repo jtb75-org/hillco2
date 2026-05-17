@@ -50,7 +50,7 @@ interface ContractTemplate {
   updated_at: string;
 }
 
-export function AdminContracts() {
+export function CatalogContracts() {
   const qc = useQueryClient();
   const snackbar = useSnackbar();
   const [editing, setEditing] = useState<ContractTemplate | "new" | null>(null);
