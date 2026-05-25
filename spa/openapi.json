@@ -342,7 +342,7 @@
           "families"
         ],
         "summary": "Get Family Deletion Impact",
-        "description": "Returns what `POST /families/{id}/hard-delete` would touch. Drives\nthe SPA's per-row checkbox confirmation. Includes soft-deleted\nguardians/students too (they'll still get hard-cleared on family\ndelete via the junction's CASCADE) so the operator sees everything.",
+        "description": "Returns what `POST /families/{id}/hard-delete` would touch. Drives\nthe SPA's per-row checkbox confirmation. Only **live** guardians /\nstudents show up \u2014 soft-deleted people still have junction rows\nbut the operator already deleted them from the address book; their\njunctions get swept silently by the family hard-delete and don't\nneed confirmation.",
         "operationId": "get_family_deletion_impact_api_families__family_id__deletion_impact_get",
         "parameters": [
           {
@@ -386,7 +386,7 @@
           "families"
         ],
         "summary": "Hard Delete Family",
-        "description": "Hard-delete the family. Cascade rules:\n\n* family_guardians + family_students rows go via the FK's\n  ON DELETE CASCADE \u2014 those junction rows always vanish.\n* Guardians / students whose person_ids aren't in the preserve\n  lists get `people.deleted_at = NOW()` (soft delete). Listed\n  people stay in the address book; they just lose their family\n  link.\n* Engagements ON DELETE RESTRICT \u2014 if any engagement references\n  the family (active OR soft-deleted) we 409. The operator has\n  to detach / hard-delete those first.",
+        "description": "Hard-delete the family. Cascade rules:\n\n* family_guardians + family_students rows go via the FK's\n  ON DELETE CASCADE \u2014 those junction rows always vanish.\n* Guardians / students whose person_ids aren't in the preserve\n  lists get `people.deleted_at = NOW()` (soft delete). Listed\n  people stay in the address book; they just lose their family\n  link.\n* Engagements: ACTIVE engagements (deleted_at IS NULL) 409 \u2014 the\n  operator has to close them first. Already soft-deleted\n  engagements get hard-deleted inside this transaction (their\n  tasks / requirements / time entries / notes / etc. CASCADE).\n  Soft-deleted engagements with attached agreements or invoices\n  still 409 \u2014 those are billing records and can't be swept.",
         "operationId": "hard_delete_family_api_families__family_id__hard_delete_post",
         "parameters": [
           {
@@ -1397,7 +1397,7 @@
           "engagements"
         ],
         "summary": "Delete Engagement",
-        "description": "Soft delete (sets deleted_at).",
+        "description": "Soft delete: stamp engagements.deleted_at = NOW(). All queries\nin this module (and the SPA's downstream consumers) filter\ndeleted_at IS NULL, so the engagement drops out of lists, search,\nfamily rollups, etc., but its agreements / invoices / notes / time\nentries stay intact for audit + accounting.\n\nSoft-delete sidesteps the FK RESTRICT constraints on agreements\nand invoices that previously made hard delete fail with a 409\nwhenever any contract or invoice existed. The financial history\nis exactly what we want to preserve.\n\nIf the deleted engagement came from an intake convert AND no other\nlive engagements remain on that intake, clear intake.converted_at\nso the intake re-opens for another convert pass.",
         "operationId": "delete_engagement_api_engagements__engagement_id__delete",
         "parameters": [
           {
@@ -2473,6 +2473,7 @@
           "school_visits"
         ],
         "summary": "Add Visit",
+        "description": "Create a school visit AND its orchestrating engagement_tasks\nrow (activity_kind='school_visit') in one transaction. The visit\npoints back at the task via engagement_task_id. The task gets\ntitle = body.task_title OR \"Campus visit \u2014 {school name}\".",
         "operationId": "add_visit_api_engagements__engagement_id__visits_post",
         "parameters": [
           {
@@ -2744,7 +2745,7 @@
           "recommendations"
         ],
         "summary": "Add Recommendation",
-        "description": "Idempotent upsert keyed by (engagement_id, school_id) \u2014 repeated\nPOSTs with the same school don't create duplicates, they update.\nMirrors hillco-portal's ON CONFLICT shape.",
+        "description": "Create a school recommendation AND its orchestrating\nengagement_tasks row (activity_kind='school_recommendation') in\none transaction. The rec points back at the task via\nengagement_task_id.\n\nCollision behavior: (engagement_id, school_id) is unique on\nschool_recommendations. If a recommendation for the same school\nalready exists, returns 409 \u2014 operator opens the existing one\ninstead. The 409 check fires BEFORE the task insert so we don't\nleave an orphaned task on failure.",
         "operationId": "add_recommendation_api_engagements__engagement_id__recommendations_post",
         "parameters": [
           {
@@ -2986,6 +2987,18 @@
               "format": "uuid",
               "title": "Engagement Id"
             }
+          },
+          {
+            "name": "include_skipped",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "When false (default), tasks with status='not_applicable' are excluded from the response. Linked school_visits / school_recommendations stay visible on their own queries regardless of their orchestrating task's status.",
+              "default": false,
+              "title": "Include Skipped"
+            },
+            "description": "When false (default), tasks with status='not_applicable' are excluded from the response. Linked school_visits / school_recommendations stay visible on their own queries regardless of their orchestrating task's status."
           }
         ],
         "responses": {
@@ -3460,7 +3473,7 @@
           "intakes"
         ],
         "summary": "List Intakes",
-        "description": "All intakes across the practice, newest first. Includes the\nfamily household name and consultant display name so the SPA's\nlist view can render each row without per-row roundtrips.",
+        "description": "All intakes across the practice, newest first. Includes the\nfamily household name and consultant display name so the SPA's\nlist view can render each row without per-row roundtrips. Now also\nexposes outcome + next_step_due for the upcoming tail PR that\nsurfaces them in the list.",
         "operationId": "list_intakes_api_intakes_get",
         "parameters": [
           {
@@ -3585,6 +3598,7 @@
           "intakes"
         ],
         "summary": "Update Intake",
+        "description": "Update intake fields. The API owns the outcome transition: when\n`outcome` flips from null \u2192 non-null, we stamp `outcome_at` and\n`completed_at` in the same statement; null \u2192 non-null also fires\nthe family lifecycle auto-flip rules. Reverse (non-null \u2192 null)\nclears both timestamps but doesn't auto-revert the family stage.",
         "operationId": "update_intake_api_intakes__intake_id__patch",
         "parameters": [
           {
@@ -3634,7 +3648,7 @@
           "intakes"
         ],
         "summary": "Delete Intake",
-        "description": "Soft delete. Engagements that linked back via intake_id keep\ntheir reference (FK is ON DELETE SET NULL, but soft-delete just\nflips deleted_at \u2014 the FK still points).",
+        "description": "Soft delete. Engagements that linked back via intake_id are\ndetached first so the soft-deleted intake stops appearing as the\nlive origin for active work.",
         "operationId": "delete_intake_api_intakes__intake_id__delete",
         "parameters": [
           {
@@ -3857,6 +3871,66 @@
             }
           }
         }
+      },
+      "patch": {
+        "tags": [
+          "intakes"
+        ],
+        "summary": "Update Intake Student",
+        "description": "Per-intake-student discovery + candidacy. Validates the student\nis linked to the intake, validates recommended_engagement_type\nagainst the engagement_types catalog when provided.",
+        "operationId": "update_intake_student_api_intakes__intake_id__students__person_id__patch",
+        "parameters": [
+          {
+            "name": "intake_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Intake Id"
+            }
+          },
+          {
+            "name": "person_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Person Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IntakeStudentUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/families/{family_id}/intakes": {
@@ -3906,7 +3980,7 @@
           "intakes"
         ],
         "summary": "Complete Intake",
-        "description": "Stamp `completed_at = NOW()`. Idempotent \u2014 re-completing an\nalready-complete intake leaves the original timestamp in place.",
+        "description": "Legacy endpoint \u2014 the new flow drives closure via PATCH outcome.\nKept until the SPA swap (PR-Frontend) so the live form keeps\nworking. Stamps `completed_at = NOW()` only; does not set outcome.",
         "operationId": "complete_intake_api_intakes__intake_id__complete_post",
         "parameters": [
           {
@@ -3948,8 +4022,50 @@
           "intakes"
         ],
         "summary": "Reopen Intake",
-        "description": "Clear `completed_at`. No-op if it's already null.",
+        "description": "Legacy endpoint \u2014 clears `completed_at`. Does not touch outcome.",
         "operationId": "reopen_intake_api_intakes__intake_id__reopen_post",
+        "parameters": [
+          {
+            "name": "intake_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Intake Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/intakes/{intake_id}/convert": {
+      "post": {
+        "tags": [
+          "intakes"
+        ],
+        "summary": "Convert Intake",
+        "description": "Convert this intake into one engagement per candidate student.\n\nValidates: outcome=converting, not already converted, \u22651 candidate,\neach candidate has a valid recommended_engagement_type, and no\nduplicate active engagement of the same type already exists for\nthat (intake, student). Wraps the whole thing in a row lock on the\nintake so concurrent calls can't double-fire.",
+        "operationId": "convert_intake_api_intakes__intake_id__convert_post",
         "parameters": [
           {
             "name": "intake_id",
@@ -5202,7 +5318,7 @@
           "invoices"
         ],
         "summary": "List Invoices",
-        "description": "Lists invoices and a financial summary across all engagements.\nStatus filter:\n  - open: sent + overdue\n  - paid: only paid\n  - draft / void: literal status match\n  - all: everything (still excludes deleted)",
+        "description": "Lists invoices and a financial summary across all engagements.\nStatus filter:\n  - open: sent + overdue\n  - paid: only paid\n  - draft / void: literal status match\n  - all: everything (still excludes deleted)\n\nengagement_id narrows both the invoice list and the summary to a\nsingle engagement (powers the engagement billing panel).",
         "operationId": "list_invoices_api_invoices_get",
         "parameters": [
           {
@@ -6122,7 +6238,7 @@
           "agreements"
         ],
         "summary": "Create Agreement",
-        "description": "Creates a draft agreement. Use PATCH to flip status='active' once\nsigned. services_contract auto-generates a contract_number (SC-YYYY-NNNN)\nvia next_contract_number(); medical_release leaves it NULL.",
+        "description": "Creates a draft agreement. Use PATCH to flip status='active' once\nsigned. services_contract auto-generates a contract_number (SC-YYYY-NNNN)\nvia next_contract_number(); medical_release leaves it NULL.\n\nIf template_id is supplied, the template's body_markdown is\nsnapshotted into the new agreement. Operator edits via PATCH affect\nthe agreement copy only \u2014 the source template is untouched.",
         "operationId": "create_agreement_api_engagements__engagement_id__agreements_post",
         "parameters": [
           {
@@ -6326,6 +6442,478 @@
         },
         "responses": {
           "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agreements/{agreement_id}/mark-sent": {
+      "post": {
+        "tags": [
+          "agreements"
+        ],
+        "summary": "Mark Agreement Sent",
+        "description": "Stamp sent_at = NOW() while keeping status='draft'. The \"sent\"\nUI state is derived as (status='draft' AND sent_at IS NOT NULL).\nIdempotent \u2014 re-sending preserves the first sent_at via COALESCE;\nthe UI can offer an explicit re-send affordance that PATCHes\nsent_at directly if it wants to overwrite.",
+        "operationId": "mark_agreement_sent_api_agreements__agreement_id__mark_sent_post",
+        "parameters": [
+          {
+            "name": "agreement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Agreement Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agreements/{agreement_id}/upload-signed": {
+      "post": {
+        "tags": [
+          "agreements"
+        ],
+        "summary": "Upload Signed Agreement",
+        "description": "Upload the signed PDF for this agreement. In one transaction:\ncreate a documents row (owner_type='agreement', owner_id=this\nagreement), link it via agreements.document_id, stamp signed_at,\nand flip status to 'active'. Requires the agreement to be in\n'draft' status (cannot re-sign a superseded/expired/terminated\nrow; supersede first instead).",
+        "operationId": "upload_signed_agreement_api_agreements__agreement_id__upload_signed_post",
+        "parameters": [
+          {
+            "name": "agreement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Agreement Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_signed_agreement_api_agreements__agreement_id__upload_signed_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agreements/{agreement_id}/pdf": {
+      "get": {
+        "tags": [
+          "agreements"
+        ],
+        "summary": "Render Agreement Pdf",
+        "description": "Render the agreement's body_markdown to PDF. Variables are\nsubstituted from defaults (computed from engagement context) merged\nwith the agreement's operator-supplied overrides. Unknown variables\nstay visible in the output so the operator can spot fillins they\nforgot. Streamed inline so a browser tab opens the PDF directly.",
+        "operationId": "render_agreement_pdf_api_agreements__agreement_id__pdf_get",
+        "parameters": [
+          {
+            "name": "agreement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Agreement Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/contract-templates": {
+      "get": {
+        "tags": [
+          "contract_templates"
+        ],
+        "summary": "List Templates",
+        "description": "List templates, newest-first per kind by sort_order. Returns\neach with its auto-extracted variable list so the admin UI can\nshow what fillins will be required.",
+        "operationId": "list_templates_api_contract_templates_get",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "services_contract",
+                    "medical_release"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by agreement type",
+              "title": "Kind"
+            },
+            "description": "Filter by agreement type"
+          },
+          {
+            "name": "include_inactive",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include Inactive"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "contract_templates"
+        ],
+        "summary": "Create Template",
+        "operationId": "create_template_api_contract_templates_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TemplateCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/contract-templates/{template_id}": {
+      "get": {
+        "tags": [
+          "contract_templates"
+        ],
+        "summary": "Get Template",
+        "operationId": "get_template_api_contract_templates__template_id__get",
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Template Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "contract_templates"
+        ],
+        "summary": "Update Template",
+        "operationId": "update_template_api_contract_templates__template_id__patch",
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Template Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TemplateUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "contract_templates"
+        ],
+        "summary": "Delete Template",
+        "description": "Soft delete. Existing agreements that referenced this template\nkeep their snapshotted body_markdown intact (added in PR-Tail-2),\nso soft-delete is safe.",
+        "operationId": "delete_template_api_contract_templates__template_id__delete",
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Template Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/contract-templates/{template_id}/render-context": {
+      "get": {
+        "tags": [
+          "contract_templates"
+        ],
+        "summary": "Template Render Context",
+        "description": "Preview the render context for a template against a specific\nengagement, returning what's auto-filled, what's missing, and a\nhint about where each missing variable's value would come from.\n\nUsed by the New Agreement dialog to surface \"go fix it at the\nsource\" links for missing variables, gated so the operator can't\ncreate a half-filled contract. The engagement / family / student\nids in the response let the SPA build deep links to the right\nedit pages.",
+        "operationId": "template_render_context_api_contract_templates__template_id__render_context_get",
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Template Id"
+            }
+          },
+          {
+            "name": "engagement_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Engagement to compute defaults for",
+              "title": "Engagement Id"
+            },
+            "description": "Engagement to compute defaults for"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/org-settings": {
+      "get": {
+        "tags": [
+          "org_settings"
+        ],
+        "summary": "Get Org Settings",
+        "operationId": "get_org_settings_api_org_settings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "org_settings"
+        ],
+        "summary": "Update Org Settings",
+        "operationId": "update_org_settings_api_org_settings_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrgSettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
@@ -6784,6 +7372,30 @@
               }
             ],
             "title": "Notes"
+          },
+          "template_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Id"
+          },
+          "variables": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variables"
           }
         },
         "type": "object",
@@ -6908,6 +7520,18 @@
             ],
             "title": "Amount"
           },
+          "sent_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sent At"
+          },
           "signed_at": {
             "anyOf": [
               {
@@ -6966,6 +7590,29 @@
               }
             ],
             "title": "Notes"
+          },
+          "body_markdown": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body Markdown"
+          },
+          "variables": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variables"
           }
         },
         "type": "object",
@@ -7237,6 +7884,20 @@
           "file"
         ],
         "title": "Body_upload_document_api_documents_upload_post"
+      },
+      "Body_upload_signed_agreement_api_agreements__agreement_id__upload_signed_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_signed_agreement_api_agreements__agreement_id__upload_signed_post"
       },
       "BulkFromCatalog": {
         "properties": {
@@ -8559,6 +9220,104 @@
         ],
         "title": "IntakeCreate"
       },
+      "IntakeStudentUpdate": {
+        "properties": {
+          "working": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Working"
+          },
+          "not_working": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Not Working"
+          },
+          "history": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "History"
+          },
+          "school_fit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "School Fit"
+          },
+          "supports_tried": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supports Tried"
+          },
+          "candidate": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate"
+          },
+          "recommended_engagement_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommended Engagement Type"
+          },
+          "mentions": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/Mention"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mentions"
+          }
+        },
+        "type": "object",
+        "title": "IntakeStudentUpdate",
+        "description": "Per-intake-student discovery + candidacy. None means leave\nunchanged; the empty string clears a text field."
+      },
       "IntakeUpdate": {
         "properties": {
           "intake_date": {
@@ -8585,6 +9344,73 @@
             ],
             "title": "Consultant Id"
           },
+          "referral_source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "word_of_mouth",
+                  "pediatrician",
+                  "therapist",
+                  "school",
+                  "search",
+                  "returning",
+                  "other"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Referral Source"
+          },
+          "desired_outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Desired Outcome"
+          },
+          "constraints": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Constraints"
+          },
+          "consent_granted": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consent Granted"
+          },
+          "family_context_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Family Context Notes"
+          },
           "notes": {
             "anyOf": [
               {
@@ -8595,6 +9421,75 @@
               }
             ],
             "title": "Notes"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "converting",
+                  "nurture",
+                  "declined_by_family",
+                  "declined_by_hillco",
+                  "no_response",
+                  "duplicate"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome"
+          },
+          "disposition_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disposition Reason"
+          },
+          "next_step_owner": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "consultant",
+                  "family",
+                  "awaiting_records"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Step Owner"
+          },
+          "next_step_due": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Step Due"
+          },
+          "blocker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocker"
           }
         },
         "type": "object",
@@ -8805,6 +9700,19 @@
             ],
             "title": "Default Owner Role"
           },
+          "default_activity_kind": {
+            "type": "string",
+            "enum": [
+              "task",
+              "document_review",
+              "best_environment",
+              "feedback_meeting",
+              "school_visit",
+              "school_recommendation"
+            ],
+            "title": "Default Activity Kind",
+            "default": "task"
+          },
           "engagement_type_ids": {
             "anyOf": [
               {
@@ -8929,6 +9837,25 @@
               }
             ],
             "title": "Default Owner Role"
+          },
+          "default_activity_kind": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "task",
+                  "document_review",
+                  "best_environment",
+                  "feedback_meeting",
+                  "school_visit",
+                  "school_recommendation"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Activity Kind"
           },
           "engagement_type_ids": {
             "anyOf": [
@@ -9177,6 +10104,32 @@
         ],
         "title": "MemberLink"
       },
+      "Mention": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Text"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "school",
+              "professional",
+              "program",
+              "other"
+            ],
+            "title": "Kind"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text",
+          "kind"
+        ],
+        "title": "Mention",
+        "description": "Lightweight \"mentioned during discovery\" chip. Promotion to a\nreal entity (catalog school, contact, etc.) is a later concern."
+      },
       "NoteCreate": {
         "properties": {
           "kind": {
@@ -9288,6 +10241,153 @@
         },
         "type": "object",
         "title": "NoteUpdate"
+      },
+      "OrgSettingsUpdate": {
+        "properties": {
+          "firm_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Firm Name"
+          },
+          "firm_street1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Firm Street1"
+          },
+          "firm_street2": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Firm Street2"
+          },
+          "firm_city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Firm City"
+          },
+          "firm_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Firm State"
+          },
+          "firm_postal_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Firm Postal Code"
+          },
+          "firm_country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Firm Country"
+          },
+          "governing_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Governing State"
+          },
+          "billing_increment_minutes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 240.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Increment Minutes"
+          },
+          "invoice_frequency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoice Frequency"
+          },
+          "payment_terms_days": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 365.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Terms Days"
+          },
+          "expense_approval_threshold": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expense Approval Threshold"
+          }
+        },
+        "type": "object",
+        "title": "OrgSettingsUpdate"
       },
       "ParentCreate": {
         "properties": {
@@ -10850,6 +11950,17 @@
               }
             ],
             "title": "Notes"
+          },
+          "task_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Title"
           }
         },
         "type": "object",
@@ -10900,6 +12011,18 @@
               }
             ],
             "title": "Notes"
+          },
+          "engagement_task_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Engagement Task Id"
           }
         },
         "type": "object",
@@ -10922,6 +12045,34 @@
               }
             ],
             "title": "Value"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "needed",
+                  "requested",
+                  "received",
+                  "waived"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
           }
         },
         "type": "object",
@@ -10954,6 +12105,34 @@
               }
             ],
             "title": "Value"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "needed",
+                  "requested",
+                  "received",
+                  "waived"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
           }
         },
         "type": "object",
@@ -11737,6 +12916,31 @@
               }
             ],
             "title": "Notes"
+          },
+          "activity_kind": {
+            "type": "string",
+            "enum": [
+              "task",
+              "document_review",
+              "best_environment",
+              "feedback_meeting",
+              "school_visit",
+              "school_recommendation"
+            ],
+            "title": "Activity Kind",
+            "default": "task"
+          },
+          "structured_content": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Structured Content"
           }
         },
         "type": "object",
@@ -11906,10 +13110,132 @@
               }
             ],
             "title": "Notes"
+          },
+          "activity_kind": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "task",
+                  "document_review",
+                  "best_environment",
+                  "feedback_meeting",
+                  "school_visit",
+                  "school_recommendation"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activity Kind"
+          },
+          "structured_content": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Structured Content"
           }
         },
         "type": "object",
         "title": "TaskUpdate"
+      },
+      "TemplateCreate": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "services_contract",
+              "medical_release"
+            ],
+            "title": "Kind"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Name"
+          },
+          "body_markdown": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Body Markdown"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "default": true
+          },
+          "sort_order": {
+            "type": "integer",
+            "title": "Sort Order",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "name",
+          "body_markdown"
+        ],
+        "title": "TemplateCreate"
+      },
+      "TemplateUpdate": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "body_markdown": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body Markdown"
+          },
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active"
+          },
+          "sort_order": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sort Order"
+          }
+        },
+        "type": "object",
+        "title": "TemplateUpdate"
       },
       "TimeEntryCreate": {
         "properties": {
@@ -11980,6 +13306,18 @@
               }
             ],
             "title": "User Id"
+          },
+          "engagement_task_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Engagement Task Id"
           }
         },
         "type": "object",
@@ -12066,6 +13404,18 @@
               }
             ],
             "title": "User Id"
+          },
+          "engagement_task_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Engagement Task Id"
           }
         },
         "type": "object",
@@ -12191,6 +13541,17 @@
             },
             "type": "array",
             "title": "Attendee Ids"
+          },
+          "task_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Title"
           }
         },
         "type": "object",
@@ -12273,6 +13634,18 @@
               }
             ],
             "title": "Scorecard"
+          },
+          "engagement_task_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Engagement Task Id"
           }
         },
         "type": "object",

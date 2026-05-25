@@ -16,12 +16,16 @@ import {
   Typography,
 } from "@mui/material";
 import PictureAsPdfOutlinedIcon from "@mui/icons-material/PictureAsPdfOutlined";
+import SendOutlinedIcon from "@mui/icons-material/SendOutlined";
+import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
+import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { DataTableContainer } from "../../components/DataTableContainer";
 import { PageHeader } from "../../components/PageHeader";
+import { useSnackbar } from "../../components/Snackbar";
 import { InvoiceStatusChip } from "./InvoiceStatusChip";
-import { useInvoice } from "./invoiceApi";
+import { useInvoice, useSendInvoice } from "./invoiceApi";
 import {
   formatInvoiceDate,
   formatInvoiceMoney,
@@ -30,8 +34,21 @@ import {
 
 export function InvoiceDetail() {
   const { id } = useParams<{ id: string }>();
+  const snackbar = useSnackbar();
+  const [confirmSend, setConfirmSend] = useState(false);
   const invoice = useInvoice(id);
+  const sendInvoice = useSendInvoice(id ?? "");
   const data = invoice.data;
+
+  const handleSend = () => {
+    sendInvoice.mutate(undefined, {
+      onSuccess: () => {
+        setConfirmSend(false);
+        snackbar.show("Invoice marked sent");
+      },
+      onError: (error: Error) => snackbar.show(error.message, "error"),
+    });
+  };
 
   if (invoice.error) {
     return (
@@ -66,6 +83,15 @@ export function InvoiceDetail() {
           data && (
             <Stack direction="row" spacing={1} alignItems="center">
               <InvoiceStatusChip status={data.status} dueDate={data.due_date} />
+              {data.status === "draft" && (
+                <Button
+                  variant="contained"
+                  startIcon={<SendOutlinedIcon />}
+                  onClick={() => setConfirmSend(true)}
+                >
+                  Send
+                </Button>
+              )}
               <Button
                 component="a"
                 href={`/api/invoices/${data.id}/pdf`}
@@ -178,6 +204,15 @@ export function InvoiceDetail() {
           )}
         </>
       )}
+      <ConfirmDialog
+        open={confirmSend}
+        title="Mark invoice sent?"
+        description="This changes the invoice status to sent and locks its line items. It does not email the family or deliver the PDF."
+        confirmLabel={sendInvoice.isPending ? "Sending…" : "Mark sent"}
+        pending={sendInvoice.isPending}
+        onClose={() => setConfirmSend(false)}
+        onConfirm={handleSend}
+      />
     </Stack>
   );
 }
