@@ -18,7 +18,11 @@ async function login(page: Page, baseURL: string | undefined) {
 
 async function createIntakeFromNewFamily(page: Page, familyName: string) {
   await page.goto("/intakes");
-  await page.getByRole("button", { name: "New intake" }).click();
+  // IntakesList renders a "New intake" button in the page header AND in
+  // each view's empty state. When there are no intakes, both render, so
+  // the strict locator resolves to >1. The header button is always first
+  // in DOM order.
+  await page.getByRole("button", { name: "New intake" }).first().click();
   await page.getByRole("dialog", { name: "Start intake" }).getByLabel("Family").fill(familyName);
   await page.getByRole("option", { name: `+ Add "${familyName}" as a new family` }).click();
 
