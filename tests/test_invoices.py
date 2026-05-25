@@ -2,7 +2,10 @@
 mutations cascade to time_entries.invoice_id and expenses.invoice_id,
 and the FOR UPDATE locks in the transitions are easy to miss in code
 review. Worth wiring."""
+from decimal import Decimal
 from uuid import uuid4
+
+from fastapi.templating import Jinja2Templates
 
 
 async def _make_engagement(db_pool, user_id):
@@ -147,3 +150,104 @@ async def test_cant_create_invoice_with_no_lines(authed_client, db_pool, test_us
         json={"time_entry_ids": [], "expense_ids": []},
     )
     assert r.status_code == 400
+
+
+async def test_list_invoices_engagement_id_filter(authed_client, db_pool, test_user):
+    """engagement_id query param narrows both the invoice list AND the
+    per-engagement financial summary. Powers the SPA billing panel."""
+    _, eng1, te1 = await _make_engagement(db_pool, test_user["id"])
+    _, eng2, te2 = await _make_engagement(db_pool, test_user["id"])
+
+    r = await authed_client.post(
+        f"/api/engagements/{eng1}/invoices", json={"time_entry_ids": [str(te1)]},
+    )
+    assert r.status_code == 201, r.text
+    inv1_id = r.json()["id"]
+
+    r = await authed_client.post(
+        f"/api/engagements/{eng2}/invoices", json={"time_entry_ids": [str(te2)]},
+    )
+    assert r.status_code == 201, r.text
+    inv2_id = r.json()["id"]
+
+    # Unfiltered (status=all) returns both
+    r = await authed_client.get("/api/invoices", params={"status": "all"})
+    assert r.status_code == 200
+    ids = {i["id"] for i in r.json()["invoices"]}
+    assert {inv1_id, inv2_id}.issubset(ids)
+
+    # Filtered to eng1 returns only its invoice + its summary row
+    r = await authed_client.get(
+        "/api/invoices",
+        params={"status": "all", "engagement_id": str(eng1)},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert {i["id"] for i in body["invoices"]} == {inv1_id}
+    assert {str(s["engagement_id"]) for s in body["summary"]} == {str(eng1)}
+
+
+# ---- PDF template rendering ------------------------------------------------
+#
+# Avoiding WeasyPrint here: it's an optional native dependency that
+# segfaults on stock macOS without libpango, and these assertions are
+# about template content (which org_settings fields appear) rather than
+# the rendered PDF bytes. End-to-end PDF rendering is covered by the
+# /api/invoices/{id}/pdf endpoint in containerized CI.
+
+
+_INVOICE_TEMPLATE_CTX = {
+    "invoice": {
+        "invoice_number": "HC-2026-0001",
+        "status": "draft",
+        "issue_date": None,
+        "due_date": None,
+        "subtotal": Decimal("100.00"),
+        "tax": Decimal("0"),
+        "total": Decimal("100.00"),
+        "paid_amount": None,
+        "paid_date": None,
+        "household_name": "Test Family",
+        "notes": None,
+    },
+    "line_items": [],
+    "primary_contact": None,
+    "is_overdue": False,
+}
+
+
+def _render_invoice_pdf_template(org: dict) -> str:
+    templates = Jinja2Templates(directory="app/templates")
+    return templates.env.get_template("invoices/_pdf.html").render(
+        org=org, **_INVOICE_TEMPLATE_CTX,
+    )
+
+
+def test_invoice_pdf_template_uses_org_settings():
+    """Firm name + address from org_settings show through to the rendered
+    HTML in place of the prior hardcoded placeholders."""
+    html = _render_invoice_pdf_template({
+        "firm_name": "Acme Educational Consulting",
+        "firm_street1": "123 Main St",
+        "firm_street2": None,
+        "firm_city": "Springfield",
+        "firm_state": "IL",
+        "firm_postal_code": "62701",
+        "firm_country": None,
+    })
+    assert "Acme Educational Consulting" in html
+    assert "123 Main St" in html
+    assert "Springfield, IL" in html
+    assert "62701" in html
+    # Placeholders from the pre-org-settings template must be gone
+    assert "[Your address line 1]" not in html
+    assert "[hello@hillco.example]" not in html
+
+
+def test_invoice_pdf_template_falls_back_when_org_empty():
+    """org_settings is seeded with all-NULL fields by migration 0019. The
+    template must render cleanly in that state (no broken placeholders)."""
+    html = _render_invoice_pdf_template(org={})
+    assert "HillCo" in html
+    assert "[Your address line 1]" not in html
+    assert "[hello@hillco.example]" not in html

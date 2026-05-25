@@ -113,6 +113,7 @@ def _is_overdue(status: str, due_date: date | None) -> bool:
 @router.get("/invoices")
 async def list_invoices(
     status: InvoiceListFilter = Query("open"),
+    engagement_id: UUID | None = Query(None),
     _user=Depends(require_user),
     conn=Depends(get_conn),
 ):
@@ -121,7 +122,10 @@ async def list_invoices(
       - open: sent + overdue
       - paid: only paid
       - draft / void: literal status match
-      - all: everything (still excludes deleted)"""
+      - all: everything (still excludes deleted)
+
+    engagement_id narrows both the invoice list and the summary to a
+    single engagement (powers the engagement billing panel)."""
     if status == "open":
         status_filter = ["sent", "overdue"]
     elif status in ("paid", "draft", "void"):
@@ -140,6 +144,7 @@ async def list_invoices(
         JOIN families f ON f.id = e.family_id
         WHERE i.deleted_at IS NULL
           AND ($1::text[] IS NULL OR i.status::text = ANY($1::text[]))
+          AND ($2::uuid IS NULL OR i.engagement_id = $2)
         ORDER BY
           CASE i.status
             WHEN 'overdue' THEN 0 WHEN 'sent' THEN 1 WHEN 'draft' THEN 2
@@ -147,7 +152,7 @@ async def list_invoices(
           END,
           i.due_date ASC NULLS LAST, i.id DESC
         """,
-        status_filter,
+        status_filter, engagement_id,
     )
 
     summary_rows = await conn.fetch(
@@ -159,12 +164,14 @@ async def list_invoices(
         FROM engagement_financial_summary fs
         JOIN engagements e ON e.id = fs.engagement_id
         JOIN families f ON f.id = e.family_id AND f.deleted_at IS NULL
-        WHERE fs.uninvoiced_total > 0
-           OR fs.billed_total > 0
-           OR fs.outstanding_balance > 0
+        WHERE ($1::uuid IS NULL OR fs.engagement_id = $1)
+          AND (fs.uninvoiced_total > 0
+            OR fs.billed_total > 0
+            OR fs.outstanding_balance > 0)
         ORDER BY fs.outstanding_balance DESC, fs.uninvoiced_total DESC,
                  f.household_name
-        """
+        """,
+        engagement_id,
     )
 
     totals = {
@@ -389,6 +396,10 @@ async def invoice_pdf(
         invoice["family_id"],
     )
 
+    # Singleton row inserted by migration 0019 — always exists, fields
+    # may be NULL until the firm fills them in via /api/admin/org-settings.
+    org = await conn.fetchrow("SELECT * FROM org_settings WHERE id = 1")
+
     from weasyprint import HTML  # noqa: PLC0415
 
     from ..pdf import safe_url_fetcher  # noqa: PLC0415
@@ -398,6 +409,7 @@ async def invoice_pdf(
         invoice=invoice,
         line_items=line_items,
         primary_contact=primary_contact,
+        org=dict(org) if org else {},
         is_overdue=_is_overdue(invoice["status"], invoice["due_date"]),
     )
     pdf_bytes = HTML(string=html, url_fetcher=safe_url_fetcher).write_pdf()

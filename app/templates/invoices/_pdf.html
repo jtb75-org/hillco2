@@ -49,12 +49,16 @@
 
 <div class="header">
   <div>
-    <div class="company-name">HillCo</div>
+    <div class="company-name">{{ org.firm_name or "HillCo" }}</div>
     <div class="company-meta">
-      Educational Placement Consulting<br>
-      [Your address line 1]<br>
-      [City, ST&nbsp;ZIP]<br>
-      [hello@hillco.example] &middot; [phone]
+      {% if org.firm_street1 %}{{ org.firm_street1 }}<br>{% endif %}
+      {% if org.firm_street2 %}{{ org.firm_street2 }}<br>{% endif %}
+      {% set city_line = [] %}
+      {% if org.firm_city %}{% set _ = city_line.append(org.firm_city) %}{% endif %}
+      {% if org.firm_state %}{% set _ = city_line.append(org.firm_state) %}{% endif %}
+      {% if city_line %}{{ city_line | join(', ') }}{% if org.firm_postal_code %}&nbsp;{{ org.firm_postal_code }}{% endif %}<br>
+      {% elif org.firm_postal_code %}{{ org.firm_postal_code }}<br>{% endif %}
+      {% if org.firm_country %}{{ org.firm_country }}{% endif %}
     </div>
   </div>
   <div class="invoice-meta">
