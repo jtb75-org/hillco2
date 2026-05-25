@@ -107,13 +107,43 @@ async function pdfTextFromAgreementPreview(page: Page, agreementRow: ReturnType<
   return result.text;
 }
 
-async function createSentInvoiceForGoldenEngagement(page: Page) {
-  await openEngagement(page, E2E_HOUSEHOLD);
-  const engagementId = page.url().match(/\/engagements\/([0-9a-f-]+)$/)?.[1];
-  expect(engagementId).toBeTruthy();
+async function createSentInvoiceForIsolatedEngagement(page: Page) {
+  const suffix = Date.now().toString(36);
+  const familyResp = await page.context().request.post("/api/families", {
+    data: { household_name: `E2E Invoice Household ${suffix}` },
+  });
+  expect(familyResp.ok()).toBeTruthy();
+  const family = await familyResp.json();
+
+  const studentResp = await page.context().request.post(
+    `/api/families/${family.id}/students`,
+    {
+      data: {
+        first_name: "Invoice",
+        last_name: `Student ${suffix}`,
+        current_grade: "10",
+      },
+    },
+  );
+  expect(studentResp.ok()).toBeTruthy();
+  const student = await studentResp.json();
+
+  const engagementResp = await page.context().request.post(
+    `/api/families/${family.id}/engagements`,
+    {
+      data: {
+        student_id: student.id,
+        engagement_type: "assessment",
+        start_date: "2026-05-25",
+        default_hourly_rate: "175.00",
+      },
+    },
+  );
+  expect(engagementResp.ok()).toBeTruthy();
+  const engagement = await engagementResp.json();
 
   const entryResp = await page.context().request.post(
-    `/api/engagements/${engagementId}/time-entries`,
+    `/api/engagements/${engagement.id}/time-entries`,
     {
       data: {
         work_date: "2026-05-25",
@@ -127,7 +157,7 @@ async function createSentInvoiceForGoldenEngagement(page: Page) {
   const entry = await entryResp.json();
 
   const invoiceResp = await page.context().request.post(
-    `/api/engagements/${engagementId}/invoices`,
+    `/api/engagements/${engagement.id}/invoices`,
     {
       data: {
         time_entry_ids: [entry.id],
@@ -159,7 +189,7 @@ test("authenticated app shell loads", async ({ page, baseURL }) => {
 
 test("invoice list opens detail and previews PDF", async ({ page, baseURL }) => {
   await login(page, baseURL);
-  const invoice = await createSentInvoiceForGoldenEngagement(page);
+  const invoice = await createSentInvoiceForIsolatedEngagement(page);
 
   await page.goto("/invoices");
   await expect(page.getByRole("heading", { name: "Invoices" })).toBeVisible();
