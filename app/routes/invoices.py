@@ -114,6 +114,11 @@ def _is_overdue(status: str, due_date: date | None) -> bool:
 async def list_invoices(
     status: InvoiceListFilter = Query("open"),
     engagement_id: UUID | None = Query(None),
+    q: str | None = Query(None, description="case-insensitive substring of invoice_number or household_name"),
+    issued_from: date | None = Query(None, description="inclusive lower bound on issue_date"),
+    issued_to: date | None = Query(None, description="inclusive upper bound on issue_date"),
+    due_from: date | None = Query(None, description="inclusive lower bound on due_date"),
+    due_to: date | None = Query(None, description="inclusive upper bound on due_date"),
     _user=Depends(require_user),
     conn=Depends(get_conn),
 ):
@@ -125,13 +130,26 @@ async def list_invoices(
       - all: everything (still excludes deleted)
 
     engagement_id narrows both the invoice list and the summary to a
-    single engagement (powers the engagement billing panel)."""
+    single engagement (powers the engagement billing panel).
+
+    q does a case-insensitive substring match against invoice_number
+    OR household_name — supports the SPA's combined search box.
+
+    Date ranges are inclusive on both ends. Each pair is independent;
+    issued_from without issued_to is an open-ended lower bound. Date
+    filters apply only to the invoice list, not the financial summary
+    (which is engagement-aggregated and unrelated to per-invoice
+    dates)."""
     if status == "open":
         status_filter = ["sent", "overdue"]
     elif status in ("paid", "draft", "void"):
         status_filter = [status]
     else:
         status_filter = None
+
+    # asyncpg ILIKE wants the wildcards baked into the bind param; the
+    # `NULL OR …` chain treats an absent param as "no filter".
+    q_pattern = f"%{q.strip()}%" if q and q.strip() else None
 
     rows = await conn.fetch(
         """
@@ -145,6 +163,11 @@ async def list_invoices(
         WHERE i.deleted_at IS NULL
           AND ($1::text[] IS NULL OR i.status::text = ANY($1::text[]))
           AND ($2::uuid IS NULL OR i.engagement_id = $2)
+          AND ($3::text IS NULL OR i.invoice_number ILIKE $3 OR f.household_name ILIKE $3)
+          AND ($4::date IS NULL OR i.issue_date >= $4)
+          AND ($5::date IS NULL OR i.issue_date <= $5)
+          AND ($6::date IS NULL OR i.due_date   >= $6)
+          AND ($7::date IS NULL OR i.due_date   <= $7)
         ORDER BY
           CASE i.status
             WHEN 'overdue' THEN 0 WHEN 'sent' THEN 1 WHEN 'draft' THEN 2
@@ -152,7 +175,8 @@ async def list_invoices(
           END,
           i.due_date ASC NULLS LAST, i.id DESC
         """,
-        status_filter, engagement_id,
+        status_filter, engagement_id, q_pattern,
+        issued_from, issued_to, due_from, due_to,
     )
 
     summary_rows = await conn.fetch(

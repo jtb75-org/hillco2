@@ -258,6 +258,87 @@ async def test_void_releases_expense(authed_client, db_pool, test_user):
     assert linked is None, "voided invoice should release its expense back to uninvoiced"
 
 
+async def test_list_invoices_q_matches_invoice_number_or_household(authed_client, db_pool, test_user):
+    """The q filter is a case-insensitive substring match against either
+    invoice_number or household_name. Powers the SPA list search box."""
+    _, eng1, te1 = await _make_engagement(db_pool, test_user["id"])
+    _, eng2, te2 = await _make_engagement(db_pool, test_user["id"])
+
+    # Rename eng1's family to a known household name we can search for.
+    async with db_pool.acquire() as conn:
+        fam1 = await conn.fetchval(
+            "SELECT family_id FROM engagements WHERE id = $1", eng1,
+        )
+        await conn.execute(
+            "UPDATE families SET household_name = $1 WHERE id = $2",
+            "Findable Household", fam1,
+        )
+
+    r = await authed_client.post(
+        f"/api/engagements/{eng1}/invoices", json={"time_entry_ids": [str(te1)]},
+    )
+    assert r.status_code == 201
+    inv1 = r.json()
+    r = await authed_client.post(
+        f"/api/engagements/{eng2}/invoices", json={"time_entry_ids": [str(te2)]},
+    )
+    assert r.status_code == 201
+    inv2 = r.json()
+
+    # Case-insensitive household match → eng1 only.
+    r = await authed_client.get("/api/invoices", params={"status": "all", "q": "findable"})
+    assert r.status_code == 200
+    assert {i["id"] for i in r.json()["invoices"]} == {inv1["id"]}
+
+    # Match by invoice_number prefix → that specific invoice only.
+    r = await authed_client.get(
+        "/api/invoices", params={"status": "all", "q": inv2["invoice_number"]},
+    )
+    assert {i["id"] for i in r.json()["invoices"]} == {inv2["id"]}
+
+    # Empty/whitespace q is treated as "no filter".
+    r = await authed_client.get("/api/invoices", params={"status": "all", "q": "  "})
+    assert {inv1["id"], inv2["id"]}.issubset({i["id"] for i in r.json()["invoices"]})
+
+
+async def test_list_invoices_date_range_filters(authed_client, db_pool, test_user):
+    """issued_from/_to and due_from/_to are independent inclusive bounds."""
+    _, engagement_id, time_entry_id = await _make_engagement(db_pool, test_user["id"])
+    r = await authed_client.post(
+        f"/api/engagements/{engagement_id}/invoices",
+        json={
+            "time_entry_ids": [str(time_entry_id)],
+            "issue_date": "2026-05-25",
+            "due_date": "2026-06-15",
+        },
+    )
+    assert r.status_code == 201, r.text
+    invoice_id = r.json()["id"]
+
+    # Date ranges that contain the invoice → included.
+    cases_in = [
+        {"issued_from": "2026-05-25", "issued_to": "2026-05-25"},  # exact day
+        {"issued_from": "2026-05-01"},  # open upper
+        {"issued_to": "2026-12-31"},    # open lower
+        {"due_from": "2026-06-15", "due_to": "2026-06-15"},
+        {"due_from": "2026-06-01"},
+    ]
+    for params in cases_in:
+        r = await authed_client.get("/api/invoices", params={"status": "all", **params})
+        assert invoice_id in {i["id"] for i in r.json()["invoices"]}, params
+
+    # Date ranges that exclude the invoice → not included.
+    cases_out = [
+        {"issued_from": "2026-05-26"},  # day after
+        {"issued_to": "2026-05-24"},    # day before
+        {"due_from": "2026-06-16"},
+        {"due_to": "2026-06-14"},
+    ]
+    for params in cases_out:
+        r = await authed_client.get("/api/invoices", params={"status": "all", **params})
+        assert invoice_id not in {i["id"] for i in r.json()["invoices"]}, params
+
+
 async def test_custom_line_add_and_delete_recomputes_totals(authed_client, db_pool, test_user):
     """Custom lines feed the invoice subtotal/total just like time/expense
     lines. Verify adding bumps total, deleting reverts it."""
