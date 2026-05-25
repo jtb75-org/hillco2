@@ -270,7 +270,19 @@ async def create_invoice(
             body.time_entry_ids, engagement_id,
         )
         for t in time_rows:
-            rate = t["hourly_rate"] or engagement["default_hourly_rate"] or Decimal("0")
+            # Refuse to silently bill a time entry at $0. The prior code
+            # fell back to Decimal("0") which produced empty-money lines
+            # with no surface signal to the operator.
+            rate = t["hourly_rate"] or engagement["default_hourly_rate"]
+            if rate is None or rate == 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"Time entry {t['id']} has no rate. Set the entry's "
+                        "hourly_rate or the engagement's default_hourly_rate "
+                        "before invoicing."
+                    ),
+                )
             line_total = t["hours"] * rate
             desc_parts = [f"Time {t['work_date'].strftime('%Y-%m-%d')}"]
             if t["description"]:
@@ -435,7 +447,7 @@ async def update_draft_meta(
     invoices are immutable here — that's intentional, mutating a sent
     invoice would silently change what the family was billed."""
     inv = await conn.fetchrow(
-        "SELECT status FROM invoices WHERE id = $1 AND deleted_at IS NULL",
+        "SELECT status, issue_date, due_date FROM invoices WHERE id = $1 AND deleted_at IS NULL",
         invoice_id,
     )
     if not inv:
@@ -448,6 +460,17 @@ async def update_draft_meta(
         raise HTTPException(status_code=400, detail="No fields to update")
     if "notes" in fields:
         fields["notes"] = (fields["notes"] or "").strip() or None
+
+    # Compute the post-PATCH date pair from current row + supplied fields.
+    # A PATCH that supplies only one date is checked against the existing
+    # row's other date so the merged invoice stays consistent.
+    new_issue = fields["issue_date"] if "issue_date" in fields else inv["issue_date"]
+    new_due = fields["due_date"] if "due_date" in fields else inv["due_date"]
+    if new_issue is not None and new_due is not None and new_due < new_issue:
+        raise HTTPException(
+            status_code=400,
+            detail="due_date must be on or after issue_date.",
+        )
 
     set_sql = ", ".join(f"{col} = ${i+2}" for i, col in enumerate(fields))
     await conn.execute(
