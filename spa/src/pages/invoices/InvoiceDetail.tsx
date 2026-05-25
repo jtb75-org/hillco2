@@ -28,7 +28,7 @@ import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import PaidOutlinedIcon from "@mui/icons-material/PaidOutlined";
 import PictureAsPdfOutlinedIcon from "@mui/icons-material/PictureAsPdfOutlined";
 import SendOutlinedIcon from "@mui/icons-material/SendOutlined";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import dayjs from "dayjs";
 
@@ -112,7 +112,14 @@ export function InvoiceDetail() {
 
   if (invoice.error) {
     return (
-      <Alert severity="error">
+      <Alert
+        severity="error"
+        action={
+          <Button color="inherit" size="small" component={Link} to="/invoices">
+            Back to invoices
+          </Button>
+        }
+      >
         Failed to load invoice: {invoice.error.message}
       </Alert>
     );
@@ -255,6 +262,7 @@ export function InvoiceDetail() {
           <DataTableContainer
             empty={data.line_items.length === 0}
             emptyTitle="No line items"
+            emptyDescription="Draft custom lines and selected billable work will appear here."
           >
             <>
               {isDraft && (
@@ -445,6 +453,14 @@ function EditInvoiceDialog({
   const [dueDate, setDueDate] = useState(invoice.due_date ?? "");
   const [tax, setTax] = useState(invoice.tax ?? "0");
   const [notes, setNotes] = useState(invoice.notes ?? "");
+
+  useEffect(() => {
+    if (!open) return;
+    setIssueDate(invoice.issue_date ?? "");
+    setDueDate(invoice.due_date ?? "");
+    setTax(invoice.tax ?? "0");
+    setNotes(invoice.notes ?? "");
+  }, [open, invoice.id, invoice.issue_date, invoice.due_date, invoice.tax, invoice.notes]);
 
   const reset = () => {
     setIssueDate(invoice.issue_date ?? "");
@@ -643,11 +659,19 @@ function MarkPaidDialog({
 }) {
   const [paidDate, setPaidDate] = useState(dayjs().format("YYYY-MM-DD"));
   const [paidAmount, setPaidAmount] = useState(invoice.total);
+  const amountMatchesTotal =
+    toCurrencyCents(paidAmount) === toCurrencyCents(invoice.total);
 
   const reset = () => {
     setPaidDate(dayjs().format("YYYY-MM-DD"));
     setPaidAmount(invoice.total);
   };
+
+  useEffect(() => {
+    if (!open) return;
+    setPaidDate(dayjs().format("YYYY-MM-DD"));
+    setPaidAmount(invoice.total);
+  }, [open, invoice.id, invoice.total]);
 
   return (
     <Dialog
@@ -679,7 +703,8 @@ function MarkPaidDialog({
             value={paidAmount}
             onChange={(e) => setPaidAmount(e.target.value)}
             inputProps={{ min: "0", step: "0.01" }}
-            helperText="Must equal the invoice total."
+            error={paidAmount !== "" && !amountMatchesTotal}
+            helperText={`Must equal ${formatInvoiceMoney(invoice.total)}.`}
           />
         </Stack>
       </DialogContent>
@@ -695,11 +720,11 @@ function MarkPaidDialog({
         </Button>
         <Button
           variant="contained"
-          disabled={pending}
+          disabled={pending || !paidDate || !paidAmount || !amountMatchesTotal}
           onClick={() =>
             onSave({
               paid_date: paidDate || null,
-              paid_amount: paidAmount || invoice.total,
+              paid_amount: paidAmount,
             })
           }
         >
@@ -708,6 +733,12 @@ function MarkPaidDialog({
       </DialogActions>
     </Dialog>
   );
+}
+
+function toCurrencyCents(value: string | number | null | undefined) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return Number.NaN;
+  return Math.round(amount * 100);
 }
 
 function TotalRow({

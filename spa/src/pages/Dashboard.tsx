@@ -57,7 +57,7 @@ export function Dashboard() {
   const snackbar = useSnackbar();
   const [pickOpen, setPickOpen] = useState(false);
 
-  const { data, isPending, error } = useQuery<DashboardData, Error>({
+  const { data, isPending, error, refetch } = useQuery<DashboardData, Error>({
     queryKey: ["dashboard"],
     queryFn: async () => {
       const { data, error: respError } = await api.GET("/api/dashboard");
@@ -89,7 +89,18 @@ export function Dashboard() {
   });
 
   if (error) {
-    return <Alert severity="error">Failed to load dashboard: {error.message}</Alert>;
+    return (
+      <Alert
+        severity="error"
+        action={
+          <Button color="inherit" size="small" onClick={() => refetch()}>
+            Retry
+          </Button>
+        }
+      >
+        Failed to load dashboard: {error.message}
+      </Alert>
+    );
   }
 
   const stats = data?.stats;
@@ -184,53 +195,63 @@ export function Dashboard() {
             <SectionPanel
               title="My open followups"
               count={data?.my_followups.length}
-              empty={data?.my_followups.length === 0}
+              empty={!isPending && data?.my_followups.length === 0}
               emptyTitle="No open followups"
+              emptyDescription="Followups assigned to you will appear here."
             >
-              <List dense disablePadding>
-                {data?.my_followups.map((f) => {
-                  const due = formatDueDate(f.due_date, today);
-                  return (
-                    <ListItem key={f.id} divider>
-                      <ListItemText
-                        primary={f.title}
-                        secondary={f.household_name}
-                      />
-                      <StatusChip
-                        size="small"
-                        label={due.label}
-                        tone={due.overdue ? "danger" : "neutral"}
-                        variant={due.overdue ? "filled" : "outlined"}
-                      />
-                    </ListItem>
-                  );
-                })}
-              </List>
+              {isPending ? (
+                <LoadingListRows />
+              ) : (
+                <List dense disablePadding>
+                  {data?.my_followups.map((f) => {
+                    const due = formatDueDate(f.due_date, today);
+                    return (
+                      <ListItem key={f.id} divider>
+                        <ListItemText
+                          primary={f.title}
+                          secondary={f.household_name}
+                        />
+                        <StatusChip
+                          size="small"
+                          label={due.label}
+                          tone={due.overdue ? "danger" : "neutral"}
+                          variant={due.overdue ? "filled" : "outlined"}
+                        />
+                      </ListItem>
+                    );
+                  })}
+                </List>
+              )}
             </SectionPanel>
 
             <SectionPanel
               title="Recent notes"
               count={data?.recent_notes.length}
-              empty={data?.recent_notes.length === 0}
+              empty={!isPending && data?.recent_notes.length === 0}
               emptyTitle="No recent notes"
+              emptyDescription="New engagement notes will appear here."
             >
-              <List dense disablePadding>
-                {data?.recent_notes.map((n) => (
-                  <ListItem key={n.id} divider>
-                    <ListItemText
-                      primary={n.title || `(${n.kind.replace(/_/g, " ")})`}
-                      secondary={
-                        <>
-                          {n.household_name}
-                          {n.created_by_name ? ` · ${n.created_by_name}` : ""}
-                          {" · "}
-                          {dayjs(n.created_at).fromNow()}
-                        </>
-                      }
-                    />
-                  </ListItem>
-                ))}
-              </List>
+              {isPending ? (
+                <LoadingListRows />
+              ) : (
+                <List dense disablePadding>
+                  {data?.recent_notes.map((n) => (
+                    <ListItem key={n.id} divider>
+                      <ListItemText
+                        primary={n.title || `(${n.kind.replace(/_/g, " ")})`}
+                        secondary={
+                          <>
+                            {n.household_name}
+                            {n.created_by_name ? ` · ${n.created_by_name}` : ""}
+                            {" · "}
+                            {dayjs(n.created_at).fromNow()}
+                          </>
+                        }
+                      />
+                    </ListItem>
+                  ))}
+                </List>
+              )}
             </SectionPanel>
           </Stack>
         </Grid>
@@ -240,51 +261,71 @@ export function Dashboard() {
             <SectionPanel
               title="Outstanding invoices"
               count={data?.outstanding_invoices.length}
-              empty={data?.outstanding_invoices.length === 0}
+              empty={!isPending && data?.outstanding_invoices.length === 0}
               emptyTitle="No outstanding invoices"
+              emptyDescription="Sent invoices with unpaid balances will appear here."
             >
-              <List dense disablePadding>
-                {data?.outstanding_invoices.map((inv) => {
-                  const due = inv.due_date
-                    ? formatDueDate(inv.due_date, today)
-                    : null;
-                  return (
-                    <ListItem key={inv.id} divider disablePadding>
-                      <ListItemButton component={RouterLink} to={`/invoices/${inv.id}`}>
-                        <ListItemText
-                          primary={
-                            <>
-                              {inv.invoice_number}
-                              {" · "}
-                              <Box component="span" sx={{ fontWeight: 600 }}>
-                                {usd.format(Number(inv.total))}
-                              </Box>
-                            </>
-                          }
-                          secondary={inv.household_name}
-                        />
-                        {due && (
-                          <StatusChip
-                            size="small"
-                            label={due.label}
-                            tone={
-                              inv.status === "overdue" || due.overdue
-                                ? "danger"
-                                : "neutral"
+              {isPending ? (
+                <LoadingListRows />
+              ) : (
+                <List dense disablePadding>
+                  {data?.outstanding_invoices.map((inv) => {
+                    const due = inv.due_date
+                      ? formatDueDate(inv.due_date, today)
+                      : null;
+                    return (
+                      <ListItem key={inv.id} divider disablePadding>
+                        <ListItemButton component={RouterLink} to={`/invoices/${inv.id}`}>
+                          <ListItemText
+                            primary={
+                              <>
+                                {inv.invoice_number}
+                                {" · "}
+                                <Box component="span" sx={{ fontWeight: 600 }}>
+                                  {usd.format(Number(inv.total))}
+                                </Box>
+                              </>
                             }
-                            variant={inv.status === "overdue" ? "filled" : "outlined"}
+                            secondary={inv.household_name}
                           />
-                        )}
-                      </ListItemButton>
-                    </ListItem>
-                  );
-                })}
-              </List>
+                          {due && (
+                            <StatusChip
+                              size="small"
+                              label={due.label}
+                              tone={
+                                inv.status === "overdue" || due.overdue
+                                  ? "danger"
+                                  : "neutral"
+                              }
+                              variant={inv.status === "overdue" ? "filled" : "outlined"}
+                            />
+                          )}
+                        </ListItemButton>
+                      </ListItem>
+                    );
+                  })}
+                </List>
+              )}
             </SectionPanel>
 
           </Stack>
         </Grid>
       </Grid>
     </Stack>
+  );
+}
+
+function LoadingListRows() {
+  return (
+    <List dense disablePadding>
+      {Array.from({ length: 3 }).map((_, index) => (
+        <ListItem key={index} divider>
+          <ListItemText
+            primary={<Skeleton width="45%" />}
+            secondary={<Skeleton width="65%" />}
+          />
+        </ListItem>
+      ))}
+    </List>
   );
 }

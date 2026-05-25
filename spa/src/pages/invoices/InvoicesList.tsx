@@ -69,7 +69,14 @@ export function InvoicesList() {
 
   if (invoices.error) {
     return (
-      <Alert severity="error">
+      <Alert
+        severity="error"
+        action={
+          <Button color="inherit" size="small" onClick={() => invoices.refetch()}>
+            Retry
+          </Button>
+        }
+      >
         Failed to load invoices: {invoices.error.message}
       </Alert>
     );
@@ -135,8 +142,12 @@ export function InvoicesList() {
         loading={invoices.isPending}
         loadingColumns={7}
         empty={visibleRows.length === 0}
-        emptyTitle="No invoices"
-        emptyDescription="Invoices that match this filter will appear here."
+        emptyTitle={q || due ? "No matching invoices" : "No invoices"}
+        emptyDescription={
+          q || due
+            ? "Adjust the search or filter to see more invoices."
+            : "Invoices in this status will appear here."
+        }
       >
         <Table size="small" stickyHeader>
           <TableHead>
@@ -196,8 +207,11 @@ export function InvoicesList() {
 
       {focus === "uninvoiced" && (
         <DataTableContainer
+          loading={invoices.isPending}
+          loadingColumns={4}
           empty={(invoices.data?.summary.length ?? 0) === 0}
           emptyTitle="No uninvoiced engagement balances"
+          emptyDescription="Engagements with unbilled time or expenses will appear here."
         >
           <Table size="small">
             <TableHead>
