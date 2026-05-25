@@ -256,7 +256,9 @@ test("engagement golden path", async ({ page, baseURL }) => {
   await page.getByLabel("Category").fill("Mileage");
   await page.getByLabel("Description").fill("E2E campus mileage");
   await page.getByRole("button", { name: "Add", exact: true }).click();
-  await expect(page.locator('input[value="42.50"]')).toBeVisible();
+  // type="number" inputs strip trailing zeros, so the amount we just
+  // entered ("42.50") renders as "42.5" in the row's amount field.
+  await expect(page.locator('input[value="42.5"]')).toBeVisible();
   await expect(page.getByPlaceholder("Category")).toHaveValue("Mileage");
   await expect(page.getByPlaceholder("Description")).toHaveValue("E2E campus mileage");
 
