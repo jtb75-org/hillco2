@@ -380,6 +380,7 @@ export function ActivitiesCard({ engagementId }: { engagementId: string }) {
               >
                 <AccordionSummary
                   expandIcon={<ExpandMoreIcon />}
+                  data-testid={`phase-summary-${group.title.toLowerCase().replace(/\s+/g, "-")}`}
                   sx={{
                     "& .MuiAccordionSummary-content": {
                       my: 0.5,

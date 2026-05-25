@@ -80,7 +80,14 @@ async function convertIntakeToAssessment(page: Page, desiredOutcome: string) {
 }
 
 async function expandActivityPhase(page: Page, phaseName: string) {
-  const phase = page.getByRole("button", { name: new RegExp(phaseName) });
+  // Target the phase Accordion by its slugified test ID rather than a
+  // regex on the visible name. The accessible name includes the running
+  // "X / Y complete" counter, which makes regex matches noisy and CI
+  // sometimes flakes on the click stability check while a sibling
+  // accordion is still animating expansion.
+  const phaseId = phaseName.toLowerCase().replace(/\s+/g, "-");
+  const phase = page.getByTestId(`phase-summary-${phaseId}`);
+  await expect(phase).toBeVisible();
   if ((await phase.getAttribute("aria-expanded")) !== "true") {
     await phase.click();
   }
@@ -422,6 +429,11 @@ test.describe.serial("intake conversion lifecycle", () => {
     page,
     baseURL,
   }, testInfo) => {
+    // Long-running flow: create + convert + iterate seven phase accordions.
+    // Default 30s test timeout is too tight on the ARC CI runner because
+    // each phase click pays MUI's accordion expansion animation + a React
+    // re-render of the rows underneath.
+    test.setTimeout(60_000);
     await login(page, baseURL);
 
     const suffix = `${Date.now()}-${testInfo.retry}`;
