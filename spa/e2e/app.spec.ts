@@ -189,7 +189,7 @@ test("invoice list opens detail and previews PDF", async ({ page, baseURL }) => 
   await expect(sendDialog.getByText("does not email")).toBeVisible();
   await sendDialog.getByRole("button", { name: "Mark sent" }).click();
   await expect(sendDialog).toBeHidden();
-  await expect(page.getByText("Sent", { exact: true })).toBeVisible();
+  await expect(page.locator(".MuiChip-label", { hasText: /^Sent$/ })).toBeVisible();
 
   await page.goto(`/engagements/${engagement.id}`);
   const lockedChip = page.getByRole("link", { name: invoiceNumber!.trim() });
