@@ -13,6 +13,8 @@ import { FamiliesList } from "./pages/families/FamiliesList";
 import { FamilyDetail } from "./pages/families/FamilyDetail";
 import { EngagementDetail } from "./pages/engagements/EngagementDetail";
 import { EngagementsList } from "./pages/engagements/EngagementsList";
+import { InvoiceDetail } from "./pages/invoices/InvoiceDetail";
+import { InvoicesList } from "./pages/invoices/InvoicesList";
 import { CatalogLayout } from "./pages/catalog/CatalogLayout";
 import { CatalogPage } from "./pages/catalog/CatalogPage";
 import { CatalogContracts } from "./pages/catalog/Contracts";
@@ -87,6 +89,8 @@ export function App() {
             <Route path="/students/:id" element={<StudentDetail />} />
             <Route path="/engagements" element={<EngagementsList />} />
             <Route path="/engagements/:id" element={<EngagementDetail />} />
+            <Route path="/invoices" element={<InvoicesList />} />
+            <Route path="/invoices/:id" element={<InvoiceDetail />} />
             <Route path="/intakes" element={<IntakesList />} />
             <Route path="/intakes/:id" element={<IntakeForm />} />
             <Route path="/contacts" element={<ContactsList />} />

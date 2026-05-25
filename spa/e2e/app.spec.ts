@@ -107,6 +107,45 @@ async function pdfTextFromAgreementPreview(page: Page, agreementRow: ReturnType<
   return result.text;
 }
 
+async function createSentInvoiceForGoldenEngagement(page: Page) {
+  await openEngagement(page, E2E_HOUSEHOLD);
+  const engagementId = page.url().match(/\/engagements\/([0-9a-f-]+)$/)?.[1];
+  expect(engagementId).toBeTruthy();
+
+  const entryResp = await page.context().request.post(
+    `/api/engagements/${engagementId}/time-entries`,
+    {
+      data: {
+        work_date: "2026-05-25",
+        hours: "0.50",
+        description: "E2E invoice smoke review",
+        billable: true,
+      },
+    },
+  );
+  expect(entryResp.ok()).toBeTruthy();
+  const entry = await entryResp.json();
+
+  const invoiceResp = await page.context().request.post(
+    `/api/engagements/${engagementId}/invoices`,
+    {
+      data: {
+        time_entry_ids: [entry.id],
+        expense_ids: [],
+        due_date: "2026-06-25",
+      },
+    },
+  );
+  expect(invoiceResp.ok()).toBeTruthy();
+  const invoice = await invoiceResp.json();
+
+  const sendResp = await page.context().request.post(
+    `/api/invoices/${invoice.id}/send`,
+  );
+  expect(sendResp.ok()).toBeTruthy();
+  return invoice as { id: string; invoice_number: string };
+}
+
 test("authenticated app shell loads", async ({ page, baseURL }) => {
   await login(page, baseURL);
 
@@ -116,6 +155,25 @@ test("authenticated app shell loads", async ({ page, baseURL }) => {
   await expect(page.getByText("HillCo Portal")).toBeVisible();
   await expect(page.getByText("Browser E2E")).toBeVisible();
   await expect(page.getByRole("link", { name: /engagements/i })).toBeVisible();
+});
+
+test("invoice list opens detail and previews PDF", async ({ page, baseURL }) => {
+  await login(page, baseURL);
+  const invoice = await createSentInvoiceForGoldenEngagement(page);
+
+  await page.goto("/invoices");
+  await expect(page.getByRole("heading", { name: "Invoices" })).toBeVisible();
+  await page.getByRole("row", { name: new RegExp(invoice.invoice_number) }).click();
+  await expect(page).toHaveURL(new RegExp(`/invoices/${invoice.id}$`));
+  await expect(page.getByRole("heading", { name: invoice.invoice_number })).toBeVisible();
+
+  const pdfLink = page.getByRole("link", { name: "Preview PDF" });
+  await expect(pdfLink).toBeVisible();
+  const href = await pdfLink.getAttribute("href");
+  expect(href).toBeTruthy();
+  const response = await page.context().request.get(href!);
+  expect(response.ok()).toBeTruthy();
+  expect(response.headers()["content-type"]).toContain("application/pdf");
 });
 
 test("engagement golden path", async ({ page, baseURL }) => {
