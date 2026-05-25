@@ -177,7 +177,14 @@ jobs:
           npm run build
           ls -la dist/
 
-      - name: Build and push web image with kaniko
+      - name: Build landing bundle (outside Docker)
+        working-directory: landing
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          ls -la dist/
+
+      - name: Build and push backend image with kaniko
         run: |
           /opt/kaniko/executor \
             --context="${GITHUB_WORKSPACE}" \
@@ -197,6 +204,16 @@ jobs:
             --build-arg="BUILD_COMMIT=${{ steps.sha.outputs.short }}" \
             --snapshot-mode=redo
 
+      - name: Build and push landing image with kaniko
+        run: |
+          /opt/kaniko/executor \
+            --context="${GITHUB_WORKSPACE}" \
+            --dockerfile="${GITHUB_WORKSPACE}/landing/Dockerfile" \
+            --destination="${REGISTRY}/${IMAGE_NAME}-landing:${{ steps.sha.outputs.short }}" \
+            --destination="${REGISTRY}/${IMAGE_NAME}-landing:main-latest" \
+            --build-arg="BUILD_COMMIT=${{ steps.sha.outputs.short }}" \
+            --snapshot-mode=redo
+
       - name: Checkout hillco2-gitops
         uses: actions/checkout@v4
         with:
@@ -205,16 +222,17 @@ jobs:
           path: hillco2-gitops
           persist-credentials: true
 
-      - name: Update both image tags in gitops
+      - name: Update all image tags in gitops
         working-directory: hillco2-gitops/overlays/onprem
         env:
           NEW_TAG: ${{ steps.sha.outputs.short }}
         run: |
           # End-of-line anchor on the first sed so `/hillco2` doesn't also
-          # match `/hillco2-spa`. Quote newTag so all-digit short SHAs
-          # don't parse as YAML ints.
+          # match `/hillco2-spa` or `/hillco2-landing`. Quote newTag so
+          # all-digit short SHAs don't parse as YAML ints.
           sed -i "/name: ${REGISTRY}\/${IMAGE_NAME}\$/,/newTag:/ s|newTag: .*|newTag: \"${NEW_TAG}\"|" kustomization.yaml
           sed -i "/name: ${REGISTRY}\/${IMAGE_NAME}-spa\$/,/newTag:/ s|newTag: .*|newTag: \"${NEW_TAG}\"|" kustomization.yaml
+          sed -i "/name: ${REGISTRY}\/${IMAGE_NAME}-landing\$/,/newTag:/ s|newTag: .*|newTag: \"${NEW_TAG}\"|" kustomization.yaml
           echo "Updated kustomization.yaml:"
           grep -A1 "name: ${REGISTRY}/${IMAGE_NAME}" kustomization.yaml || true
 
@@ -233,6 +251,6 @@ jobs:
           if git diff --staged --quiet; then
             echo "No image tag changes to commit"
           else
-            git commit -m "deploy: hillco2 + spa ${NEW_TAG}"
+            git commit -m "deploy: hillco2 + spa + landing ${NEW_TAG}"
             git push origin main
           fi

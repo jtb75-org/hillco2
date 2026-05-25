@@ -57,7 +57,7 @@ async def test_auth_callback_first_time_google_signup_creates_session(
     r = await client.get("/auth/callback", follow_redirects=False)
 
     assert r.status_code == 303
-    assert r.headers["location"] == "/"
+    assert r.headers["location"] == "/app/dashboard"
     session = _session_cookie_payload(client.cookies["session"])
     assert session["user_email"] == email
     assert session["user_name"] == "New User"

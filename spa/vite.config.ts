@@ -14,6 +14,11 @@ const API_BASE = process.env.VITE_API_BASE ?? "https://hillco2.ng20.org";
 
 export default defineConfig({
   plugins: [react()],
+  // SPA serves at /app/ — ingress routes /app/* to this container, with
+  // /api/* and /auth/* going to the backend tier and `/` going to the
+  // separate landing tier. Vite's `base` makes the built bundle reference
+  // its assets under /app/, and the BrowserRouter basename mirrors it.
+  base: "/app/",
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "src"),

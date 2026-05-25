@@ -17,7 +17,7 @@ async function login(page: Page, baseURL: string | undefined) {
 }
 
 async function createIntakeFromNewFamily(page: Page, familyName: string) {
-  await page.goto("/intakes");
+  await page.goto("/app/intakes");
   // IntakesList renders a "New intake" button in the page header AND in
   // each view's empty state. When there are no intakes, both render, so
   // the strict locator resolves to >1. The header button is always first
@@ -33,7 +33,7 @@ async function createIntakeFromNewFamily(page: Page, familyName: string) {
   const startIntake = page.getByRole("dialog", { name: "Start intake" });
   await expect(startIntake.getByLabel("Family")).toHaveValue(familyName);
   await startIntake.getByRole("button", { name: "Continue" }).click();
-  await expect(page).toHaveURL(/\/intakes\/[0-9a-f-]+$/);
+  await expect(page).toHaveURL(/\/app\/intakes\/[0-9a-f-]+$/);
 }
 
 async function addGuardian(page: Page, guardianName: string) {
@@ -76,7 +76,7 @@ async function convertIntakeToAssessment(page: Page, desiredOutcome: string) {
   await page.getByTestId("intake-outcome-select").getByRole("combobox").click();
   await page.getByRole("option", { name: "Converting" }).click();
   await page.getByRole("button", { name: "Convert to engagement →" }).click();
-  await expect(page).toHaveURL(/\/engagements\/[0-9a-f-]+$/);
+  await expect(page).toHaveURL(/\/app\/engagements\/[0-9a-f-]+$/);
 }
 
 async function expandActivityPhase(page: Page, phaseName: string) {
@@ -87,7 +87,7 @@ async function expandActivityPhase(page: Page, phaseName: string) {
 }
 
 async function openEngagement(page: Page, householdName: string) {
-  await page.goto("/engagements");
+  await page.goto("/app/engagements");
   await page.getByPlaceholder("Search by family, student, lead, or type").fill(householdName);
   await page.getByRole("row", { name: new RegExp(householdName) }).click();
   await expect(page.getByText(householdName)).toBeVisible();
@@ -160,7 +160,7 @@ async function createInvoiceFixture(page: Page) {
 test("authenticated app shell loads", async ({ page, baseURL }) => {
   await login(page, baseURL);
 
-  await page.goto("/");
+  await page.goto("/app/");
 
   await expect(page.getByRole("heading", { name: /welcome, browser/i })).toBeVisible();
   await expect(page.getByText("HillCo Portal")).toBeVisible();
@@ -172,12 +172,12 @@ test("invoice list opens detail and previews PDF", async ({ page, baseURL }) => 
   await login(page, baseURL);
   const engagement = await createInvoiceFixture(page);
 
-  await page.goto(`/engagements/${engagement.id}`);
+  await page.goto(`/app/engagements/${engagement.id}`);
   await page.getByLabel("Select E2E invoice smoke review").check();
   await page.getByLabel("Due date").fill("2026-06-25");
   await page.getByLabel("Notes").fill("E2E invoice smoke notes");
   await page.getByRole("button", { name: "Create draft" }).click();
-  await expect(page).toHaveURL(/\/invoices\/[0-9a-f-]+$/);
+  await expect(page).toHaveURL(/\/app\/invoices\/[0-9a-f-]+$/);
   const invoiceId = page.url().match(/\/invoices\/([0-9a-f-]+)$/)?.[1];
   expect(invoiceId).toBeTruthy();
   const invoiceNumber = await page.getByRole("heading", { name: /^HC-/ }).textContent();
@@ -191,17 +191,17 @@ test("invoice list opens detail and previews PDF", async ({ page, baseURL }) => 
   await expect(sendDialog).toBeHidden();
   await expect(page.locator(".MuiChip-label", { hasText: /^Sent$/ })).toBeVisible();
 
-  await page.goto(`/engagements/${engagement.id}`);
+  await page.goto(`/app/engagements/${engagement.id}`);
   const lockedChip = page.getByRole("link", {
     name: `On invoice ${invoiceNumber!.trim()}`,
   });
   await expect(lockedChip).toBeVisible();
-  await expect(lockedChip).toHaveAttribute("href", `/invoices/${invoiceId}`);
+  await expect(lockedChip).toHaveAttribute("href", `/app/invoices/${invoiceId}`);
 
-  await page.goto("/invoices");
+  await page.goto("/app/invoices");
   await expect(page.getByRole("heading", { name: "Invoices" })).toBeVisible();
   await page.getByRole("row", { name: new RegExp(invoiceNumber!.trim()) }).click();
-  await expect(page).toHaveURL(new RegExp(`/invoices/${invoiceId}$`));
+  await expect(page).toHaveURL(new RegExp(`/app/invoices/${invoiceId}$`));
   await expect(page.getByRole("heading", { name: invoiceNumber!.trim() })).toBeVisible();
 
   const pdfLink = page.getByRole("link", { name: "Preview PDF" });
@@ -216,7 +216,7 @@ test("invoice list opens detail and previews PDF", async ({ page, baseURL }) => 
 test("engagement golden path", async ({ page, baseURL }) => {
   await login(page, baseURL);
 
-  await page.goto("/engagements");
+  await page.goto("/app/engagements");
   await page.getByPlaceholder("Search by family, student, lead, or type").fill(E2E_HOUSEHOLD);
   await page.getByRole("row", { name: new RegExp(E2E_HOUSEHOLD) }).click();
 
@@ -256,7 +256,9 @@ test("engagement golden path", async ({ page, baseURL }) => {
   await page.getByLabel("Category").fill("Mileage");
   await page.getByLabel("Description").fill("E2E campus mileage");
   await page.getByRole("button", { name: "Add", exact: true }).click();
-  await expect(page.locator('input[value="42.50"]')).toBeVisible();
+  // type="number" inputs strip trailing zeros, so the amount we just
+  // entered ("42.50") renders as "42.5" in the row's amount field.
+  await expect(page.locator('input[value="42.5"]')).toBeVisible();
   await expect(page.getByPlaceholder("Category")).toHaveValue("Mileage");
   await expect(page.getByPlaceholder("Description")).toHaveValue("E2E campus mileage");
 
@@ -275,7 +277,7 @@ test("school recommendation duplicate stays in dialog with 409 detail", async ({
 }) => {
   await login(page, baseURL);
 
-  await page.goto("/engagements");
+  await page.goto("/app/engagements");
   await page.getByPlaceholder("Search by family, student, lead, or type").fill(E2E_HOUSEHOLD);
   await page.getByRole("row", { name: new RegExp(E2E_HOUSEHOLD) }).click();
 
@@ -368,10 +370,10 @@ test("catalog contract templates can be created, edited, and deleted", async ({
 }) => {
   await login(page, baseURL);
 
-  await page.goto("/catalog");
-  await expect(page).toHaveURL(/\/catalog\/activities$/);
+  await page.goto("/app/catalog");
+  await expect(page).toHaveURL(/\/app\/catalog\/activities$/);
   await page.getByRole("tab", { name: "Contracts" }).click();
-  await expect(page).toHaveURL(/\/catalog\/contracts$/);
+  await expect(page).toHaveURL(/\/app\/catalog\/contracts$/);
 
   const servicesRow = page.getByRole("row", { name: new RegExp(SERVICES_TEMPLATE_NAME) });
   await expect(servicesRow).toContainText("client_name");
@@ -457,16 +459,16 @@ test.describe.serial("intake conversion lifecycle", () => {
   }) => {
     await login(page, baseURL);
 
-    await page.goto("/engagements");
+    await page.goto("/app/engagements");
     await page.getByPlaceholder("Search by family, student, lead, or type").fill(familyName);
     await page.getByRole("row", { name: new RegExp(familyName) }).click();
 
     await page.getByLabel("Engagement actions").click();
     await page.getByRole("menuitem", { name: "Delete engagement" }).click();
     await page.getByRole("dialog", { name: "Delete engagement?" }).getByRole("button", { name: "Delete" }).click();
-    await expect(page).toHaveURL(/\/engagements$/);
+    await expect(page).toHaveURL(/\/app\/engagements$/);
 
-    await page.goto("/intakes");
+    await page.goto("/app/intakes");
     await page.getByRole("button", { name: "List" }).click();
     const row = page.getByRole("row", { name: new RegExp(familyName) });
     await expect(row).toContainText("Converting");
