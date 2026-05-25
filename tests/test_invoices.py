@@ -152,6 +152,141 @@ async def test_cant_create_invoice_with_no_lines(authed_client, db_pool, test_us
     assert r.status_code == 400
 
 
+async def test_create_invoice_rejects_zero_rate_time_entry(authed_client, db_pool, test_user):
+    """When neither the entry nor the engagement has a rate, the API used
+    to silently bill at $0. That's a real-money footgun — guard with 400."""
+    async with db_pool.acquire() as conn:
+        family_id = await conn.fetchval(
+            "INSERT INTO families (household_name) VALUES ($1) RETURNING id",
+            f"Family-{uuid4()}",
+        )
+        student_id = await conn.fetchval(
+            "INSERT INTO people (kind, first_name) VALUES ('student', 'No Rate Kid') RETURNING id"
+        )
+        await conn.execute(
+            "INSERT INTO family_students (family_id, person_id) VALUES ($1, $2)",
+            family_id, student_id,
+        )
+        await conn.execute(
+            "INSERT INTO student_details (person_id) VALUES ($1)", student_id,
+        )
+        # Engagement deliberately omits default_hourly_rate.
+        engagement_id = await conn.fetchval(
+            """
+            INSERT INTO engagements (family_id, student_id, engagement_type, status, lead_consultant_id)
+            VALUES ($1, $2, 'assessment', 'in_progress', $3)
+            RETURNING id
+            """,
+            family_id, student_id, test_user["id"],
+        )
+        # Time entry without an explicit hourly_rate.
+        time_entry_id = await conn.fetchval(
+            """
+            INSERT INTO time_entries (engagement_id, user_id, work_date, hours, billable)
+            VALUES ($1, $2, CURRENT_DATE, 1.0, TRUE) RETURNING id
+            """,
+            engagement_id, test_user["id"],
+        )
+
+    r = await authed_client.post(
+        f"/api/engagements/{engagement_id}/invoices",
+        json={"time_entry_ids": [str(time_entry_id)]},
+    )
+    assert r.status_code == 400
+    assert "rate" in r.json()["detail"].lower()
+
+
+async def test_patch_draft_rejects_due_before_issue(authed_client, db_pool, test_user):
+    """due_date must be on or after issue_date — applies even when the
+    PATCH only supplies one of them (the missing one falls back to the
+    current row)."""
+    _, engagement_id, time_entry_id = await _make_engagement(db_pool, test_user["id"])
+    r = await authed_client.post(
+        f"/api/engagements/{engagement_id}/invoices",
+        json={"time_entry_ids": [str(time_entry_id)]},
+    )
+    invoice_id = r.json()["id"]
+
+    # Set issue date first.
+    r = await authed_client.patch(
+        f"/api/invoices/{invoice_id}", json={"issue_date": "2026-05-25"},
+    )
+    assert r.status_code == 200, r.text
+
+    # Now try to set a due_date earlier than issue_date — should 400.
+    r = await authed_client.patch(
+        f"/api/invoices/{invoice_id}", json={"due_date": "2026-05-20"},
+    )
+    assert r.status_code == 400
+    assert "due_date" in r.json()["detail"]
+
+    # Same-day is fine.
+    r = await authed_client.patch(
+        f"/api/invoices/{invoice_id}", json={"due_date": "2026-05-25"},
+    )
+    assert r.status_code == 200, r.text
+
+
+async def test_void_releases_expense(authed_client, db_pool, test_user):
+    """Existing tests cover void releasing a time_entry; mirror the check
+    for expenses so the helper's symmetry is verified end-to-end."""
+    _, engagement_id, _ = await _make_engagement(db_pool, test_user["id"])
+    async with db_pool.acquire() as conn:
+        expense_id = await conn.fetchval(
+            """
+            INSERT INTO expenses (engagement_id, user_id, expense_date, amount, billable)
+            VALUES ($1, $2, CURRENT_DATE, 50.00, TRUE) RETURNING id
+            """,
+            engagement_id, test_user["id"],
+        )
+
+    r = await authed_client.post(
+        f"/api/engagements/{engagement_id}/invoices",
+        json={"expense_ids": [str(expense_id)]},
+    )
+    assert r.status_code == 201, r.text
+    invoice_id = r.json()["id"]
+    await authed_client.post(f"/api/invoices/{invoice_id}/send")
+
+    r = await authed_client.post(f"/api/invoices/{invoice_id}/void")
+    assert r.status_code == 200
+
+    async with db_pool.acquire() as conn:
+        linked = await conn.fetchval(
+            "SELECT invoice_id FROM expenses WHERE id = $1", expense_id,
+        )
+    assert linked is None, "voided invoice should release its expense back to uninvoiced"
+
+
+async def test_custom_line_add_and_delete_recomputes_totals(authed_client, db_pool, test_user):
+    """Custom lines feed the invoice subtotal/total just like time/expense
+    lines. Verify adding bumps total, deleting reverts it."""
+    _, engagement_id, time_entry_id = await _make_engagement(db_pool, test_user["id"])
+    r = await authed_client.post(
+        f"/api/engagements/{engagement_id}/invoices",
+        json={"time_entry_ids": [str(time_entry_id)]},
+    )
+    invoice_id = r.json()["id"]
+    starting_total = float(r.json()["total"])
+
+    r = await authed_client.post(
+        f"/api/invoices/{invoice_id}/line-items",
+        json={"description": "Rush surcharge", "quantity": "1", "unit_price": "25.00"},
+    )
+    assert r.status_code == 201, r.text
+    after_add = r.json()
+    assert float(after_add["total"]) == starting_total + 25.00
+    custom_line = next(li for li in after_add["line_items"] if li["source_type"] == "custom")
+
+    r = await authed_client.delete(
+        f"/api/invoices/{invoice_id}/line-items/{custom_line['id']}",
+    )
+    assert r.status_code == 204
+
+    r = await authed_client.get(f"/api/invoices/{invoice_id}")
+    assert float(r.json()["total"]) == starting_total
+
+
 async def test_list_invoices_engagement_id_filter(authed_client, db_pool, test_user):
     """engagement_id query param narrows both the invoice list AND the
     per-engagement financial summary. Powers the SPA billing panel.
