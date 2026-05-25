@@ -155,6 +155,7 @@ export function Dashboard() {
               <MetricCard
                 label="Outstanding"
                 value={usd.format(Number(stats.outstanding_total))}
+                onClick={() => navigate("/invoices?status=open")}
               />
             </Grid>
             <Grid item xs={12} sm={6} md={4} lg={2}>
@@ -162,12 +163,14 @@ export function Dashboard() {
                 label="Overdue Invoices"
                 value={String(stats.overdue_invoice_count)}
                 emphasis={stats.overdue_invoice_count > 0 ? "alert" : "muted"}
+                onClick={() => navigate("/invoices?status=open&due=overdue")}
               />
             </Grid>
             <Grid item xs={12} sm={6} md={4} lg={2}>
               <MetricCard
                 label="Uninvoiced"
                 value={usd.format(Number(stats.uninvoiced_total))}
+                onClick={() => navigate("/invoices?focus=uninvoiced")}
               />
             </Grid>
           </>

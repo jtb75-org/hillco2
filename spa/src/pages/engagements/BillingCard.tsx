@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Box,
@@ -55,14 +55,22 @@ export function BillingCard({
 
   const timeRows = uninvoiced.data?.time_entries ?? [];
   const expenseRows = uninvoiced.data?.expenses ?? [];
+  const timeIdsKey = timeRows.map((row) => row.id).join("|");
+  const expenseIdsKey = expenseRows.map((row) => row.id).join("|");
+  const selectedForTimeKey = useRef<string>("");
+  const selectedForExpenseKey = useRef<string>("");
 
   useEffect(() => {
+    if (selectedForTimeKey.current === timeIdsKey) return;
+    selectedForTimeKey.current = timeIdsKey;
     setSelectedTimeIds(new Set(timeRows.map((row) => row.id)));
-  }, [timeRows]);
+  }, [timeIdsKey, timeRows]);
 
   useEffect(() => {
+    if (selectedForExpenseKey.current === expenseIdsKey) return;
+    selectedForExpenseKey.current = expenseIdsKey;
     setSelectedExpenseIds(new Set(expenseRows.map((row) => row.id)));
-  }, [expenseRows]);
+  }, [expenseIdsKey, expenseRows]);
 
   const selectedTotal = useMemo(() => {
     const timeTotal = timeRows

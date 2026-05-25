@@ -164,6 +164,26 @@ async function createInvoiceFixture(page: Page) {
   return engagement as { id: string };
 }
 
+async function createDraftInvoiceViaBilling(page: Page) {
+  const engagement = await createInvoiceFixture(page);
+  await page.goto(`/app/engagements/${engagement.id}`);
+  await page.getByLabel("Select E2E invoice smoke review").check();
+  await page.getByLabel("Due date").fill("2026-06-25");
+  await page.getByLabel("Notes").fill("E2E invoice smoke notes");
+  await page.getByRole("button", { name: "Create draft" }).click();
+  await expect(page).toHaveURL(/\/app\/invoices\/[0-9a-f-]+$/);
+  const invoiceId = page.url().match(/\/invoices\/([0-9a-f-]+)$/)?.[1];
+  expect(invoiceId).toBeTruthy();
+  const invoiceNumber = await page.getByRole("heading", { name: /^HC-/ }).textContent();
+  expect(invoiceNumber).toBeTruthy();
+  await expect(page.getByText("E2E invoice smoke review")).toBeVisible();
+  return {
+    engagement,
+    invoiceId: invoiceId!,
+    invoiceNumber: invoiceNumber!.trim(),
+  };
+}
+
 test("authenticated app shell loads", async ({ page, baseURL }) => {
   await login(page, baseURL);
 
@@ -177,19 +197,7 @@ test("authenticated app shell loads", async ({ page, baseURL }) => {
 
 test("invoice list opens detail and previews PDF", async ({ page, baseURL }) => {
   await login(page, baseURL);
-  const engagement = await createInvoiceFixture(page);
-
-  await page.goto(`/app/engagements/${engagement.id}`);
-  await page.getByLabel("Select E2E invoice smoke review").check();
-  await page.getByLabel("Due date").fill("2026-06-25");
-  await page.getByLabel("Notes").fill("E2E invoice smoke notes");
-  await page.getByRole("button", { name: "Create draft" }).click();
-  await expect(page).toHaveURL(/\/app\/invoices\/[0-9a-f-]+$/);
-  const invoiceId = page.url().match(/\/invoices\/([0-9a-f-]+)$/)?.[1];
-  expect(invoiceId).toBeTruthy();
-  const invoiceNumber = await page.getByRole("heading", { name: /^HC-/ }).textContent();
-  expect(invoiceNumber).toBeTruthy();
-  await expect(page.getByText("E2E invoice smoke review")).toBeVisible();
+  const { engagement, invoiceId, invoiceNumber } = await createDraftInvoiceViaBilling(page);
 
   await page.getByRole("button", { name: "Send" }).click();
   const sendDialog = page.getByRole("dialog", { name: "Mark invoice sent?" });
@@ -198,18 +206,26 @@ test("invoice list opens detail and previews PDF", async ({ page, baseURL }) => 
   await expect(sendDialog).toBeHidden();
   await expect(page.locator(".MuiChip-label", { hasText: /^Sent$/ })).toBeVisible();
 
+  await page.getByRole("button", { name: "Mark paid" }).click();
+  const paidDialog = page.getByRole("dialog", { name: "Mark invoice paid" });
+  await expect(paidDialog.getByLabel("Paid amount")).toHaveValue("87.5");
+  await paidDialog.getByRole("button", { name: "Mark paid" }).click();
+  await expect(paidDialog).toBeHidden();
+  await expect(page.locator(".MuiChip-label", { hasText: /^Paid$/ })).toBeVisible();
+  await expect(page.getByText("$87.50").first()).toBeVisible();
+
   await page.goto(`/app/engagements/${engagement.id}`);
   const lockedChip = page.getByRole("link", {
-    name: `On invoice ${invoiceNumber!.trim()}`,
+    name: `On invoice ${invoiceNumber}`,
   });
   await expect(lockedChip).toBeVisible();
   await expect(lockedChip).toHaveAttribute("href", `/app/invoices/${invoiceId}`);
 
-  await page.goto("/app/invoices");
+  await page.goto("/app/invoices?status=all");
   await expect(page.getByRole("heading", { name: "Invoices" })).toBeVisible();
-  await page.getByRole("row", { name: new RegExp(invoiceNumber!.trim()) }).click();
+  await page.getByRole("row", { name: new RegExp(invoiceNumber) }).click();
   await expect(page).toHaveURL(new RegExp(`/app/invoices/${invoiceId}$`));
-  await expect(page.getByRole("heading", { name: invoiceNumber!.trim() })).toBeVisible();
+  await expect(page.getByRole("heading", { name: invoiceNumber })).toBeVisible();
 
   const pdfLink = page.getByRole("link", { name: "Preview PDF" });
   await expect(pdfLink).toBeVisible();
@@ -218,6 +234,22 @@ test("invoice list opens detail and previews PDF", async ({ page, baseURL }) => 
   const response = await page.context().request.get(href!);
   expect(response.ok()).toBeTruthy();
   expect(response.headers()["content-type"]).toContain("application/pdf");
+});
+
+test("voiding a draft invoice releases source rows", async ({ page, baseURL }) => {
+  await login(page, baseURL);
+  const { engagement } = await createDraftInvoiceViaBilling(page);
+
+  await page.getByRole("button", { name: "Void" }).click();
+  const voidDialog = page.getByRole("dialog", { name: "Void invoice?" });
+  await expect(voidDialog.getByText("uninvoiced pool")).toBeVisible();
+  await voidDialog.getByRole("button", { name: "Void invoice" }).click();
+  await expect(voidDialog).toBeHidden();
+  await expect(page.locator(".MuiChip-label", { hasText: /^Void$/ })).toBeVisible();
+
+  await page.goto(`/app/engagements/${engagement.id}`);
+  await expect(page.getByLabel("Select E2E invoice smoke review")).toBeChecked();
+  await expect(page.getByPlaceholder("What did you do?")).toBeEnabled();
 });
 
 test("engagement golden path", async ({ page, baseURL }) => {
