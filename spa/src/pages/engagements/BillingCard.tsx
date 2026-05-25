@@ -8,6 +8,7 @@ import {
   Divider,
   Link as MuiLink,
   Paper,
+  Skeleton,
   Stack,
   Table,
   TableBody,
@@ -135,8 +136,28 @@ export function BillingCard({
         </Stack>
 
         {uninvoiced.error && (
-          <Alert severity="error">
+          <Alert
+            severity="error"
+            action={
+              <Button color="inherit" size="small" onClick={() => uninvoiced.refetch()}>
+                Retry
+              </Button>
+            }
+          >
             Failed to load uninvoiced work: {uninvoiced.error.message}
+          </Alert>
+        )}
+
+        {invoices.error && (
+          <Alert
+            severity="error"
+            action={
+              <Button color="inherit" size="small" onClick={() => invoices.refetch()}>
+                Retry
+              </Button>
+            }
+          >
+            Failed to load engagement invoices: {invoices.error.message}
           </Alert>
         )}
 
@@ -252,9 +273,21 @@ function ExistingInvoicesTable({
 }) {
   if (loading) {
     return (
-      <Typography variant="body2" color="text.disabled">
-        Loading invoices…
-      </Typography>
+      <Box sx={{ overflowX: "auto" }}>
+        <Table size="small">
+          <TableBody>
+            {Array.from({ length: 2 }).map((_, index) => (
+              <TableRow key={index}>
+                {Array.from({ length: 5 }).map((__, cellIndex) => (
+                  <TableCell key={cellIndex}>
+                    <Skeleton width="80%" />
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </Box>
     );
   }
   if (rows.length === 0) {
@@ -338,9 +371,21 @@ function SourceTable({
         <Chip size="small" variant="outlined" label={rows.length} />
       </Stack>
       {loading ? (
-        <Typography variant="body2" color="text.disabled">
-          Loading…
-        </Typography>
+        <Box sx={{ overflowX: "auto" }}>
+          <Table size="small">
+            <TableBody>
+              {Array.from({ length: 2 }).map((_, index) => (
+                <TableRow key={index}>
+                  {Array.from({ length: 4 }).map((__, cellIndex) => (
+                    <TableCell key={cellIndex}>
+                      <Skeleton width="80%" />
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Box>
       ) : rows.length === 0 ? (
         <Typography variant="body2" color="text.disabled">
           {emptyTitle}
