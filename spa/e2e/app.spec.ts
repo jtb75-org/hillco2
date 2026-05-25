@@ -192,7 +192,9 @@ test("invoice list opens detail and previews PDF", async ({ page, baseURL }) => 
   await expect(page.locator(".MuiChip-label", { hasText: /^Sent$/ })).toBeVisible();
 
   await page.goto(`/engagements/${engagement.id}`);
-  const lockedChip = page.getByRole("link", { name: invoiceNumber!.trim() });
+  const lockedChip = page.getByRole("link", {
+    name: `On invoice ${invoiceNumber!.trim()}`,
+  });
   await expect(lockedChip).toBeVisible();
   await expect(lockedChip).toHaveAttribute("href", `/invoices/${invoiceId}`);
 
