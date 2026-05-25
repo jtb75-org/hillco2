@@ -20,6 +20,7 @@ import AddIcon from "@mui/icons-material/Add";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import LockIcon from "@mui/icons-material/Lock";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link as RouterLink } from "react-router-dom";
 
 import { useSnackbar } from "../../components/Snackbar";
 
@@ -236,6 +237,9 @@ function TimeEntryRow({
         {locked && (
           <Tooltip title={`On invoice ${entry.invoice_number ?? entry.invoice_id}`}>
             <Chip
+              component={RouterLink}
+              to={`/invoices/${entry.invoice_id}`}
+              clickable
               size="small"
               icon={<LockIcon fontSize="small" />}
               label={entry.invoice_number ?? "invoiced"}

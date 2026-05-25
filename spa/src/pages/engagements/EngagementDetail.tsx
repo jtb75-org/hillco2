@@ -35,6 +35,7 @@ import { useSnackbar } from "../../components/Snackbar";
 import { StatusChip } from "../../components/StatusChip";
 import { useEngagementTypes } from "../../hooks/useEngagementTypes";
 import { ActivitiesCard } from "./ActivitiesCard";
+import { BillingCard } from "./BillingCard";
 import { ContractCard } from "./ContractCard";
 import { ExpensesCard } from "./ExpensesCard";
 import { GuardiansCard } from "./GuardiansCard";
@@ -160,6 +161,11 @@ export function EngagementDetail() {
       <RequirementsCard engagementId={id!} />
 
       <ActivitiesCard engagementId={id!} />
+
+      <BillingCard
+        engagementId={id!}
+        defaultHourlyRate={engagement.data.default_hourly_rate}
+      />
 
       <TimeEntriesCard engagementId={id!} />
 
@@ -464,4 +470,3 @@ function Label({ children }: { children: React.ReactNode }) {
 function Value({ children }: { children: React.ReactNode }) {
   return <Typography variant="body2">{children}</Typography>;
 }
-

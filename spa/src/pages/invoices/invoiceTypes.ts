@@ -74,3 +74,35 @@ export interface InvoiceDetail {
   };
   line_items: InvoiceLineItem[];
 }
+
+export interface UninvoicedTimeEntry {
+  id: string;
+  work_date: string;
+  hours: string;
+  description: string | null;
+  hourly_rate: string | null;
+  user_name: string | null;
+}
+
+export interface UninvoicedExpense {
+  id: string;
+  expense_date: string;
+  amount: string;
+  category: string | null;
+  description: string | null;
+  user_name: string | null;
+}
+
+export interface UninvoicedResponse {
+  time_entries: UninvoicedTimeEntry[];
+  expenses: UninvoicedExpense[];
+}
+
+export interface InvoiceCreateBody {
+  issue_date?: string | null;
+  due_date?: string | null;
+  tax: string;
+  notes?: string | null;
+  time_entry_ids?: string[];
+  expense_ids?: string[];
+}
