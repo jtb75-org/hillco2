@@ -24,6 +24,11 @@ export const invoiceKeys = {
 export interface InvoiceListFilters {
   status?: InvoiceListStatus;
   engagement_id?: string | null;
+  q?: string | null;
+  issued_from?: string | null;
+  issued_to?: string | null;
+  due_from?: string | null;
+  due_to?: string | null;
 }
 
 export function useInvoicesList(filters: InvoiceListFilters) {
