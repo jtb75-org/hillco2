@@ -154,7 +154,12 @@ async def test_cant_create_invoice_with_no_lines(authed_client, db_pool, test_us
 
 async def test_list_invoices_engagement_id_filter(authed_client, db_pool, test_user):
     """engagement_id query param narrows both the invoice list AND the
-    per-engagement financial summary. Powers the SPA billing panel."""
+    per-engagement financial summary. Powers the SPA billing panel.
+
+    Note: engagement_financial_summary excludes engagements where all of
+    uninvoiced/billed/outstanding are zero. A *draft* invoice doesn't
+    move any of those, so we send both invoices to give the summary
+    something to return."""
     _, eng1, te1 = await _make_engagement(db_pool, test_user["id"])
     _, eng2, te2 = await _make_engagement(db_pool, test_user["id"])
 
@@ -163,12 +168,14 @@ async def test_list_invoices_engagement_id_filter(authed_client, db_pool, test_u
     )
     assert r.status_code == 201, r.text
     inv1_id = r.json()["id"]
+    await authed_client.post(f"/api/invoices/{inv1_id}/send")
 
     r = await authed_client.post(
         f"/api/engagements/{eng2}/invoices", json={"time_entry_ids": [str(te2)]},
     )
     assert r.status_code == 201, r.text
     inv2_id = r.json()["id"]
+    await authed_client.post(f"/api/invoices/{inv2_id}/send")
 
     # Unfiltered (status=all) returns both
     r = await authed_client.get("/api/invoices", params={"status": "all"})
