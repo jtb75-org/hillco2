@@ -6,6 +6,8 @@ import type {
   InvoiceCreateBody,
   InvoiceListResponse,
   InvoiceListStatus,
+  InvoiceDraftUpdateBody,
+  CustomLineItemBody,
   UninvoicedResponse,
 } from "./invoiceTypes";
 
@@ -100,7 +102,7 @@ export function useCreateInvoice(engagementId: string) {
   });
 }
 
-export function useSendInvoice(invoiceId: string) {
+export function useSendInvoice(invoiceId: string, engagementId?: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async () => {
@@ -110,7 +112,7 @@ export function useSendInvoice(invoiceId: string) {
       if (error) throw new Error("Failed to send invoice.");
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: invoiceKeys.all });
+      invalidateInvoiceWorkflow(qc, engagementId);
     },
   });
 }
@@ -128,7 +130,62 @@ function invalidateInvoiceWorkflow(
   }
 }
 
-export function useMarkPaidInvoice(invoiceId: string) {
+export function usePatchInvoice(invoiceId: string, engagementId?: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: InvoiceDraftUpdateBody) => {
+      const { data, error } = await api.PATCH("/api/invoices/{invoice_id}", {
+        params: { path: { invoice_id: invoiceId } },
+        body,
+      });
+      if (error || !data) throw new Error("Failed to update invoice.");
+      return data as InvoiceDetail;
+    },
+    onSuccess: () => {
+      invalidateInvoiceWorkflow(qc, engagementId);
+    },
+  });
+}
+
+export function useAddCustomLineItem(invoiceId: string, engagementId?: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: CustomLineItemBody) => {
+      const { data, error } = await api.POST(
+        "/api/invoices/{invoice_id}/line-items",
+        {
+          params: { path: { invoice_id: invoiceId } },
+          body,
+        },
+      );
+      if (error || !data) throw new Error("Failed to add line item.");
+      return data as InvoiceDetail;
+    },
+    onSuccess: () => {
+      invalidateInvoiceWorkflow(qc, engagementId);
+    },
+  });
+}
+
+export function useDeleteLineItem(invoiceId: string, engagementId?: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (lineId: string) => {
+      const { error } = await api.DELETE(
+        "/api/invoices/{invoice_id}/line-items/{line_id}",
+        {
+          params: { path: { invoice_id: invoiceId, line_id: lineId } },
+        },
+      );
+      if (error) throw new Error("Failed to delete line item.");
+    },
+    onSuccess: () => {
+      invalidateInvoiceWorkflow(qc, engagementId);
+    },
+  });
+}
+
+export function useMarkPaidInvoice(invoiceId: string, engagementId?: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (body: { paid_date?: string | null; paid_amount?: string | null }) => {
@@ -139,12 +196,12 @@ export function useMarkPaidInvoice(invoiceId: string) {
       if (error) throw new Error("Failed to mark invoice paid.");
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: invoiceKeys.all });
+      invalidateInvoiceWorkflow(qc, engagementId);
     },
   });
 }
 
-export function useVoidInvoice(invoiceId: string) {
+export function useVoidInvoice(invoiceId: string, engagementId?: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async () => {
@@ -154,7 +211,22 @@ export function useVoidInvoice(invoiceId: string) {
       if (error) throw new Error("Failed to void invoice.");
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: invoiceKeys.all });
+      invalidateInvoiceWorkflow(qc, engagementId);
+    },
+  });
+}
+
+export function useDeleteInvoice(invoiceId: string, engagementId?: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const { error } = await api.DELETE("/api/invoices/{invoice_id}", {
+        params: { path: { invoice_id: invoiceId } },
+      });
+      if (error) throw new Error("Failed to delete invoice.");
+    },
+    onSuccess: () => {
+      invalidateInvoiceWorkflow(qc, engagementId);
     },
   });
 }

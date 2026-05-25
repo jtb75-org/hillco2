@@ -5,11 +5,36 @@ interface MetricCardProps {
   label: string;
   value: ReactNode;
   emphasis?: "alert" | "muted" | "default";
+  onClick?: () => void;
 }
 
-export function MetricCard({ label, value, emphasis = "default" }: MetricCardProps) {
+export function MetricCard({
+  label,
+  value,
+  emphasis = "default",
+  onClick,
+}: MetricCardProps) {
   return (
-    <Card variant="outlined" sx={{ height: "100%" }}>
+    <Card
+      variant="outlined"
+      onClick={onClick}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={(e) => {
+        if (!onClick) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
+      sx={{
+        height: "100%",
+        cursor: onClick ? "pointer" : undefined,
+        "&:hover": onClick
+          ? { borderColor: "primary.main", bgcolor: "action.hover" }
+          : undefined,
+      }}
+    >
       <CardContent sx={{ py: 2, "&:last-child": { pb: 2 } }}>
         <Typography variant="overline" color="text.secondary">
           {label}

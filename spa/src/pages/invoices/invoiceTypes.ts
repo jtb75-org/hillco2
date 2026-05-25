@@ -106,3 +106,16 @@ export interface InvoiceCreateBody {
   time_entry_ids?: string[];
   expense_ids?: string[];
 }
+
+export interface InvoiceDraftUpdateBody {
+  issue_date?: string | null;
+  due_date?: string | null;
+  tax?: string | null;
+  notes?: string | null;
+}
+
+export interface CustomLineItemBody {
+  description: string;
+  quantity: string;
+  unit_price: string;
+}
