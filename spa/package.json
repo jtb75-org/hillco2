@@ -11,7 +11,7 @@
     "lint": "tsc --noEmit",
     "e2e": "playwright test",
     "e2e:ci": "playwright install --with-deps chromium && playwright test",
-    "update-openapi": "curl -fsSL https://hillco2.ng20.org/openapi.json -o openapi.json && echo 'updated openapi.json'"
+    "update-openapi": "python3 ../scripts/dump_openapi.py && npm run codegen"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
