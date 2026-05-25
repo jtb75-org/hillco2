@@ -107,6 +107,75 @@ async function pdfTextFromAgreementPreview(page: Page, agreementRow: ReturnType<
   return result.text;
 }
 
+async function createSentInvoiceForIsolatedEngagement(page: Page) {
+  const suffix = Date.now().toString(36);
+  const familyResp = await page.context().request.post("/api/families", {
+    data: { household_name: `E2E Invoice Household ${suffix}` },
+  });
+  expect(familyResp.ok()).toBeTruthy();
+  const family = await familyResp.json();
+
+  const studentResp = await page.context().request.post(
+    `/api/families/${family.id}/students`,
+    {
+      data: {
+        first_name: "Invoice",
+        last_name: `Student ${suffix}`,
+        current_grade: "10",
+      },
+    },
+  );
+  expect(studentResp.ok()).toBeTruthy();
+  const student = await studentResp.json();
+
+  const engagementResp = await page.context().request.post(
+    `/api/families/${family.id}/engagements`,
+    {
+      data: {
+        student_id: student.id,
+        engagement_type: "assessment",
+        start_date: "2026-05-25",
+        default_hourly_rate: "175.00",
+      },
+    },
+  );
+  expect(engagementResp.ok()).toBeTruthy();
+  const engagement = await engagementResp.json();
+
+  const entryResp = await page.context().request.post(
+    `/api/engagements/${engagement.id}/time-entries`,
+    {
+      data: {
+        work_date: "2026-05-25",
+        hours: "0.50",
+        description: "E2E invoice smoke review",
+        billable: true,
+      },
+    },
+  );
+  expect(entryResp.ok()).toBeTruthy();
+  const entry = await entryResp.json();
+
+  const invoiceResp = await page.context().request.post(
+    `/api/engagements/${engagement.id}/invoices`,
+    {
+      data: {
+        time_entry_ids: [entry.id],
+        expense_ids: [],
+        due_date: "2026-06-25",
+      },
+    },
+  );
+  expect(invoiceResp.ok()).toBeTruthy();
+  const invoice = await invoiceResp.json();
+
+  const sendResp = await page.context().request.post(
+    `/api/invoices/${invoice.id}/send`,
+  );
+  expect(sendResp.ok()).toBeTruthy();
+  return invoice as { id: string; invoice_number: string };
+}
+
 test("authenticated app shell loads", async ({ page, baseURL }) => {
   await login(page, baseURL);
 
@@ -116,6 +185,25 @@ test("authenticated app shell loads", async ({ page, baseURL }) => {
   await expect(page.getByText("HillCo Portal")).toBeVisible();
   await expect(page.getByText("Browser E2E")).toBeVisible();
   await expect(page.getByRole("link", { name: /engagements/i })).toBeVisible();
+});
+
+test("invoice list opens detail and previews PDF", async ({ page, baseURL }) => {
+  await login(page, baseURL);
+  const invoice = await createSentInvoiceForIsolatedEngagement(page);
+
+  await page.goto("/invoices");
+  await expect(page.getByRole("heading", { name: "Invoices" })).toBeVisible();
+  await page.getByRole("row", { name: new RegExp(invoice.invoice_number) }).click();
+  await expect(page).toHaveURL(new RegExp(`/invoices/${invoice.id}$`));
+  await expect(page.getByRole("heading", { name: invoice.invoice_number })).toBeVisible();
+
+  const pdfLink = page.getByRole("link", { name: "Preview PDF" });
+  await expect(pdfLink).toBeVisible();
+  const href = await pdfLink.getAttribute("href");
+  expect(href).toBeTruthy();
+  const response = await page.context().request.get(href!);
+  expect(response.ok()).toBeTruthy();
+  expect(response.headers()["content-type"]).toContain("application/pdf");
 });
 
 test("engagement golden path", async ({ page, baseURL }) => {

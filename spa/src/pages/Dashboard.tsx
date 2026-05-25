@@ -5,6 +5,7 @@ import {
   Grid,
   List,
   ListItem,
+  ListItemButton,
   ListItemText,
   Skeleton,
   Stack,
@@ -14,7 +15,7 @@ import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { Link as RouterLink, useNavigate } from "react-router-dom";
 
 import { api } from "../api/client";
 import type { components } from "../api/schema";
@@ -245,31 +246,33 @@ export function Dashboard() {
                     ? formatDueDate(inv.due_date, today)
                     : null;
                   return (
-                    <ListItem key={inv.id} divider>
-                      <ListItemText
-                        primary={
-                          <>
-                            {inv.invoice_number}
-                            {" · "}
-                            <Box component="span" sx={{ fontWeight: 600 }}>
-                              {usd.format(Number(inv.total))}
-                            </Box>
-                          </>
-                        }
-                        secondary={inv.household_name}
-                      />
-                      {due && (
-                        <StatusChip
-                          size="small"
-                          label={due.label}
-                          tone={
-                            inv.status === "overdue" || due.overdue
-                              ? "danger"
-                              : "neutral"
+                    <ListItem key={inv.id} divider disablePadding>
+                      <ListItemButton component={RouterLink} to={`/invoices/${inv.id}`}>
+                        <ListItemText
+                          primary={
+                            <>
+                              {inv.invoice_number}
+                              {" · "}
+                              <Box component="span" sx={{ fontWeight: 600 }}>
+                                {usd.format(Number(inv.total))}
+                              </Box>
+                            </>
                           }
-                          variant={inv.status === "overdue" ? "filled" : "outlined"}
+                          secondary={inv.household_name}
                         />
-                      )}
+                        {due && (
+                          <StatusChip
+                            size="small"
+                            label={due.label}
+                            tone={
+                              inv.status === "overdue" || due.overdue
+                                ? "danger"
+                                : "neutral"
+                            }
+                            variant={inv.status === "overdue" ? "filled" : "outlined"}
+                          />
+                        )}
+                      </ListItemButton>
                     </ListItem>
                   );
                 })}
