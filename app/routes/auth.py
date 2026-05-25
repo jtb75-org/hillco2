@@ -12,10 +12,14 @@ log = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# After successful login the browser ends up here; the SPA picks up the
-# session cookie and renders. Configurable so dev (Vite at :5173) can
-# redirect back to its own origin instead of the API host.
-POST_LOGIN_REDIRECT = "/"
+# After successful login the browser ends up at the SPA dashboard; the
+# SPA picks up the session cookie and renders. The SPA lives under /app
+# (Vite base + react-router basename); the public landing owns `/`.
+POST_LOGIN_SUCCESS_REDIRECT = "/app/dashboard"
+# OAuth failures land back on the public landing — that's where the
+# user clicked "Consultant login" from, and the landing renders a
+# small banner reading the `?login_error=` querystring.
+POST_LOGIN_ERROR_REDIRECT = "/"
 
 
 @router.get("/auth/login")
@@ -37,17 +41,17 @@ async def auth_callback(request: Request):
         log.warning("OAuth callback failed: %s", exc)
         request.session.clear()
         return RedirectResponse(
-            f"{POST_LOGIN_REDIRECT}?login_error=oauth_failed",
+            f"{POST_LOGIN_ERROR_REDIRECT}?login_error=oauth_failed",
             status_code=303,
         )
 
     userinfo = token.get("userinfo")
     if not userinfo or not userinfo.get("email"):
-        return RedirectResponse(f"{POST_LOGIN_REDIRECT}?login_error=no_userinfo", status_code=303)
+        return RedirectResponse(f"{POST_LOGIN_ERROR_REDIRECT}?login_error=no_userinfo", status_code=303)
 
     email = userinfo["email"].lower()
     if email not in settings.allowed_email_set:
-        return RedirectResponse(f"{POST_LOGIN_REDIRECT}?login_error=not_allowed", status_code=303)
+        return RedirectResponse(f"{POST_LOGIN_ERROR_REDIRECT}?login_error=not_allowed", status_code=303)
 
     name = userinfo.get("name") or email
 
@@ -95,7 +99,7 @@ async def auth_callback(request: Request):
             if deactivated:
                 log.warning("Sign-in blocked: person soft-deleted (email=%s)", email)
                 return RedirectResponse(
-                    f"{POST_LOGIN_REDIRECT}?login_error=deactivated",
+                    f"{POST_LOGIN_ERROR_REDIRECT}?login_error=deactivated",
                     status_code=303,
                 )
             # First time we see this email and they're in allowed_emails:
@@ -166,7 +170,7 @@ async def auth_callback(request: Request):
     request.session["user_id"] = str(row["id"])
     request.session["user_email"] = row["email"]
     request.session["user_name"] = row["name"]
-    return RedirectResponse(POST_LOGIN_REDIRECT, status_code=303)
+    return RedirectResponse(POST_LOGIN_SUCCESS_REDIRECT, status_code=303)
 
 
 @router.post("/api/logout")

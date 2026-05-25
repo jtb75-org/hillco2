@@ -23,6 +23,7 @@ createRoot(document.getElementById("root")!).render(
                 resolution. Silences the warning console emits and
                 makes the eventual v7 upgrade a no-op. */}
             <BrowserRouter
+              basename="/app"
               future={{
                 v7_startTransition: true,
                 v7_relativeSplatPath: true,

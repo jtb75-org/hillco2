@@ -1,7 +1,6 @@
 import {
   Box,
   Button,
-  CircularProgress,
   Container,
   Link as MuiLink,
   Paper,
@@ -14,9 +13,6 @@ import HandshakeOutlinedIcon from "@mui/icons-material/HandshakeOutlined";
 import SchoolOutlinedIcon from "@mui/icons-material/SchoolOutlined";
 import GroupsOutlinedIcon from "@mui/icons-material/GroupsOutlined";
 import ApartmentOutlinedIcon from "@mui/icons-material/ApartmentOutlined";
-import { Navigate } from "react-router-dom";
-
-import { redirectToLogin, useAuth } from "../auth";
 
 const PALETTE = {
   sand: "#F7F4EA",
@@ -35,16 +31,6 @@ const CONSULTANT_PHONE = "314.606.5537";
 const CONSULTANT_EMAIL = "hillcoeducationalconsultant@gmail.com";
 
 export function LandingPage() {
-  const { user, isLoading } = useAuth();
-  if (isLoading) {
-    return (
-      <Box display="flex" alignItems="center" justifyContent="center" minHeight="100vh">
-        <CircularProgress />
-      </Box>
-    );
-  }
-  if (user) return <Navigate to="/dashboard" replace />;
-
   return (
     <Box sx={{ minHeight: "100vh", bgcolor: PALETTE.sand, color: PALETTE.navy }}>
       <Header />
@@ -353,9 +339,7 @@ function Footer() {
           © {new Date().getFullYear()} Hillco Educational Consultant
         </Typography>
         <MuiLink
-          component="button"
-          type="button"
-          onClick={redirectToLogin}
+          href="/auth/login"
           sx={{ color: PALETTE.subtle, fontSize: "0.875rem" }}
           underline="hover"
         >
