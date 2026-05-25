@@ -4,6 +4,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { AppShell } from "./layout/AppShell";
 import { AuthProvider, redirectToLogin, useAuth } from "./auth";
 import { Dashboard } from "./pages/Dashboard";
+import { LandingPage } from "./pages/LandingPage";
 import { AdminLayout } from "./pages/admin/AdminLayout";
 import { AdminUsers } from "./pages/admin/Users";
 import { AdminAuditLog } from "./pages/admin/AuditLog";
@@ -80,37 +81,47 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 export function App() {
   return (
     <AuthProvider>
-      <AuthGate>
-        <Routes>
-          <Route element={<AppShell />}>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/families" element={<FamiliesList />} />
-            <Route path="/families/:id" element={<FamilyDetail />} />
-            <Route path="/students/:id" element={<StudentDetail />} />
-            <Route path="/engagements" element={<EngagementsList />} />
-            <Route path="/engagements/:id" element={<EngagementDetail />} />
-            <Route path="/invoices" element={<InvoicesList />} />
-            <Route path="/invoices/:id" element={<InvoiceDetail />} />
-            <Route path="/intakes" element={<IntakesList />} />
-            <Route path="/intakes/:id" element={<IntakeForm />} />
-            <Route path="/contacts" element={<ContactsList />} />
-            <Route path="/schools" element={<SchoolsList />} />
-            <Route path="/catalog" element={<CatalogLayout />}>
-              <Route index element={<Navigate to="activities" replace />} />
-              <Route path="activities" element={<CatalogPage />} />
-              <Route path="contracts" element={<CatalogContracts />} />
-              <Route path="firm-settings" element={<CatalogFirmSettings />} />
-            </Route>
-            <Route path="/admin" element={<AdminLayout />}>
-              <Route index element={<Navigate to="users" replace />} />
-              <Route path="users" element={<AdminUsers />} />
-              <Route path="audit-log" element={<AdminAuditLog />} />
-              <Route path="about" element={<AdminAbout />} />
-            </Route>
-            <Route path="*" element={<NotFound />} />
-          </Route>
-        </Routes>
-      </AuthGate>
+      <Routes>
+        {/* Public landing — bypasses AuthGate. Auth-aware: signed-in
+            consultants are bounced to /dashboard inside LandingPage. */}
+        <Route path="/" element={<LandingPage />} />
+        <Route
+          path="*"
+          element={
+            <AuthGate>
+              <Routes>
+                <Route element={<AppShell />}>
+                  <Route path="/dashboard" element={<Dashboard />} />
+                  <Route path="/families" element={<FamiliesList />} />
+                  <Route path="/families/:id" element={<FamilyDetail />} />
+                  <Route path="/students/:id" element={<StudentDetail />} />
+                  <Route path="/engagements" element={<EngagementsList />} />
+                  <Route path="/engagements/:id" element={<EngagementDetail />} />
+                  <Route path="/invoices" element={<InvoicesList />} />
+                  <Route path="/invoices/:id" element={<InvoiceDetail />} />
+                  <Route path="/intakes" element={<IntakesList />} />
+                  <Route path="/intakes/:id" element={<IntakeForm />} />
+                  <Route path="/contacts" element={<ContactsList />} />
+                  <Route path="/schools" element={<SchoolsList />} />
+                  <Route path="/catalog" element={<CatalogLayout />}>
+                    <Route index element={<Navigate to="activities" replace />} />
+                    <Route path="activities" element={<CatalogPage />} />
+                    <Route path="contracts" element={<CatalogContracts />} />
+                    <Route path="firm-settings" element={<CatalogFirmSettings />} />
+                  </Route>
+                  <Route path="/admin" element={<AdminLayout />}>
+                    <Route index element={<Navigate to="users" replace />} />
+                    <Route path="users" element={<AdminUsers />} />
+                    <Route path="audit-log" element={<AdminAuditLog />} />
+                    <Route path="about" element={<AdminAbout />} />
+                  </Route>
+                  <Route path="*" element={<NotFound />} />
+                </Route>
+              </Routes>
+            </AuthGate>
+          }
+        />
+      </Routes>
     </AuthProvider>
   );
 }

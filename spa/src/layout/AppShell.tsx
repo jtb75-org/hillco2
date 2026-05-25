@@ -38,7 +38,7 @@ type NavEntry =
 
 const NAV_ITEMS: ReadonlyArray<NavEntry> = [
   // Top: Home + the active work surfaces.
-  { kind: "item", to: "/", label: "Home", icon: <HomeIcon /> },
+  { kind: "item", to: "/dashboard", label: "Home", icon: <HomeIcon /> },
   { kind: "item", to: "/intakes", label: "Intakes", icon: <DescriptionOutlinedIcon /> },
   { kind: "item", to: "/engagements", label: "Engagements", icon: <AssignmentOutlinedIcon /> },
   { kind: "item", to: "/invoices", label: "Invoices", icon: <ReceiptLongOutlinedIcon /> },
