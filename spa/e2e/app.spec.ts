@@ -216,9 +216,25 @@ test("authenticated app shell loads", async ({ page, baseURL }) => {
 
 test("invoice list opens detail and previews PDF", async ({ page, baseURL }) => {
   await login(page, baseURL);
+  const pickerFixture = await createInvoiceFixture(page);
+
+  await page.goto("/app/invoices");
+  await page.getByRole("button", { name: "New invoice" }).click();
+  const startInvoiceDialog = page.getByRole("dialog", { name: "Start a new invoice" });
+  await expect(
+    startInvoiceDialog.getByRole("row", { name: new RegExp(pickerFixture.householdName) }),
+  ).toBeVisible();
+  await startInvoiceDialog
+    .getByRole("row", { name: new RegExp(pickerFixture.householdName) })
+    .getByRole("button", { name: "Open engagement" })
+    .click();
+  await expect(page).toHaveURL(new RegExp(`/app/engagements/${pickerFixture.engagement.id}$`));
+  await expect(page.getByText("Create draft invoice")).toBeVisible();
+
   const { engagement, householdName, invoiceId, invoiceNumber } =
     await createDraftInvoiceViaBilling(page);
 
+  await page.goto(`/app/invoices/${invoiceId}`);
   await page.getByRole("button", { name: "Send invoice email" }).click();
   const sendDialog = page.getByRole("dialog", { name: "Send invoice email" });
   await expect(sendDialog.getByLabel("To")).toHaveValue(/billing-.*@example\.test/);
