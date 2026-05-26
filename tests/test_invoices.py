@@ -259,6 +259,43 @@ async def test_void_releases_expense(authed_client, db_pool, test_user):
     assert linked is None, "voided invoice should release its expense back to uninvoiced"
 
 
+async def test_list_invoices_returns_status_counts(authed_client, db_pool, test_user):
+    """status_counts mirrors the SPA tab buckets (open/draft/paid/void/all)
+    and respects non-status filters."""
+    _, eng1, te1 = await _make_engagement(db_pool, test_user["id"])
+    _, eng2, te2 = await _make_engagement(db_pool, test_user["id"])
+
+    # eng1 → draft
+    r = await authed_client.post(
+        f"/api/engagements/{eng1}/invoices", json={"time_entry_ids": [str(te1)]},
+    )
+    assert r.status_code == 201
+    # eng2 → draft → send (becomes "sent" = "open")
+    r = await authed_client.post(
+        f"/api/engagements/{eng2}/invoices", json={"time_entry_ids": [str(te2)]},
+    )
+    sent_id = r.json()["id"]
+    await authed_client.post(f"/api/invoices/{sent_id}/send")
+
+    r = await authed_client.get("/api/invoices", params={"status": "all"})
+    assert r.status_code == 200
+    counts = r.json()["status_counts"]
+    # Both invoices contribute.
+    assert counts["draft"] >= 1
+    assert counts["open"] >= 1   # the sent one
+    assert counts["all"] >= 2
+
+    # Narrowing with engagement_id should drop the other.
+    r = await authed_client.get(
+        "/api/invoices",
+        params={"status": "all", "engagement_id": str(eng2)},
+    )
+    counts = r.json()["status_counts"]
+    assert counts["open"] == 1
+    assert counts["draft"] == 0
+    assert counts["all"] == 1
+
+
 async def test_list_invoices_q_matches_invoice_number_or_household(authed_client, db_pool, test_user):
     """The q filter is a case-insensitive substring match against either
     invoice_number or household_name. Powers the SPA list search box."""

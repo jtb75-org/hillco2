@@ -218,10 +218,44 @@ async def list_invoices(
         "paid":       sum(s["paid_total"]        for s in summary_rows),
         "outstanding":sum(s["outstanding_balance"] for s in summary_rows),
     }
+
+    # Per-status counts for the SPA's tab badges. Respects the non-status
+    # filters (q, engagement_id, date ranges) so tab numbers reflect the
+    # operator's current narrowing — e.g. "Open (3)" means "3 invoices
+    # match Open right now". The status filter itself is deliberately
+    # ignored here; that's the column we're grouping by.
+    count_rows = await conn.fetch(
+        """
+        SELECT i.status::text AS status, COUNT(*) AS count
+        FROM invoices i
+        JOIN engagements e ON e.id = i.engagement_id
+        JOIN families f ON f.id = e.family_id
+        WHERE i.deleted_at IS NULL
+          AND ($1::uuid IS NULL OR i.engagement_id = $1)
+          AND ($2::text IS NULL OR i.invoice_number ILIKE $2 OR f.household_name ILIKE $2)
+          AND ($3::date IS NULL OR i.issue_date >= $3)
+          AND ($4::date IS NULL OR i.issue_date <= $4)
+          AND ($5::date IS NULL OR i.due_date   >= $5)
+          AND ($6::date IS NULL OR i.due_date   <= $6)
+        GROUP BY i.status
+        """,
+        engagement_id, q_pattern, issued_from, issued_to, due_from, due_to,
+    )
+    raw_counts = {r["status"]: r["count"] for r in count_rows}
+    status_counts = {
+        # "open" mirrors the open status_filter: sent + overdue.
+        "open":  raw_counts.get("sent", 0) + raw_counts.get("overdue", 0),
+        "draft": raw_counts.get("draft", 0),
+        "paid":  raw_counts.get("paid", 0),
+        "void":  raw_counts.get("void", 0),
+        "all":   sum(raw_counts.values()),
+    }
+
     return {
-        "invoices": [dict(r) for r in rows],
-        "summary":  [dict(r) for r in summary_rows],
-        "totals":   totals,
+        "invoices":      [dict(r) for r in rows],
+        "summary":       [dict(r) for r in summary_rows],
+        "totals":        totals,
+        "status_counts": status_counts,
     }
 
 
