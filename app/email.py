@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import logging
 import smtplib
+from collections.abc import Iterable
 from email.message import EmailMessage
-from typing import Iterable
 
 from .config import settings
 

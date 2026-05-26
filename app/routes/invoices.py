@@ -401,8 +401,8 @@ async def invoice_detail(
     )
     emails = await conn.fetch(
         """
-        SELECT id, to_address, cc_addresses, bcc_addresses, subject,
-               sent_at, smtp_message_id,
+        SELECT ie.id, ie.to_address, ie.cc_addresses, ie.bcc_addresses,
+               ie.subject, ie.sent_at, ie.smtp_message_id,
                TRIM(BOTH ' ' FROM COALESCE(p.first_name, '') ||
                  CASE WHEN p.last_name IS NOT NULL AND p.last_name <> ''
                       THEN ' ' || p.last_name ELSE '' END
@@ -717,7 +717,7 @@ async def email_invoice(
         raise HTTPException(
             status_code=502,
             detail=f"Email send failed: {exc}",
-        )
+        ) from exc
 
     await conn.execute(
         """
