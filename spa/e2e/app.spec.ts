@@ -305,6 +305,24 @@ test("invoice list opens detail and previews PDF", async ({ page, baseURL }) => 
     .toBe("2026-06-25");
   await expect(page.getByRole("row", { name: new RegExp(invoiceNumber) })).toBeVisible();
 
+  await page.getByRole("button", { name: "Kanban" }).click();
+  await expect
+    .poll(() => new URL(page.url()).searchParams.get("view"))
+    .toBe("kanban");
+  await expect(page.getByText(/^Draft \(/)).toBeVisible();
+  await expect(page.getByText(/^Open \(/)).toBeVisible();
+  await expect(page.getByText(/^Paid \(/)).toBeVisible();
+  await expect(page.getByText(/^Void \(/)).toBeVisible();
+  await page.getByRole("button", { name: new RegExp(invoiceNumber) }).click();
+  await expect(page).toHaveURL(new RegExp(`/app/invoices/${invoiceId}$`));
+
+  await page.goto("/app/invoices?status=all&view=kanban");
+  await page.getByRole("button", { name: "List" }).click();
+  await expect
+    .poll(() => new URL(page.url()).searchParams.get("view"))
+    .toBe(null);
+  await expect(page.getByRole("tab", { name: /^All / })).toBeVisible();
+
   await page.getByRole("row", { name: new RegExp(invoiceNumber) }).click();
   await expect(page).toHaveURL(new RegExp(`/app/invoices/${invoiceId}$`));
   await expect(page.getByRole("heading", { name: invoiceNumber })).toBeVisible();
