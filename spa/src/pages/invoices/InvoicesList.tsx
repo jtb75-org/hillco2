@@ -1,8 +1,13 @@
 import {
   Alert,
   Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Grid,
   IconButton,
+  Link as MuiLink,
   Stack,
   Tab,
   Table,
@@ -14,10 +19,11 @@ import {
   TextField,
   Tooltip,
 } from "@mui/material";
+import AddIcon from "@mui/icons-material/Add";
 import PictureAsPdfOutlinedIcon from "@mui/icons-material/PictureAsPdfOutlined";
 import SearchIcon from "@mui/icons-material/Search";
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { DataTableContainer } from "../../components/DataTableContainer";
 import { MetricCard } from "../../components/MetricCard";
@@ -29,7 +35,7 @@ import {
   formatInvoiceMoney,
   isInvoiceOverdue,
 } from "./invoiceFormatters";
-import type { InvoiceListRow, InvoiceListStatus } from "./invoiceTypes";
+import type { InvoiceListRow, InvoiceListStatus, InvoiceSummaryRow } from "./invoiceTypes";
 
 const STATUS_TABS: Array<{ value: InvoiceListStatus; label: string }> = [
   { value: "open", label: "Open" },
@@ -57,6 +63,7 @@ export function InvoicesList() {
   const due = params.get("due");
   const focus = params.get("focus");
   const [qDraft, setQDraft] = useState(q);
+  const [newInvoiceOpen, setNewInvoiceOpen] = useState(false);
 
   useEffect(() => {
     setQDraft(q);
@@ -114,6 +121,26 @@ export function InvoicesList() {
       <PageHeader
         title="Invoices"
         subtitle="Review invoice status, totals, and PDF previews."
+        actions={
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => setNewInvoiceOpen(true)}
+          >
+            New invoice
+          </Button>
+        }
+      />
+
+      <NewInvoiceDialog
+        open={newInvoiceOpen}
+        loading={invoices.isPending}
+        rows={invoices.data?.summary ?? []}
+        onClose={() => setNewInvoiceOpen(false)}
+        onOpenEngagement={(engagementId) => {
+          setNewInvoiceOpen(false);
+          navigate(`/engagements/${engagementId}`);
+        }}
       />
 
       <Grid container spacing={2}>
@@ -317,6 +344,86 @@ export function InvoicesList() {
         </DataTableContainer>
       )}
     </Stack>
+  );
+}
+
+function NewInvoiceDialog({
+  open,
+  loading,
+  rows,
+  onClose,
+  onOpenEngagement,
+}: {
+  open: boolean;
+  loading: boolean;
+  rows: InvoiceSummaryRow[];
+  onClose: () => void;
+  onOpenEngagement: (engagementId: string) => void;
+}) {
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>Start a new invoice</DialogTitle>
+      <DialogContent>
+        <DataTableContainer
+          loading={loading}
+          loadingColumns={4}
+          loadingRows={4}
+          empty={rows.length === 0}
+          emptyTitle="All engagements are caught up"
+          emptyDescription="No uninvoiced time or expenses."
+          emptyAction={
+            <Button component={Link} to="/engagements" onClick={onClose}>
+              View engagements
+            </Button>
+          }
+        >
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Household</TableCell>
+                <TableCell align="right">Uninvoiced</TableCell>
+                <TableCell align="right">Outstanding</TableCell>
+                <TableCell align="right" />
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {rows.map((row) => (
+                <TableRow key={row.engagement_id} hover>
+                  <TableCell>
+                    <MuiLink
+                      component="button"
+                      type="button"
+                      underline="hover"
+                      sx={{ fontWeight: 650 }}
+                      onClick={() => onOpenEngagement(row.engagement_id)}
+                    >
+                      {row.household_name}
+                    </MuiLink>
+                  </TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 650 }}>
+                    {formatInvoiceMoney(row.uninvoiced_total)}
+                  </TableCell>
+                  <TableCell align="right">
+                    {formatInvoiceMoney(row.outstanding_balance)}
+                  </TableCell>
+                  <TableCell align="right">
+                    <Button
+                      size="small"
+                      onClick={() => onOpenEngagement(row.engagement_id)}
+                    >
+                      Open engagement
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </DataTableContainer>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Close</Button>
+      </DialogActions>
+    </Dialog>
   );
 }
 

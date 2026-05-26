@@ -219,6 +219,18 @@ test("invoice list opens detail and previews PDF", async ({ page, baseURL }) => 
   const { engagement, householdName, invoiceId, invoiceNumber } =
     await createDraftInvoiceViaBilling(page);
 
+  await page.goto("/app/invoices");
+  await page.getByRole("button", { name: "New invoice" }).click();
+  const startInvoiceDialog = page.getByRole("dialog", { name: "Start a new invoice" });
+  await expect(startInvoiceDialog.getByRole("row", { name: new RegExp(householdName) })).toBeVisible();
+  await startInvoiceDialog
+    .getByRole("row", { name: new RegExp(householdName) })
+    .getByRole("button", { name: "Open engagement" })
+    .click();
+  await expect(page).toHaveURL(new RegExp(`/app/engagements/${engagement.id}$`));
+  await expect(page.getByText("Create draft invoice")).toBeVisible();
+
+  await page.goto(`/app/invoices/${invoiceId}`);
   await page.getByRole("button", { name: "Send invoice email" }).click();
   const sendDialog = page.getByRole("dialog", { name: "Send invoice email" });
   await expect(sendDialog.getByLabel("To")).toHaveValue(/billing-.*@example\.test/);
