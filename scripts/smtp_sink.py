@@ -14,7 +14,7 @@ import socketserver
 
 class SMTPHandler(socketserver.StreamRequestHandler):
     def write_line(self, line: str) -> None:
-        self.wfile.write(f"{line}\r\n".encode("utf-8"))
+        self.wfile.write(f"{line}\r\n".encode())
 
     def handle(self) -> None:
         self.write_line("220 hillco2-e2e-smtp")
