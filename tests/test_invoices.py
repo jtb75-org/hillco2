@@ -5,6 +5,7 @@ review. Worth wiring."""
 from decimal import Decimal
 from uuid import uuid4
 
+import pytest
 from fastapi.templating import Jinja2Templates
 
 
@@ -337,6 +338,148 @@ async def test_list_invoices_date_range_filters(authed_client, db_pool, test_use
     for params in cases_out:
         r = await authed_client.get("/api/invoices", params={"status": "all", **params})
         assert invoice_id not in {i["id"] for i in r.json()["invoices"]}, params
+
+
+async def test_email_invoice_sends_pdf_records_audit_and_flips_status(
+    authed_client, db_pool, test_user, monkeypatch,
+):
+    """POST /api/invoices/{id}/email sends the PDF, writes an audit
+    row, and (for drafts) flips status to sent. Resend on already-sent
+    invoice adds another row without changing status."""
+    _, engagement_id, time_entry_id = await _make_engagement(db_pool, test_user["id"])
+
+    # Attach a billing-contact guardian with an email so the default
+    # recipient lookup has something to grab.
+    async with db_pool.acquire() as conn:
+        family_id = await conn.fetchval(
+            "SELECT family_id FROM engagements WHERE id = $1", engagement_id,
+        )
+        guardian_id = await conn.fetchval(
+            """
+            INSERT INTO people (kind, first_name, last_name, email)
+            VALUES ('guardian', 'Bill', 'Guardian', 'bill@example.test')
+            RETURNING id
+            """,
+        )
+        await conn.execute(
+            """
+            INSERT INTO family_guardians
+                (family_id, person_id, is_primary_contact, is_billing_contact)
+            VALUES ($1, $2, true, true)
+            """,
+            family_id, guardian_id,
+        )
+
+    r = await authed_client.post(
+        f"/api/engagements/{engagement_id}/invoices",
+        json={"time_entry_ids": [str(time_entry_id)]},
+    )
+    assert r.status_code == 201
+    invoice = r.json()
+    invoice_id = invoice["id"]
+
+    # Capture send_email call args; skip the real SMTP socket.
+    sent_calls: list[dict] = []
+
+    def fake_send_email(*, to, subject, body_text, cc, bcc, attachments, reply_to=None):
+        sent_calls.append({
+            "to": to, "subject": subject, "body_text": body_text,
+            "cc": list(cc) if cc else [], "bcc": list(bcc) if bcc else [],
+            "attachments": [(name, mime, len(data)) for name, mime, data in attachments],
+        })
+        return "<test-msgid@hillco2>"
+
+    from app.routes import invoices as invoices_mod  # noqa: PLC0415
+    monkeypatch.setattr(invoices_mod, "send_email", fake_send_email)
+    # WeasyPrint isn't installed in the pytest container (libpango/cairo
+    # missing) — short-circuit the PDF render here. End-to-end PDF byte
+    # generation is exercised in the e2e container which does ship the
+    # native libs.
+    async def fake_render(_conn, _invoice):
+        return b"%PDF-1.4\n% stub from test\n"
+    monkeypatch.setattr(invoices_mod, "_render_invoice_pdf", fake_render)
+
+    # First call: default recipient = billing guardian; status flips.
+    r = await authed_client.post(f"/api/invoices/{invoice_id}/email", json={})
+    assert r.status_code == 200, r.text
+    detail = r.json()
+    assert detail["status"] == "sent"
+    assert len(detail["emails"]) == 1
+    assert detail["emails"][0]["to_address"] == "bill@example.test"
+    assert detail["emails"][0]["smtp_message_id"] == "<test-msgid@hillco2>"
+    assert len(sent_calls) == 1
+    assert sent_calls[0]["to"] == "bill@example.test"
+    assert invoice["invoice_number"] in sent_calls[0]["subject"]
+    # PDF attachment present
+    assert len(sent_calls[0]["attachments"]) == 1
+    name, mime, size = sent_calls[0]["attachments"][0]
+    assert name.endswith(".pdf")
+    assert mime == "pdf"
+    assert size > 0
+
+    # Second call: explicit to override, custom subject; status stays
+    # sent, but a second audit row appears.
+    r = await authed_client.post(
+        f"/api/invoices/{invoice_id}/email",
+        json={
+            "to": "another@example.test",
+            "subject": "Friendly reminder",
+            "cc": ["cc@example.test"],
+        },
+    )
+    assert r.status_code == 200, r.text
+    detail = r.json()
+    assert detail["status"] == "sent"  # unchanged
+    assert len(detail["emails"]) == 2  # ordered DESC, so [0] is the latest
+    assert detail["emails"][0]["to_address"] == "another@example.test"
+    assert detail["emails"][0]["subject"] == "Friendly reminder"
+    assert detail["emails"][0]["cc_addresses"] == ["cc@example.test"]
+    assert sent_calls[-1]["to"] == "another@example.test"
+
+
+async def test_email_invoice_rejects_when_no_recipient_available(
+    authed_client, db_pool, test_user, monkeypatch,
+):
+    """If no billing/primary guardian has an email and the caller doesn't
+    supply `to`, surface a 400 instead of silently dropping the send."""
+    _, engagement_id, time_entry_id = await _make_engagement(db_pool, test_user["id"])
+    r = await authed_client.post(
+        f"/api/engagements/{engagement_id}/invoices",
+        json={"time_entry_ids": [str(time_entry_id)]},
+    )
+    invoice_id = r.json()["id"]
+
+    # Patch send_email to make sure it's NOT called.
+    from app.routes import invoices as invoices_mod  # noqa: PLC0415
+    monkeypatch.setattr(
+        invoices_mod, "send_email",
+        lambda **_: pytest.fail("send_email should not be called"),
+    )
+
+    r = await authed_client.post(f"/api/invoices/{invoice_id}/email", json={})
+    assert r.status_code == 400
+    assert "recipient" in r.json()["detail"].lower()
+
+
+async def test_email_invoice_refuses_after_paid_or_void(
+    authed_client, db_pool, test_user, monkeypatch,
+):
+    """Paid + void invoices shouldn't be re-emailed — they're not current."""
+    from app.routes import invoices as invoices_mod  # noqa: PLC0415
+    monkeypatch.setattr(invoices_mod, "send_email", lambda **_: "<x>")
+
+    _, engagement_id, te = await _make_engagement(db_pool, test_user["id"])
+    r = await authed_client.post(
+        f"/api/engagements/{engagement_id}/invoices",
+        json={"time_entry_ids": [str(te)]},
+    )
+    invoice_id = r.json()["id"]
+    await authed_client.post(f"/api/invoices/{invoice_id}/send")
+    await authed_client.post(f"/api/invoices/{invoice_id}/mark-paid", json={})
+
+    r = await authed_client.post(f"/api/invoices/{invoice_id}/email", json={})
+    assert r.status_code == 400
+    assert "paid" in r.json()["detail"].lower()
 
 
 async def test_custom_line_add_and_delete_recomputes_totals(authed_client, db_pool, test_user):

@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from ..auth import require_user
 from ..db import get_conn
+from ..email import EmailSendError, send_email
 
 # weasyprint and ..pdf are lazy-imported inside the PDF endpoint so the
 # rest of the app (and the test suite on macOS) don't pay the
@@ -56,6 +57,19 @@ class CustomLineItem(BaseModel):
 class MarkPaid(BaseModel):
     paid_date: date | None = None  # defaults to today
     paid_amount: Decimal | None = None  # defaults to invoice total
+
+
+class EmailInvoiceRequest(BaseModel):
+    """Send an invoice by email. All fields optional — `to` defaults to the
+    family's billing contact email; subject/body fall back to templated
+    defaults if omitted. Address format is not enforced here (would
+    require pydantic's EmailStr / email-validator); the SMTP relay
+    rejects malformed addresses and we surface its error."""
+    to: str | None = None
+    cc: list[str] = Field(default_factory=list)
+    bcc: list[str] = Field(default_factory=list)
+    subject: str | None = None
+    body: str | None = None
 
 
 # ---- Helpers ---------------------------------------------------------------
@@ -385,25 +399,39 @@ async def invoice_detail(
         """,
         invoice_id,
     )
+    emails = await conn.fetch(
+        """
+        SELECT ie.id, ie.to_address, ie.cc_addresses, ie.bcc_addresses,
+               ie.subject, ie.sent_at, ie.smtp_message_id,
+               TRIM(BOTH ' ' FROM COALESCE(p.first_name, '') ||
+                 CASE WHEN p.last_name IS NOT NULL AND p.last_name <> ''
+                      THEN ' ' || p.last_name ELSE '' END
+               ) AS sent_by_name
+        FROM invoice_emails ie
+        LEFT JOIN people p ON p.id = ie.sent_by
+        WHERE ie.invoice_id = $1
+        ORDER BY ie.sent_at DESC
+        """,
+        invoice_id,
+    )
+
     out = dict(invoice)
     out.pop("engagement_id_dup", None)
     out["family"] = {"id": invoice["family_id"], "household_name": invoice["household_name"]}
     out.pop("family_id", None)
     out.pop("household_name", None)
     out["line_items"] = [dict(li) for li in line_items]
+    out["emails"] = [dict(e) for e in emails]
     out["is_overdue"] = _is_overdue(invoice["status"], invoice["due_date"])
     return out
 
 
 # ---- PDF -------------------------------------------------------------------
 
-@router.get("/invoices/{invoice_id}/pdf")
-async def invoice_pdf(
-    invoice_id: UUID,
-    _user=Depends(require_user),
-    conn=Depends(get_conn),
-):
-    invoice = await _invoice_or_404(conn, invoice_id)
+async def _render_invoice_pdf(conn, invoice) -> bytes:
+    """Build the PDF bytes for an already-loaded invoice row. Shared by
+    the /pdf endpoint and the email endpoint so both produce the exact
+    same artifact (operator preview === what the family receives)."""
     line_items = await conn.fetch(
         """
         SELECT description, quantity, unit_price, line_total, sort_order
@@ -411,7 +439,7 @@ async def invoice_pdf(
         WHERE invoice_id = $1
         ORDER BY sort_order, id
         """,
-        invoice_id,
+        invoice["id"],
     )
     primary_contact = await conn.fetchrow(
         """
@@ -431,9 +459,6 @@ async def invoice_pdf(
         """,
         invoice["family_id"],
     )
-
-    # Singleton row inserted by migration 0019 — always exists, fields
-    # may be NULL until the firm fills them in via /api/admin/org-settings.
     org = await conn.fetchrow("SELECT * FROM org_settings WHERE id = 1")
 
     from weasyprint import HTML  # noqa: PLC0415
@@ -448,7 +473,17 @@ async def invoice_pdf(
         org=dict(org) if org else {},
         is_overdue=_is_overdue(invoice["status"], invoice["due_date"]),
     )
-    pdf_bytes = HTML(string=html, url_fetcher=safe_url_fetcher).write_pdf()
+    return HTML(string=html, url_fetcher=safe_url_fetcher).write_pdf()
+
+
+@router.get("/invoices/{invoice_id}/pdf")
+async def invoice_pdf(
+    invoice_id: UUID,
+    _user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    invoice = await _invoice_or_404(conn, invoice_id)
+    pdf_bytes = await _render_invoice_pdf(conn, invoice)
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
@@ -591,6 +626,9 @@ async def send_invoice(
     user=Depends(require_user),
     conn=Depends(get_conn),
 ):
+    """Flip status draft → sent WITHOUT sending an email. Kept for the
+    'I emailed this out of band, just record that it's sent' workflow.
+    The /email endpoint is the normal path — it also flips status."""
     inv = await conn.fetchrow(
         "SELECT status FROM invoices WHERE id = $1 AND deleted_at IS NULL FOR UPDATE",
         invoice_id,
@@ -603,6 +641,101 @@ async def send_invoice(
         "UPDATE invoices SET status = 'sent', sent_at = NOW() WHERE id = $1",
         invoice_id,
     )
+    return await invoice_detail(invoice_id, _user=user, conn=conn)
+
+
+@router.post("/invoices/{invoice_id}/email")
+async def email_invoice(
+    invoice_id: UUID,
+    body: EmailInvoiceRequest,
+    user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    """Send the invoice PDF by email and record an audit row. Allowed on
+    draft (flips status to sent) and sent (treated as a resend, no
+    status change). Refused on paid/void/deleted invoices — those
+    aren't current and shouldn't be re-delivered."""
+    invoice = await _invoice_or_404(conn, invoice_id)
+    if invoice["status"] not in ("draft", "sent", "overdue"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot email invoice in status '{invoice['status']}'.",
+        )
+
+    # Recipient resolution: explicit body.to wins; otherwise prefer the
+    # billing contact, fall back to the primary contact, then any
+    # guardian with an email. Refuse if no email is on file — the
+    # operator should attach one before sending.
+    if body.to:
+        recipient = body.to
+    else:
+        recipient = await conn.fetchval(
+            """
+            SELECT p.email
+            FROM family_guardians fg
+            JOIN people p ON p.id = fg.person_id AND p.deleted_at IS NULL
+            WHERE fg.family_id = $1
+              AND p.email IS NOT NULL AND p.email <> ''
+            ORDER BY fg.is_billing_contact DESC,
+                     fg.is_primary_contact DESC,
+                     p.last_name NULLS LAST, p.first_name
+            LIMIT 1
+            """,
+            invoice["family_id"],
+        )
+        if not recipient:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "No recipient email available. Provide `to` explicitly or "
+                    "set an email on the family's billing contact."
+                ),
+            )
+
+    subject = body.subject or f"Invoice {invoice['invoice_number']} from HillCo"
+    body_text = body.body or (
+        f"Hello,\n\n"
+        f"Please find invoice {invoice['invoice_number']} attached. "
+        f"Total: ${invoice['total']:.2f}.\n\n"
+        f"Thank you.\n"
+    )
+
+    pdf_bytes = await _render_invoice_pdf(conn, invoice)
+
+    try:
+        message_id = send_email(
+            to=recipient,
+            cc=body.cc,
+            bcc=body.bcc,
+            subject=subject,
+            body_text=body_text,
+            attachments=[
+                (f"{invoice['invoice_number']}.pdf", "pdf", pdf_bytes),
+            ],
+        )
+    except EmailSendError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Email send failed: {exc}",
+        ) from exc
+
+    await conn.execute(
+        """
+        INSERT INTO invoice_emails
+            (invoice_id, to_address, cc_addresses, bcc_addresses,
+             subject, body, sent_by, smtp_message_id)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        """,
+        invoice_id, recipient, list(body.cc), list(body.bcc),
+        subject, body_text, user["id"], message_id or None,
+    )
+
+    if invoice["status"] == "draft":
+        await conn.execute(
+            "UPDATE invoices SET status = 'sent', sent_at = NOW() WHERE id = $1",
+            invoice_id,
+        )
+
     return await invoice_detail(invoice_id, _user=user, conn=conn)
 
 
