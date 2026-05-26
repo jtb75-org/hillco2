@@ -30,6 +30,8 @@ import {
 import AddIcon from "@mui/icons-material/Add";
 import PictureAsPdfOutlinedIcon from "@mui/icons-material/PictureAsPdfOutlined";
 import SearchIcon from "@mui/icons-material/Search";
+import ViewKanbanIcon from "@mui/icons-material/ViewKanban";
+import ViewListIcon from "@mui/icons-material/ViewList";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
@@ -391,12 +393,16 @@ function ViewPill({
         },
       }}
     >
-      <ToggleButton value="list" disableRipple>
-        List
-      </ToggleButton>
-      <ToggleButton value="kanban" disableRipple>
-        Kanban
-      </ToggleButton>
+      <Tooltip title="List">
+        <ToggleButton value="list" aria-label="List" disableRipple>
+          <ViewListIcon fontSize="small" />
+        </ToggleButton>
+      </Tooltip>
+      <Tooltip title="Kanban">
+        <ToggleButton value="kanban" aria-label="Kanban" disableRipple>
+          <ViewKanbanIcon fontSize="small" />
+        </ToggleButton>
+      </Tooltip>
     </ToggleButtonGroup>
   );
 }
