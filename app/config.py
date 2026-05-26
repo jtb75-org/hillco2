@@ -19,6 +19,16 @@ class Settings(BaseSettings):
     # in dev to point at the Vite dev server (e.g., http://localhost:5173).
     cors_allow_origins: str = ""
 
+    # SMTP relay for transactional email (invoice send). Defaults target
+    # the cluster's Postfix-on-SES relay, which trusts cluster-internal
+    # traffic and allows ng20.org as a sender. No auth required from
+    # inside the cluster. STARTTLS is supported but optional.
+    smtp_host: str = "mail-relay.mail.svc.cluster.local"
+    smtp_port: int = 25
+    smtp_starttls: bool = False
+    smtp_from_address: str = "hillcobilling@ng20.org"
+    smtp_from_name: str = "HillCo Billing"
+
     s3_endpoint_url: str = ""
     s3_region: str = "us-east-1"
     s3_bucket: str = ""
