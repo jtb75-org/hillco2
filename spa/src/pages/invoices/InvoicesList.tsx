@@ -57,6 +57,10 @@ function parseStatus(value: string | null): InvoiceListStatus {
     : "open";
 }
 
+function formatTabLabel(label: string, count: number | undefined) {
+  return count === undefined ? label : `${label} (${count})`;
+}
+
 export function InvoicesList() {
   const navigate = useNavigate();
   const snackbar = useSnackbar();
@@ -211,7 +215,11 @@ export function InvoicesList() {
           sx={{ borderBottom: 1, borderColor: "divider" }}
         >
           {STATUS_TABS.map((tab) => (
-            <Tab key={tab.value} value={tab.value} label={tab.label} />
+            <Tab
+              key={tab.value}
+              value={tab.value}
+              label={formatTabLabel(tab.label, invoices.data?.status_counts?.[tab.value])}
+            />
           ))}
         </Tabs>
         <Stack direction={{ xs: "column", lg: "row" }} spacing={1.5}>
