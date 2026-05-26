@@ -9,6 +9,7 @@ import type {
   InvoiceDraftUpdateBody,
   CustomLineItemBody,
   UninvoicedResponse,
+  EmailInvoiceBody,
 } from "./invoiceTypes";
 
 export const invoiceKeys = {
@@ -118,6 +119,54 @@ export function useSendInvoice(invoiceId: string, engagementId?: string) {
     },
     onSuccess: () => {
       invalidateInvoiceWorkflow(qc, engagementId);
+    },
+  });
+}
+
+export function useEmailInvoice(invoiceId: string, engagementId?: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: EmailInvoiceBody) => {
+      const { data, error } = await api.POST("/api/invoices/{invoice_id}/email", {
+        params: { path: { invoice_id: invoiceId } },
+        body,
+      });
+      if (error || !data) {
+        const detail = (error as { detail?: string } | undefined)?.detail;
+        throw new Error(detail ?? "Failed to send invoice email.");
+      }
+      return data as InvoiceDetail;
+    },
+    onSuccess: () => {
+      invalidateInvoiceWorkflow(qc, engagementId);
+    },
+  });
+}
+
+interface FamilyRecipientDetail {
+  parents: Array<{
+    email: string | null;
+    is_billing_contact: boolean;
+    is_primary_contact: boolean;
+  }>;
+}
+
+export function useInvoiceEmailRecipient(familyId: string | undefined) {
+  return useQuery<string | null, Error>({
+    queryKey: ["families", familyId, "invoice-email-recipient"],
+    enabled: !!familyId,
+    queryFn: async () => {
+      const { data, error } = await api.GET("/api/families/{family_id}", {
+        params: { path: { family_id: familyId! } },
+      });
+      if (error || !data) throw new Error("Failed to load billing recipient.");
+      const parents = ((data as unknown as FamilyRecipientDetail).parents ?? [])
+        .filter((parent) => parent.email?.trim());
+      const recipient =
+        parents.find((parent) => parent.is_billing_contact) ??
+        parents.find((parent) => parent.is_primary_contact) ??
+        parents[0];
+      return recipient?.email?.trim() ?? null;
     },
   });
 }

@@ -36,15 +36,17 @@ import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { DataTableContainer } from "../../components/DataTableContainer";
 import { PageHeader } from "../../components/PageHeader";
 import { useSnackbar } from "../../components/Snackbar";
+import { useAuth } from "../../auth";
 import { InvoiceStatusChip } from "./InvoiceStatusChip";
 import {
   useAddCustomLineItem,
   useDeleteInvoice,
   useDeleteLineItem,
+  useEmailInvoice,
   useInvoice,
+  useInvoiceEmailRecipient,
   useMarkPaidInvoice,
   usePatchInvoice,
-  useSendInvoice,
   useVoidInvoice,
 } from "./invoiceApi";
 import {
@@ -54,6 +56,8 @@ import {
 } from "./invoiceFormatters";
 import type {
   CustomLineItemBody,
+  EmailInvoiceBody,
+  InvoiceEmailAudit,
   InvoiceDetail as InvoiceDetailData,
   InvoiceDraftUpdateBody,
 } from "./invoiceTypes";
@@ -62,7 +66,9 @@ export function InvoiceDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const snackbar = useSnackbar();
-  const [confirmSend, setConfirmSend] = useState(false);
+  const { user } = useAuth();
+  const [sendEmailOpen, setSendEmailOpen] = useState(false);
+  const [sendEmailMode, setSendEmailMode] = useState<"send" | "resend">("send");
   const [editOpen, setEditOpen] = useState(false);
   const [addLineOpen, setAddLineOpen] = useState(false);
   const [markPaidOpen, setMarkPaidOpen] = useState(false);
@@ -70,7 +76,8 @@ export function InvoiceDetail() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const invoice = useInvoice(id);
   const data = invoice.data;
-  const sendInvoice = useSendInvoice(id ?? "", data?.engagement_id);
+  const emailRecipient = useInvoiceEmailRecipient(data?.family.id);
+  const emailInvoice = useEmailInvoice(id ?? "", data?.engagement_id);
   const patchInvoice = usePatchInvoice(id ?? "", data?.engagement_id);
   const addCustomLine = useAddCustomLineItem(id ?? "", data?.engagement_id);
   const deleteLine = useDeleteLineItem(id ?? "", data?.engagement_id);
@@ -78,15 +85,6 @@ export function InvoiceDetail() {
   const voidInvoice = useVoidInvoice(id ?? "", data?.engagement_id);
   const deleteInvoice = useDeleteInvoice(id ?? "", data?.engagement_id);
 
-  const handleSend = () => {
-    sendInvoice.mutate(undefined, {
-      onSuccess: () => {
-        setConfirmSend(false);
-        snackbar.show("Invoice marked sent");
-      },
-      onError: (error: Error) => snackbar.show(error.message, "error"),
-    });
-  };
   const handleVoid = () => {
     voidInvoice.mutate(undefined, {
       onSuccess: () => {
@@ -108,7 +106,8 @@ export function InvoiceDetail() {
   };
 
   const isDraft = data?.status === "draft";
-  const isSent = data?.status === "sent";
+  const isSent = data?.status === "sent" || data?.status === "overdue";
+  const latestEmail = data?.emails?.[0] ?? null;
 
   if (invoice.error) {
     return (
@@ -163,9 +162,24 @@ export function InvoiceDetail() {
                 <Button
                   variant="contained"
                   startIcon={<SendOutlinedIcon />}
-                  onClick={() => setConfirmSend(true)}
+                  onClick={() => {
+                    setSendEmailMode("send");
+                    setSendEmailOpen(true);
+                  }}
                 >
-                  Send
+                  Send invoice email
+                </Button>
+              )}
+              {isSent && (
+                <Button
+                  variant="outlined"
+                  startIcon={<SendOutlinedIcon />}
+                  onClick={() => {
+                    setSendEmailMode("resend");
+                    setSendEmailOpen(true);
+                  }}
+                >
+                  Resend email
                 </Button>
               )}
               {isSent && (
@@ -342,19 +356,35 @@ export function InvoiceDetail() {
               {data.notes || "No notes."}
             </Typography>
           </Paper>
+
+          <SentEmailsLog emails={data.emails ?? []} />
         </>
       )}
-      <ConfirmDialog
-        open={confirmSend}
-        title="Mark invoice sent?"
-        description="This changes the invoice status to sent and locks its line items. It does not email the family or deliver the PDF."
-        confirmLabel={sendInvoice.isPending ? "Sending…" : "Mark sent"}
-        pending={sendInvoice.isPending}
-        onClose={() => setConfirmSend(false)}
-        onConfirm={handleSend}
-      />
       {data && (
         <>
+          <SendInvoiceEmailDialog
+            open={sendEmailOpen}
+            mode={sendEmailMode}
+            invoice={data}
+            initialRecipient={emailRecipient.data ?? ""}
+            operatorEmail={user?.email ?? ""}
+            latestEmail={sendEmailMode === "resend" ? latestEmail : null}
+            pending={emailInvoice.isPending}
+            onClose={() => setSendEmailOpen(false)}
+            onSave={(body) => {
+              emailInvoice.mutate(body, {
+                onSuccess: () => {
+                  setSendEmailOpen(false);
+                  snackbar.show(
+                    sendEmailMode === "resend"
+                      ? "Invoice email resent"
+                      : "Invoice email sent",
+                  );
+                },
+                onError: (error: Error) => snackbar.show(error.message, "error"),
+              });
+            }}
+          />
           <EditInvoiceDialog
             open={editOpen}
             invoice={data}
@@ -433,6 +463,196 @@ function DetailItem({ label, value }: { label: string; value: string }) {
       </Typography>
       <Typography variant="body2">{value}</Typography>
     </Grid>
+  );
+}
+
+function SendInvoiceEmailDialog({
+  open,
+  mode,
+  invoice,
+  initialRecipient,
+  operatorEmail,
+  latestEmail,
+  pending,
+  onClose,
+  onSave,
+}: {
+  open: boolean;
+  mode: "send" | "resend";
+  invoice: InvoiceDetailData;
+  initialRecipient: string;
+  operatorEmail: string;
+  latestEmail: InvoiceEmailAudit | null;
+  pending: boolean;
+  onClose: () => void;
+  onSave: (body: EmailInvoiceBody) => void;
+}) {
+  const defaultSubject = defaultEmailSubject(invoice);
+  const defaultBody = defaultEmailBody(invoice);
+  const [to, setTo] = useState("");
+  const [cc, setCc] = useState("");
+  const [bcc, setBcc] = useState("");
+  const [subject, setSubject] = useState(defaultSubject);
+  const [body, setBody] = useState(defaultBody);
+
+  const reset = () => {
+    setTo(latestEmail?.to_address ?? initialRecipient);
+    setCc(formatAddressList(latestEmail?.cc_addresses));
+    setBcc(formatAddressList(latestEmail?.bcc_addresses) || operatorEmail);
+    setSubject(latestEmail?.subject ?? defaultSubject);
+    setBody(defaultBody);
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    reset();
+  }, [
+    open,
+    mode,
+    invoice.id,
+    invoice.invoice_number,
+    invoice.total,
+    initialRecipient,
+    operatorEmail,
+    latestEmail?.id,
+    latestEmail?.to_address,
+    latestEmail?.subject,
+  ]);
+
+  return (
+    <Dialog
+      open={open}
+      onClose={() => {
+        if (!pending) onClose();
+      }}
+      maxWidth="sm"
+      fullWidth
+    >
+      <DialogTitle>
+        {mode === "resend" ? "Resend invoice email" : "Send invoice email"}
+      </DialogTitle>
+      <DialogContent>
+        <Stack spacing={2} sx={{ mt: 1 }}>
+          <TextField
+            label="To"
+            type="email"
+            size="small"
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+            required
+            autoFocus
+            helperText={
+              initialRecipient
+                ? "Defaults to the family's billing contact."
+                : "No billing contact email found; enter a recipient."
+            }
+          />
+          <TextField
+            label="CC"
+            size="small"
+            value={cc}
+            onChange={(e) => setCc(e.target.value)}
+            placeholder="optional@example.com"
+            helperText="Separate multiple addresses with commas."
+          />
+          <TextField
+            label="BCC"
+            size="small"
+            value={bcc}
+            onChange={(e) => setBcc(e.target.value)}
+            helperText="Defaults to the current operator."
+          />
+          <TextField
+            label="Subject"
+            size="small"
+            value={subject}
+            onChange={(e) => setSubject(e.target.value)}
+            required
+          />
+          <TextField
+            label="Message"
+            multiline
+            minRows={5}
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            required
+          />
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose} disabled={pending}>
+          Cancel
+        </Button>
+        <Button
+          variant="contained"
+          disabled={pending || !to.trim() || !subject.trim() || !body.trim()}
+          onClick={() =>
+            onSave({
+              to: to.trim(),
+              cc: splitAddresses(cc),
+              bcc: splitAddresses(bcc),
+              subject: subject.trim(),
+              body: body.trim(),
+            })
+          }
+        >
+          {pending
+            ? "Sending..."
+            : mode === "resend"
+              ? "Resend email"
+              : "Send email"}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+function SentEmailsLog({ emails }: { emails: InvoiceEmailAudit[] }) {
+  return (
+    <Stack spacing={1}>
+      <Typography variant="subtitle1" sx={{ fontWeight: 650 }}>
+        Sent emails
+      </Typography>
+      <DataTableContainer
+        empty={emails.length === 0}
+        emptyTitle="No sent emails"
+        emptyDescription="Invoice email delivery attempts will appear here."
+      >
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell>Sent</TableCell>
+              <TableCell>To</TableCell>
+              <TableCell>Subject</TableCell>
+              <TableCell>Sent by</TableCell>
+              <TableCell>Message ID</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {emails.map((email) => (
+              <TableRow key={email.id}>
+                <TableCell sx={{ whiteSpace: "nowrap" }}>
+                  {formatInvoiceDateTime(email.sent_at)}
+                </TableCell>
+                <TableCell>
+                  <Typography variant="body2">{email.to_address}</Typography>
+                  {email.cc_addresses.length > 0 && (
+                    <Typography variant="caption" color="text.secondary">
+                      CC: {formatAddressList(email.cc_addresses)}
+                    </Typography>
+                  )}
+                </TableCell>
+                <TableCell>{email.subject}</TableCell>
+                <TableCell>{email.sent_by_name || "Unknown"}</TableCell>
+                <TableCell sx={{ fontFamily: "monospace", fontSize: 12 }}>
+                  {email.smtp_message_id || "Not recorded"}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </DataTableContainer>
+    </Stack>
   );
 }
 
@@ -733,6 +953,36 @@ function MarkPaidDialog({
       </DialogActions>
     </Dialog>
   );
+}
+
+function defaultEmailSubject(invoice: InvoiceDetailData) {
+  return `Invoice ${invoice.invoice_number} from HillCo`;
+}
+
+function defaultEmailBody(invoice: InvoiceDetailData) {
+  return [
+    "Hello,",
+    "",
+    `Please find invoice ${invoice.invoice_number} attached. Total: ${formatInvoiceMoney(invoice.total)}.`,
+    "",
+    "Thank you.",
+  ].join("\n");
+}
+
+function splitAddresses(value: string) {
+  return value
+    .split(",")
+    .map((address) => address.trim())
+    .filter(Boolean);
+}
+
+function formatAddressList(addresses: string[] | undefined) {
+  return (addresses ?? []).filter(Boolean).join(", ");
+}
+
+function formatInvoiceDateTime(value: string | null | undefined) {
+  if (!value) return "Not recorded";
+  return dayjs(value).format("MMM D, YYYY h:mm A");
 }
 
 function toCurrencyCents(value: string | number | null | undefined) {

@@ -6,6 +6,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const API_PORT = process.env.E2E_API_PORT ?? "8000";
 const SPA_PORT = process.env.E2E_SPA_PORT ?? "5173";
+const SMTP_PORT = process.env.E2E_SMTP_PORT ?? "2525";
 const DATABASE_URL =
   process.env.TEST_DATABASE_URL ??
   "postgresql://postgres:test@localhost:5432/hillco2_test";
@@ -28,6 +29,7 @@ export default defineConfig({
   webServer: [
     {
       command:
+        `${PYTHON} scripts/smtp_sink.py --host 127.0.0.1 --port ${SMTP_PORT} & ` +
         `${PYTHON} scripts/reset_e2e_db.py && ${PYTHON} -m uvicorn app.main:app --host 127.0.0.1 --port ` +
         API_PORT,
       cwd: path.resolve(__dirname, ".."),
@@ -48,6 +50,8 @@ export default defineConfig({
         E2E_AUTH_EMAIL: "browser-e2e@example.com",
         E2E_AUTH_NAME: "Browser E2E",
         E2E_AUTH_ROLE: "admin",
+        SMTP_HOST: "127.0.0.1",
+        SMTP_PORT,
       },
     },
     {

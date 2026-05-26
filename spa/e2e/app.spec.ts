@@ -123,6 +123,23 @@ async function createInvoiceFixture(page: Page) {
   expect(familyResp.ok()).toBeTruthy();
   const family = await familyResp.json();
 
+  const parentResp = await page.context().request.post(
+    `/api/families/${family.id}/parents`,
+    {
+      data: {
+        first_name: "Billing",
+        last_name: `Guardian ${suffix}`,
+        email: `billing-${suffix}@example.test`,
+        role: "guardian",
+        is_primary_contact: true,
+        is_billing_contact: true,
+        street1: "1 Main St",
+        postal_code: "62701",
+      },
+    },
+  );
+  expect(parentResp.ok()).toBeTruthy();
+
   const studentResp = await page.context().request.post(
     `/api/families/${family.id}/students`,
     {
@@ -202,12 +219,33 @@ test("invoice list opens detail and previews PDF", async ({ page, baseURL }) => 
   const { engagement, householdName, invoiceId, invoiceNumber } =
     await createDraftInvoiceViaBilling(page);
 
-  await page.getByRole("button", { name: "Send" }).click();
-  const sendDialog = page.getByRole("dialog", { name: "Mark invoice sent?" });
-  await expect(sendDialog.getByText("does not email")).toBeVisible();
-  await sendDialog.getByRole("button", { name: "Mark sent" }).click();
+  await page.getByRole("button", { name: "Send invoice email" }).click();
+  const sendDialog = page.getByRole("dialog", { name: "Send invoice email" });
+  await expect(sendDialog.getByLabel("To")).toHaveValue(/billing-.*@example\.test/);
+  await expect(sendDialog.getByLabel("BCC")).toHaveValue("browser-e2e@example.com");
+  await sendDialog.getByRole("button", { name: "Send email" }).click();
   await expect(sendDialog).toBeHidden();
   await expect(page.locator(".MuiChip-label", { hasText: /^Sent$/ })).toBeVisible();
+  await expect(page.getByText("Sent emails")).toBeVisible();
+
+  let detailResp = await page.context().request.get(`/api/invoices/${invoiceId}`);
+  expect(detailResp.ok()).toBeTruthy();
+  let detail = await detailResp.json();
+  expect(detail.emails).toHaveLength(1);
+  expect(detail.emails[0].to_address).toMatch(/^billing-.*@example\.test$/);
+
+  await page.getByRole("button", { name: "Resend email" }).click();
+  const resendDialog = page.getByRole("dialog", { name: "Resend invoice email" });
+  await expect(resendDialog.getByLabel("To")).toHaveValue(detail.emails[0].to_address);
+  await resendDialog.getByLabel("Subject").fill("Friendly reminder");
+  await resendDialog.getByRole("button", { name: "Resend email" }).click();
+  await expect(resendDialog).toBeHidden();
+
+  detailResp = await page.context().request.get(`/api/invoices/${invoiceId}`);
+  expect(detailResp.ok()).toBeTruthy();
+  detail = await detailResp.json();
+  expect(detail.emails).toHaveLength(2);
+  expect(detail.emails[0].subject).toBe("Friendly reminder");
 
   await page.getByRole("button", { name: "Mark paid" }).click();
   const paidDialog = page.getByRole("dialog", { name: "Mark invoice paid" });

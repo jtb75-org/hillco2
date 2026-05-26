@@ -5837,6 +5837,7 @@
           "invoices"
         ],
         "summary": "Send Invoice",
+        "description": "Flip status draft \u2192 sent WITHOUT sending an email. Kept for the\n'I emailed this out of band, just record that it's sent' workflow.\nThe /email endpoint is the normal path \u2014 it also flips status.",
         "operationId": "send_invoice_api_invoices__invoice_id__send_post",
         "parameters": [
           {
@@ -5850,6 +5851,58 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/invoices/{invoice_id}/email": {
+      "post": {
+        "tags": [
+          "invoices"
+        ],
+        "summary": "Email Invoice",
+        "description": "Send the invoice PDF by email and record an audit row. Allowed on\ndraft (flips status to sent) and sent (treated as a resend, no\nstatus change). Refused on paid/void/deleted invoices \u2014 those\naren't current and shouldn't be re-delivered.",
+        "operationId": "email_invoice_api_invoices__invoice_id__email_post",
+        "parameters": [
+          {
+            "name": "invoice_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Invoice Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailInvoiceRequest"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -8641,6 +8694,60 @@
           "current_grade"
         ],
         "title": "DeletionImpactStudent"
+      },
+      "EmailInvoiceRequest": {
+        "properties": {
+          "to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To"
+          },
+          "cc": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Cc"
+          },
+          "bcc": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Bcc"
+          },
+          "subject": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject"
+          },
+          "body": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body"
+          }
+        },
+        "type": "object",
+        "title": "EmailInvoiceRequest",
+        "description": "Send an invoice by email. All fields optional \u2014 `to` defaults to the\nfamily's billing contact email; subject/body fall back to templated\ndefaults if omitted. Address format is not enforced here (would\nrequire pydantic's EmailStr / email-validator); the SMTP relay\nrejects malformed addresses and we surface its error."
       },
       "EngagementCreate": {
         "properties": {
