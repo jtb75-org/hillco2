@@ -231,6 +231,15 @@ test("invoice list opens detail and previews PDF", async ({ page, baseURL }) => 
   await expect(page).toHaveURL(new RegExp(`/app/engagements/${pickerFixture.engagement.id}$`));
   await expect(page.getByText("Create draft invoice")).toBeVisible();
 
+  await page.goto("/app/invoices?focus=uninvoiced");
+  const uninvoicedRow = page.getByRole("row", {
+    name: new RegExp(pickerFixture.householdName),
+  });
+  await expect(uninvoicedRow).toBeVisible();
+  await uninvoicedRow.getByRole("button", { name: "Create invoice" }).click();
+  await expect(page).toHaveURL(/\/app\/invoices\/[0-9a-f-]+$/);
+  await expect(page.getByText("E2E invoice smoke review")).toBeVisible();
+
   const { engagement, householdName, invoiceId, invoiceNumber } =
     await createDraftInvoiceViaBilling(page);
 

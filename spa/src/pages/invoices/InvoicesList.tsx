@@ -8,6 +8,7 @@ import {
   Grid,
   IconButton,
   Link as MuiLink,
+  CircularProgress,
   Stack,
   Tab,
   Table,
@@ -28,8 +29,13 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { DataTableContainer } from "../../components/DataTableContainer";
 import { MetricCard } from "../../components/MetricCard";
 import { PageHeader } from "../../components/PageHeader";
+import { useSnackbar } from "../../components/Snackbar";
 import { InvoiceStatusChip } from "./InvoiceStatusChip";
-import { useInvoicesList } from "./invoiceApi";
+import {
+  NothingLeftToInvoiceError,
+  useCreateInvoiceFromUninvoiced,
+  useInvoicesList,
+} from "./invoiceApi";
 import {
   formatInvoiceDate,
   formatInvoiceMoney,
@@ -53,6 +59,7 @@ function parseStatus(value: string | null): InvoiceListStatus {
 
 export function InvoicesList() {
   const navigate = useNavigate();
+  const snackbar = useSnackbar();
   const [params, setParams] = useSearchParams();
   const status = parseStatus(params.get("status"));
   const q = params.get("q") ?? "";
@@ -86,6 +93,11 @@ export function InvoicesList() {
     due_to: dueTo || null,
   });
   const rows = invoices.data?.invoices ?? [];
+  const summaryRows = useMemo(
+    () => (invoices.data?.summary ?? []).filter((row) => Number(row.uninvoiced_total) > 0),
+    [invoices.data?.summary],
+  );
+  const createInvoice = useCreateInvoiceFromUninvoiced();
   const visibleRows = useMemo(
     () => filterInvoices(rows, due === "overdue"),
     [rows, due],
@@ -99,6 +111,24 @@ export function InvoicesList() {
       else next.delete(key);
       return next;
     }, { replace: true });
+  };
+
+  const handleCreateInvoice = (engagementId: string) => {
+    createInvoice.mutate(engagementId, {
+      onSuccess: (invoice) => {
+        setNewInvoiceOpen(false);
+        snackbar.show(`Draft ${invoice.invoice_number} created`);
+        navigate(`/invoices/${invoice.id}`);
+      },
+      onError: (error: Error) => {
+        if (error instanceof NothingLeftToInvoiceError) {
+          snackbar.show(error.message, "error");
+          invoices.refetch();
+          return;
+        }
+        snackbar.show(error.message, "error");
+      },
+    });
   };
 
   if (invoices.error) {
@@ -135,12 +165,14 @@ export function InvoicesList() {
       <NewInvoiceDialog
         open={newInvoiceOpen}
         loading={invoices.isPending}
-        rows={invoices.data?.summary ?? []}
+        rows={summaryRows}
+        creatingEngagementId={createInvoice.isPending ? createInvoice.variables : undefined}
         onClose={() => setNewInvoiceOpen(false)}
         onOpenEngagement={(engagementId) => {
           setNewInvoiceOpen(false);
           navigate(`/engagements/${engagementId}`);
         }}
+        onCreateInvoice={handleCreateInvoice}
       />
 
       <Grid container spacing={2}>
@@ -305,42 +337,17 @@ export function InvoicesList() {
       {focus === "uninvoiced" && (
         <DataTableContainer
           loading={invoices.isPending}
-          loadingColumns={4}
-          empty={(invoices.data?.summary.length ?? 0) === 0}
+          loadingColumns={5}
+          empty={summaryRows.length === 0}
           emptyTitle="No uninvoiced engagement balances"
           emptyDescription="Engagements with unbilled time or expenses will appear here."
         >
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Household</TableCell>
-                <TableCell align="right">Uninvoiced</TableCell>
-                <TableCell align="right">Outstanding</TableCell>
-                <TableCell align="right" />
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {invoices.data?.summary.map((row) => (
-                <TableRow key={row.engagement_id} hover>
-                  <TableCell>{row.household_name}</TableCell>
-                  <TableCell align="right">
-                    {formatInvoiceMoney(row.uninvoiced_total)}
-                  </TableCell>
-                  <TableCell align="right">
-                    {formatInvoiceMoney(row.outstanding_balance)}
-                  </TableCell>
-                  <TableCell align="right">
-                    <Button
-                      size="small"
-                      onClick={() => navigate(`/engagements/${row.engagement_id}`)}
-                    >
-                      Open engagement
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <InvoiceSummaryTable
+            rows={summaryRows}
+            creatingEngagementId={createInvoice.isPending ? createInvoice.variables : undefined}
+            onCreateInvoice={handleCreateInvoice}
+            onOpenEngagement={(engagementId) => navigate(`/engagements/${engagementId}`)}
+          />
         </DataTableContainer>
       )}
     </Stack>
@@ -351,14 +358,18 @@ function NewInvoiceDialog({
   open,
   loading,
   rows,
+  creatingEngagementId,
   onClose,
   onOpenEngagement,
+  onCreateInvoice,
 }: {
   open: boolean;
   loading: boolean;
   rows: InvoiceSummaryRow[];
+  creatingEngagementId: string | undefined;
   onClose: () => void;
   onOpenEngagement: (engagementId: string) => void;
+  onCreateInvoice: (engagementId: string) => void;
 }) {
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
@@ -366,7 +377,7 @@ function NewInvoiceDialog({
       <DialogContent>
         <DataTableContainer
           loading={loading}
-          loadingColumns={4}
+          loadingColumns={5}
           loadingRows={4}
           empty={rows.length === 0}
           emptyTitle="All engagements are caught up"
@@ -377,53 +388,90 @@ function NewInvoiceDialog({
             </Button>
           }
         >
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Household</TableCell>
-                <TableCell align="right">Uninvoiced</TableCell>
-                <TableCell align="right">Outstanding</TableCell>
-                <TableCell align="right" />
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {rows.map((row) => (
-                <TableRow key={row.engagement_id} hover>
-                  <TableCell>
-                    <MuiLink
-                      component="button"
-                      type="button"
-                      underline="hover"
-                      sx={{ fontWeight: 650 }}
-                      onClick={() => onOpenEngagement(row.engagement_id)}
-                    >
-                      {row.household_name}
-                    </MuiLink>
-                  </TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 650 }}>
-                    {formatInvoiceMoney(row.uninvoiced_total)}
-                  </TableCell>
-                  <TableCell align="right">
-                    {formatInvoiceMoney(row.outstanding_balance)}
-                  </TableCell>
-                  <TableCell align="right">
-                    <Button
-                      size="small"
-                      onClick={() => onOpenEngagement(row.engagement_id)}
-                    >
-                      Open engagement
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <InvoiceSummaryTable
+            rows={rows}
+            creatingEngagementId={creatingEngagementId}
+            onCreateInvoice={onCreateInvoice}
+            onOpenEngagement={onOpenEngagement}
+          />
         </DataTableContainer>
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>Close</Button>
       </DialogActions>
     </Dialog>
+  );
+}
+
+function InvoiceSummaryTable({
+  rows,
+  creatingEngagementId,
+  onCreateInvoice,
+  onOpenEngagement,
+}: {
+  rows: InvoiceSummaryRow[];
+  creatingEngagementId: string | undefined;
+  onCreateInvoice: (engagementId: string) => void;
+  onOpenEngagement: (engagementId: string) => void;
+}) {
+  return (
+    <Table size="small">
+      <TableHead>
+        <TableRow>
+          <TableCell>Household</TableCell>
+          <TableCell align="right">Uninvoiced</TableCell>
+          <TableCell align="right">Outstanding</TableCell>
+          <TableCell align="right" />
+        </TableRow>
+      </TableHead>
+      <TableBody>
+        {rows.map((row) => {
+          const creating = creatingEngagementId === row.engagement_id;
+          const anyCreating = !!creatingEngagementId;
+          return (
+            <TableRow key={row.engagement_id} hover>
+              <TableCell>
+                <MuiLink
+                  component="button"
+                  type="button"
+                  underline="hover"
+                  sx={{ fontWeight: 650 }}
+                  onClick={() => onOpenEngagement(row.engagement_id)}
+                >
+                  {row.household_name}
+                </MuiLink>
+              </TableCell>
+              <TableCell align="right" sx={{ fontWeight: 650 }}>
+                {formatInvoiceMoney(row.uninvoiced_total)}
+              </TableCell>
+              <TableCell align="right">
+                {formatInvoiceMoney(row.outstanding_balance)}
+              </TableCell>
+              <TableCell align="right">
+                <Stack direction="row" spacing={1} justifyContent="flex-end">
+                  <Button
+                    size="small"
+                    variant="contained"
+                    disabled={anyCreating}
+                    onClick={() => onCreateInvoice(row.engagement_id)}
+                    startIcon={creating ? <CircularProgress size={14} /> : undefined}
+                  >
+                    Create invoice
+                  </Button>
+                  <Button
+                    size="small"
+                    disabled={anyCreating}
+                    onClick={() => onOpenEngagement(row.engagement_id)}
+                  >
+                    Open engagement
+                  </Button>
+                </Stack>
+              </TableCell>
+            </TableRow>
+          );
+        })}
+      </TableBody>
+    </Table>
   );
 }
 
