@@ -1,6 +1,10 @@
 import {
   Alert,
+  Box,
   Button,
+  Card,
+  CardContent,
+  Chip,
   Dialog,
   DialogActions,
   DialogContent,
@@ -18,7 +22,10 @@ import {
   TableRow,
   Tabs,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Tooltip,
+  Typography,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import PictureAsPdfOutlinedIcon from "@mui/icons-material/PictureAsPdfOutlined";
@@ -44,17 +51,30 @@ import {
 import type { InvoiceListRow, InvoiceListStatus, InvoiceSummaryRow } from "./invoiceTypes";
 
 const STATUS_TABS: Array<{ value: InvoiceListStatus; label: string }> = [
-  { value: "open", label: "Open" },
   { value: "draft", label: "Draft" },
+  { value: "open", label: "Open" },
   { value: "paid", label: "Paid" },
   { value: "void", label: "Void" },
   { value: "all", label: "All" },
+];
+
+type ViewMode = "list" | "kanban";
+
+const KANBAN_COLUMNS: Array<{ value: Exclude<InvoiceListStatus, "all">; label: string }> = [
+  { value: "draft", label: "Draft" },
+  { value: "open", label: "Open" },
+  { value: "paid", label: "Paid" },
+  { value: "void", label: "Void" },
 ];
 
 function parseStatus(value: string | null): InvoiceListStatus {
   return STATUS_TABS.some((tab) => tab.value === value)
     ? (value as InvoiceListStatus)
     : "open";
+}
+
+function parseView(value: string | null): ViewMode {
+  return value === "kanban" ? "kanban" : "list";
 }
 
 function formatTabLabel(label: string, count: number | undefined) {
@@ -66,6 +86,7 @@ export function InvoicesList() {
   const snackbar = useSnackbar();
   const [params, setParams] = useSearchParams();
   const status = parseStatus(params.get("status"));
+  const view = parseView(params.get("view"));
   const q = params.get("q") ?? "";
   const issuedFrom = params.get("issued_from") ?? "";
   const issuedTo = params.get("issued_to") ?? "";
@@ -89,7 +110,7 @@ export function InvoicesList() {
   }, [qDraft, q]);
 
   const invoices = useInvoicesList({
-    status,
+    status: view === "kanban" ? "all" : status,
     q: q || null,
     issued_from: issuedFrom || null,
     issued_to: issuedTo || null,
@@ -209,19 +230,31 @@ export function InvoicesList() {
       </Grid>
 
       <Stack spacing={1.5}>
-        <Tabs
-          value={status}
-          onChange={(_e, value: InvoiceListStatus) => updateParam("status", value)}
-          sx={{ borderBottom: 1, borderColor: "divider" }}
+        <Stack
+          direction={{ xs: "column", sm: "row" }}
+          spacing={1.5}
+          alignItems={{ sm: "center" }}
+          justifyContent="space-between"
         >
-          {STATUS_TABS.map((tab) => (
-            <Tab
-              key={tab.value}
-              value={tab.value}
-              label={formatTabLabel(tab.label, invoices.data?.status_counts?.[tab.value])}
-            />
-          ))}
-        </Tabs>
+          {view === "list" ? (
+            <Tabs
+              value={status}
+              onChange={(_e, value: InvoiceListStatus) => updateParam("status", value)}
+              sx={{ borderBottom: 1, borderColor: "divider", flex: 1 }}
+            >
+              {STATUS_TABS.map((tab) => (
+                <Tab
+                  key={tab.value}
+                  value={tab.value}
+                  label={formatTabLabel(tab.label, invoices.data?.status_counts?.[tab.value])}
+                />
+              ))}
+            </Tabs>
+          ) : (
+            <Box sx={{ flex: 1 }} />
+          )}
+          <ViewPill view={view} onChange={(next) => updateParam("view", next === "list" ? null : next)} />
+        </Stack>
         <Stack direction={{ xs: "column", lg: "row" }} spacing={1.5}>
           <TextField
             label="Household search"
@@ -275,91 +308,320 @@ export function InvoicesList() {
         </Stack>
       </Stack>
 
-      <DataTableContainer
-        loading={invoices.isPending}
-        loadingColumns={7}
-        empty={visibleRows.length === 0}
-        emptyTitle={hasFilters ? "No matching invoices" : "No invoices"}
-        emptyDescription={
-          hasFilters
-            ? "Adjust the search or filter to see more invoices."
-            : "Invoices in this status will appear here."
-        }
-      >
-        <Table size="small" stickyHeader>
-          <TableHead>
-            <TableRow>
-              <TableCell>Invoice</TableCell>
-              <TableCell>Household</TableCell>
-              <TableCell>Status</TableCell>
-              <TableCell>Issued</TableCell>
-              <TableCell>Due</TableCell>
-              <TableCell align="right">Total</TableCell>
-              <TableCell align="right">PDF</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {visibleRows.map((invoice) => (
-              <TableRow
-                key={invoice.id}
-                hover
-                sx={{ cursor: "pointer" }}
-                onClick={() => navigate(`/invoices/${invoice.id}`)}
-              >
-                <TableCell sx={{ fontWeight: 650 }}>
-                  {invoice.invoice_number}
-                </TableCell>
-                <TableCell>{invoice.household_name}</TableCell>
-                <TableCell>
-                  <InvoiceStatusChip
-                    status={invoice.status}
-                    dueDate={invoice.due_date}
-                  />
-                </TableCell>
-                <TableCell>{formatInvoiceDate(invoice.issue_date)}</TableCell>
-                <TableCell>{formatInvoiceDate(invoice.due_date)}</TableCell>
-                <TableCell align="right" sx={{ fontWeight: 650 }}>
-                  {formatInvoiceMoney(invoice.total)}
-                </TableCell>
-                <TableCell align="right">
-                  <Tooltip title="Preview PDF">
-                    <IconButton
-                      component="a"
-                      href={`/api/invoices/${invoice.id}/pdf`}
-                      target="_blank"
-                      rel="noreferrer"
-                      size="small"
-                      aria-label={`Preview PDF for ${invoice.invoice_number}`}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <PictureAsPdfOutlinedIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </DataTableContainer>
+      {view === "list" ? (
+        <>
+          <DataTableContainer
+            loading={invoices.isPending}
+            loadingColumns={7}
+            empty={visibleRows.length === 0}
+            emptyTitle={hasFilters ? "No matching invoices" : "No invoices"}
+            emptyDescription={
+              hasFilters
+                ? "Adjust the search or filter to see more invoices."
+                : "Invoices in this status will appear here."
+            }
+          >
+            <InvoiceListTable
+              rows={visibleRows}
+              onOpenInvoice={(invoiceId) => navigate(`/invoices/${invoiceId}`)}
+            />
+          </DataTableContainer>
 
-      {focus === "uninvoiced" && (
-        <DataTableContainer
+          {focus === "uninvoiced" && (
+            <DataTableContainer
+              loading={invoices.isPending}
+              loadingColumns={5}
+              empty={summaryRows.length === 0}
+              emptyTitle="No uninvoiced engagement balances"
+              emptyDescription="Engagements with unbilled time or expenses will appear here."
+            >
+              <InvoiceSummaryTable
+                rows={summaryRows}
+                creatingEngagementId={createInvoice.isPending ? createInvoice.variables : undefined}
+                onCreateInvoice={handleCreateInvoice}
+                onOpenEngagement={(engagementId) => navigate(`/engagements/${engagementId}`)}
+              />
+            </DataTableContainer>
+          )}
+        </>
+      ) : (
+        <InvoiceKanbanView
+          rows={visibleRows}
+          counts={invoices.data?.status_counts}
           loading={invoices.isPending}
-          loadingColumns={5}
-          empty={summaryRows.length === 0}
-          emptyTitle="No uninvoiced engagement balances"
-          emptyDescription="Engagements with unbilled time or expenses will appear here."
-        >
-          <InvoiceSummaryTable
-            rows={summaryRows}
-            creatingEngagementId={createInvoice.isPending ? createInvoice.variables : undefined}
-            onCreateInvoice={handleCreateInvoice}
-            onOpenEngagement={(engagementId) => navigate(`/engagements/${engagementId}`)}
-          />
-        </DataTableContainer>
+          onOpenInvoice={(invoiceId) => navigate(`/invoices/${invoiceId}`)}
+        />
       )}
     </Stack>
   );
+}
+
+function ViewPill({
+  view,
+  onChange,
+}: {
+  view: ViewMode;
+  onChange: (next: ViewMode) => void;
+}) {
+  return (
+    <ToggleButtonGroup
+      value={view}
+      exclusive
+      onChange={(_, value) => value && onChange(value as ViewMode)}
+      size="small"
+      sx={{
+        bgcolor: "action.hover",
+        borderRadius: 999,
+        p: 0.25,
+        "& .MuiToggleButton-root": {
+          px: 2.25,
+          py: 0.5,
+          border: 0,
+          borderRadius: 999,
+          textTransform: "none",
+          color: "text.secondary",
+          fontWeight: 500,
+          "&:not(:first-of-type)": { marginLeft: 0 },
+        },
+        "& .MuiToggleButton-root.Mui-selected": {
+          bgcolor: "background.paper",
+          color: "text.primary",
+          boxShadow: 1,
+          "&:hover": { bgcolor: "background.paper" },
+        },
+      }}
+    >
+      <ToggleButton value="list" disableRipple>
+        List
+      </ToggleButton>
+      <ToggleButton value="kanban" disableRipple>
+        Kanban
+      </ToggleButton>
+    </ToggleButtonGroup>
+  );
+}
+
+function InvoiceListTable({
+  rows,
+  onOpenInvoice,
+}: {
+  rows: InvoiceListRow[];
+  onOpenInvoice: (invoiceId: string) => void;
+}) {
+  return (
+    <Table size="small" stickyHeader>
+      <TableHead>
+        <TableRow>
+          <TableCell>Invoice</TableCell>
+          <TableCell>Household</TableCell>
+          <TableCell>Status</TableCell>
+          <TableCell>Issued</TableCell>
+          <TableCell>Due</TableCell>
+          <TableCell align="right">Total</TableCell>
+          <TableCell align="right">PDF</TableCell>
+        </TableRow>
+      </TableHead>
+      <TableBody>
+        {rows.map((invoice) => (
+          <TableRow
+            key={invoice.id}
+            hover
+            sx={{ cursor: "pointer" }}
+            onClick={() => onOpenInvoice(invoice.id)}
+          >
+            <TableCell sx={{ fontWeight: 650 }}>
+              {invoice.invoice_number}
+            </TableCell>
+            <TableCell>{invoice.household_name}</TableCell>
+            <TableCell>
+              <InvoiceStatusChip
+                status={invoice.status}
+                dueDate={invoice.due_date}
+              />
+            </TableCell>
+            <TableCell>{formatInvoiceDate(invoice.issue_date)}</TableCell>
+            <TableCell>{formatInvoiceDate(invoice.due_date)}</TableCell>
+            <TableCell align="right" sx={{ fontWeight: 650 }}>
+              {formatInvoiceMoney(invoice.total)}
+            </TableCell>
+            <TableCell align="right">
+              <Tooltip title="Preview PDF">
+                <IconButton
+                  component="a"
+                  href={`/api/invoices/${invoice.id}/pdf`}
+                  target="_blank"
+                  rel="noreferrer"
+                  size="small"
+                  aria-label={`Preview PDF for ${invoice.invoice_number}`}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <PictureAsPdfOutlinedIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+}
+
+function InvoiceKanbanView({
+  rows,
+  counts,
+  loading,
+  onOpenInvoice,
+}: {
+  rows: InvoiceListRow[];
+  counts: Record<InvoiceListStatus, number> | undefined;
+  loading: boolean;
+  onOpenInvoice: (invoiceId: string) => void;
+}) {
+  const grouped = useMemo(() => groupInvoicesForKanban(rows), [rows]);
+  if (loading) {
+    return (
+      <Grid container spacing={2}>
+        {KANBAN_COLUMNS.map((column) => (
+          <Grid key={column.value} item xs={12} md={6} xl={3}>
+            <DataTableContainer loading loadingColumns={1} loadingRows={4}>
+              <></>
+            </DataTableContainer>
+          </Grid>
+        ))}
+      </Grid>
+    );
+  }
+
+  return (
+    <Grid container spacing={2}>
+      {KANBAN_COLUMNS.map((column) => {
+        const columnRows = grouped[column.value];
+        return (
+          <Grid key={column.value} item xs={12} md={6} xl={3}>
+            <Box
+              sx={{
+                border: 1,
+                borderColor: "divider",
+                bgcolor: "background.paper",
+                minHeight: 360,
+              }}
+            >
+              <Stack
+                direction="row"
+                alignItems="center"
+                justifyContent="space-between"
+                sx={{ px: 1.5, py: 1.25, borderBottom: 1, borderColor: "divider" }}
+              >
+                <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                  {formatTabLabel(column.label, counts?.[column.value])}
+                </Typography>
+                <Chip size="small" variant="outlined" label={columnRows.length} />
+              </Stack>
+              <Stack spacing={1.25} sx={{ p: 1.25 }}>
+                {columnRows.length === 0 ? (
+                  <Typography variant="body2" color="text.disabled" sx={{ p: 1 }}>
+                    No invoices in {column.label}.
+                  </Typography>
+                ) : (
+                  columnRows.map((invoice) => (
+                    <InvoiceKanbanCard
+                      key={invoice.id}
+                      invoice={invoice}
+                      onOpen={() => onOpenInvoice(invoice.id)}
+                    />
+                  ))
+                )}
+              </Stack>
+            </Box>
+          </Grid>
+        );
+      })}
+    </Grid>
+  );
+}
+
+function InvoiceKanbanCard({
+  invoice,
+  onOpen,
+}: {
+  invoice: InvoiceListRow;
+  onOpen: () => void;
+}) {
+  const overdue = isInvoiceOverdue(invoice.status, invoice.due_date);
+  return (
+    <Card
+      variant="outlined"
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") onOpen();
+      }}
+      sx={{
+        cursor: "pointer",
+        outline: "none",
+        "&:focus-visible": {
+          boxShadow: (theme) => `0 0 0 2px ${theme.palette.primary.main}`,
+        },
+      }}
+    >
+      <CardContent sx={{ p: 1.5, "&:last-child": { pb: 1.5 } }}>
+        <Stack spacing={1}>
+          <Stack direction="row" spacing={1} alignItems="flex-start">
+            <Box sx={{ minWidth: 0, flex: 1 }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                {invoice.invoice_number}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" noWrap>
+                {invoice.household_name}
+              </Typography>
+            </Box>
+            <Tooltip title="Preview PDF">
+              <IconButton
+                component="a"
+                href={`/api/invoices/${invoice.id}/pdf`}
+                target="_blank"
+                rel="noreferrer"
+                size="small"
+                aria-label={`Preview PDF for ${invoice.invoice_number}`}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <PictureAsPdfOutlinedIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </Stack>
+          <Stack direction="row" justifyContent="space-between" alignItems="center">
+            <InvoiceStatusChip status={invoice.status} dueDate={invoice.due_date} />
+            <Typography variant="body2" sx={{ fontWeight: 700 }}>
+              {formatInvoiceMoney(invoice.total)}
+            </Typography>
+          </Stack>
+          <Typography
+            variant="caption"
+            color={overdue ? "error.main" : "text.secondary"}
+          >
+            Due {formatInvoiceDate(invoice.due_date)}
+          </Typography>
+        </Stack>
+      </CardContent>
+    </Card>
+  );
+}
+
+function groupInvoicesForKanban(rows: InvoiceListRow[]) {
+  const grouped: Record<Exclude<InvoiceListStatus, "all">, InvoiceListRow[]> = {
+    draft: [],
+    open: [],
+    paid: [],
+    void: [],
+  };
+  rows.forEach((row) => {
+    if (row.status === "draft") grouped.draft.push(row);
+    else if (row.status === "paid") grouped.paid.push(row);
+    else if (row.status === "void") grouped.void.push(row);
+    else grouped.open.push(row);
+  });
+  return grouped;
 }
 
 function NewInvoiceDialog({
