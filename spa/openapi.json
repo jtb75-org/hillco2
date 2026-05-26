@@ -5318,7 +5318,7 @@
           "invoices"
         ],
         "summary": "List Invoices",
-        "description": "Lists invoices and a financial summary across all engagements.\nStatus filter:\n  - open: sent + overdue\n  - paid: only paid\n  - draft / void: literal status match\n  - all: everything (still excludes deleted)\n\nengagement_id narrows both the invoice list and the summary to a\nsingle engagement (powers the engagement billing panel).",
+        "description": "Lists invoices and a financial summary across all engagements.\nStatus filter:\n  - open: sent + overdue\n  - paid: only paid\n  - draft / void: literal status match\n  - all: everything (still excludes deleted)\n\nengagement_id narrows both the invoice list and the summary to a\nsingle engagement (powers the engagement billing panel).\n\nq does a case-insensitive substring match against invoice_number\nOR household_name \u2014 supports the SPA's combined search box.\n\nDate ranges are inclusive on both ends. Each pair is independent;\nissued_from without issued_to is an open-ended lower bound. Date\nfilters apply only to the invoice list, not the financial summary\n(which is engagement-aggregated and unrelated to per-invoice\ndates).",
         "operationId": "list_invoices_api_invoices_get",
         "parameters": [
           {
@@ -5354,6 +5354,100 @@
               ],
               "title": "Engagement Id"
             }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "case-insensitive substring of invoice_number or household_name",
+              "title": "Q"
+            },
+            "description": "case-insensitive substring of invoice_number or household_name"
+          },
+          {
+            "name": "issued_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "inclusive lower bound on issue_date",
+              "title": "Issued From"
+            },
+            "description": "inclusive lower bound on issue_date"
+          },
+          {
+            "name": "issued_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "inclusive upper bound on issue_date",
+              "title": "Issued To"
+            },
+            "description": "inclusive upper bound on issue_date"
+          },
+          {
+            "name": "due_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "inclusive lower bound on due_date",
+              "title": "Due From"
+            },
+            "description": "inclusive lower bound on due_date"
+          },
+          {
+            "name": "due_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "inclusive upper bound on due_date",
+              "title": "Due To"
+            },
+            "description": "inclusive upper bound on due_date"
           }
         ],
         "responses": {

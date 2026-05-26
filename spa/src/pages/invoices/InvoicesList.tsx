@@ -16,7 +16,7 @@ import {
 } from "@mui/material";
 import PictureAsPdfOutlinedIcon from "@mui/icons-material/PictureAsPdfOutlined";
 import SearchIcon from "@mui/icons-material/Search";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { DataTableContainer } from "../../components/DataTableContainer";
@@ -50,21 +50,48 @@ export function InvoicesList() {
   const [params, setParams] = useSearchParams();
   const status = parseStatus(params.get("status"));
   const q = params.get("q") ?? "";
+  const issuedFrom = params.get("issued_from") ?? "";
+  const issuedTo = params.get("issued_to") ?? "";
+  const dueFrom = params.get("due_from") ?? "";
+  const dueTo = params.get("due_to") ?? "";
   const due = params.get("due");
   const focus = params.get("focus");
+  const [qDraft, setQDraft] = useState(q);
 
-  const invoices = useInvoicesList({ status });
+  useEffect(() => {
+    setQDraft(q);
+  }, [q]);
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      if (qDraft.trim() === q) return;
+      updateParam("q", qDraft.trim() || null);
+    }, 300);
+    return () => window.clearTimeout(handle);
+  }, [qDraft, q]);
+
+  const invoices = useInvoicesList({
+    status,
+    q: q || null,
+    issued_from: issuedFrom || null,
+    issued_to: issuedTo || null,
+    due_from: dueFrom || null,
+    due_to: dueTo || null,
+  });
   const rows = invoices.data?.invoices ?? [];
   const visibleRows = useMemo(
-    () => filterInvoices(rows, q, due === "overdue"),
-    [rows, q, due],
+    () => filterInvoices(rows, due === "overdue"),
+    [rows, due],
   );
+  const hasFilters = Boolean(q || issuedFrom || issuedTo || dueFrom || dueTo || due);
 
   const updateParam = (key: string, value: string | null) => {
-    const next = new URLSearchParams(params);
-    if (value) next.set(key, value);
-    else next.delete(key);
-    setParams(next, { replace: true });
+    setParams((current) => {
+      const next = new URLSearchParams(current);
+      if (value) next.set(key, value);
+      else next.delete(key);
+      return next;
+    }, { replace: true });
   };
 
   if (invoices.error) {
@@ -128,23 +155,66 @@ export function InvoicesList() {
             <Tab key={tab.value} value={tab.value} label={tab.label} />
           ))}
         </Tabs>
-        <TextField
-          size="small"
-          value={q}
-          onChange={(e) => updateParam("q", e.target.value)}
-          placeholder="Search invoice number or household"
-          InputProps={{ startAdornment: <SearchIcon fontSize="small" sx={{ mr: 1 }} /> }}
-          sx={{ maxWidth: 420 }}
-        />
+        <Stack direction={{ xs: "column", lg: "row" }} spacing={1.5}>
+          <TextField
+            label="Household search"
+            size="small"
+            value={qDraft}
+            onChange={(e) => setQDraft(e.target.value)}
+            placeholder="Search household or invoice number"
+            InputProps={{ startAdornment: <SearchIcon fontSize="small" sx={{ mr: 1 }} /> }}
+            sx={{ width: { xs: "100%", lg: 360 } }}
+          />
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+            <TextField
+              label="Issued from"
+              type="date"
+              size="small"
+              value={issuedFrom}
+              onChange={(e) => updateParam("issued_from", e.target.value || null)}
+              InputLabelProps={{ shrink: true }}
+              sx={{ width: { xs: "100%", sm: 160 } }}
+            />
+            <TextField
+              label="Issued to"
+              type="date"
+              size="small"
+              value={issuedTo}
+              onChange={(e) => updateParam("issued_to", e.target.value || null)}
+              InputLabelProps={{ shrink: true }}
+              sx={{ width: { xs: "100%", sm: 160 } }}
+            />
+          </Stack>
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+            <TextField
+              label="Due from"
+              type="date"
+              size="small"
+              value={dueFrom}
+              onChange={(e) => updateParam("due_from", e.target.value || null)}
+              InputLabelProps={{ shrink: true }}
+              sx={{ width: { xs: "100%", sm: 160 } }}
+            />
+            <TextField
+              label="Due to"
+              type="date"
+              size="small"
+              value={dueTo}
+              onChange={(e) => updateParam("due_to", e.target.value || null)}
+              InputLabelProps={{ shrink: true }}
+              sx={{ width: { xs: "100%", sm: 160 } }}
+            />
+          </Stack>
+        </Stack>
       </Stack>
 
       <DataTableContainer
         loading={invoices.isPending}
         loadingColumns={7}
         empty={visibleRows.length === 0}
-        emptyTitle={q || due ? "No matching invoices" : "No invoices"}
+        emptyTitle={hasFilters ? "No matching invoices" : "No invoices"}
         emptyDescription={
-          q || due
+          hasFilters
             ? "Adjust the search or filter to see more invoices."
             : "Invoices in this status will appear here."
         }
@@ -252,16 +322,10 @@ export function InvoicesList() {
 
 function filterInvoices(
   rows: InvoiceListRow[],
-  query: string,
   overdueOnly: boolean,
 ) {
-  const needle = query.trim().toLowerCase();
   return rows.filter((row) => {
     if (overdueOnly && !isInvoiceOverdue(row.status, row.due_date)) return false;
-    if (!needle) return true;
-    return (
-      row.invoice_number.toLowerCase().includes(needle) ||
-      row.household_name.toLowerCase().includes(needle)
-    );
+    return true;
   });
 }

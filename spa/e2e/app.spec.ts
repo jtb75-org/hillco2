@@ -116,8 +116,9 @@ async function pdfTextFromAgreementPreview(page: Page, agreementRow: ReturnType<
 
 async function createInvoiceFixture(page: Page) {
   const suffix = Date.now().toString(36);
+  const householdName = `E2E Invoice Household ${suffix}`;
   const familyResp = await page.context().request.post("/api/families", {
-    data: { household_name: `E2E Invoice Household ${suffix}` },
+    data: { household_name: householdName },
   });
   expect(familyResp.ok()).toBeTruthy();
   const family = await familyResp.json();
@@ -161,11 +162,11 @@ async function createInvoiceFixture(page: Page) {
     },
   );
   expect(entryResp.ok()).toBeTruthy();
-  return engagement as { id: string };
+  return { engagement: engagement as { id: string }, householdName };
 }
 
 async function createDraftInvoiceViaBilling(page: Page) {
-  const engagement = await createInvoiceFixture(page);
+  const { engagement, householdName } = await createInvoiceFixture(page);
   await page.goto(`/app/engagements/${engagement.id}`);
   await page.getByLabel("Select E2E invoice smoke review").check();
   await page.getByLabel("Due date").fill("2026-06-25");
@@ -179,6 +180,7 @@ async function createDraftInvoiceViaBilling(page: Page) {
   await expect(page.getByText("E2E invoice smoke review")).toBeVisible();
   return {
     engagement,
+    householdName,
     invoiceId: invoiceId!,
     invoiceNumber: invoiceNumber!.trim(),
   };
@@ -197,7 +199,8 @@ test("authenticated app shell loads", async ({ page, baseURL }) => {
 
 test("invoice list opens detail and previews PDF", async ({ page, baseURL }) => {
   await login(page, baseURL);
-  const { engagement, invoiceId, invoiceNumber } = await createDraftInvoiceViaBilling(page);
+  const { engagement, householdName, invoiceId, invoiceNumber } =
+    await createDraftInvoiceViaBilling(page);
 
   await page.getByRole("button", { name: "Send" }).click();
   const sendDialog = page.getByRole("dialog", { name: "Mark invoice sent?" });
@@ -223,6 +226,22 @@ test("invoice list opens detail and previews PDF", async ({ page, baseURL }) => 
 
   await page.goto("/app/invoices?status=all");
   await expect(page.getByRole("heading", { name: "Invoices" })).toBeVisible();
+  await page.getByLabel("Household search").fill(householdName);
+  await expect
+    .poll(() => new URL(page.url()).searchParams.get("q"))
+    .toBe(householdName);
+  await expect(page.getByRole("row", { name: new RegExp(invoiceNumber) })).toBeVisible();
+
+  await page.getByLabel("Due from").fill("2026-06-25");
+  await page.getByLabel("Due to").fill("2026-06-25");
+  await expect
+    .poll(() => new URL(page.url()).searchParams.get("due_from"))
+    .toBe("2026-06-25");
+  await expect
+    .poll(() => new URL(page.url()).searchParams.get("due_to"))
+    .toBe("2026-06-25");
+  await expect(page.getByRole("row", { name: new RegExp(invoiceNumber) })).toBeVisible();
+
   await page.getByRole("row", { name: new RegExp(invoiceNumber) }).click();
   await expect(page).toHaveURL(new RegExp(`/app/invoices/${invoiceId}$`));
   await expect(page.getByRole("heading", { name: invoiceNumber })).toBeVisible();
