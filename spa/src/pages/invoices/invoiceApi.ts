@@ -108,6 +108,53 @@ export function useCreateInvoice(engagementId: string) {
   });
 }
 
+export class NothingLeftToInvoiceError extends Error {
+  constructor() {
+    super("Nothing left to invoice on this engagement");
+  }
+}
+
+export function useCreateInvoiceFromUninvoiced() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (engagementId: string) => {
+      const { data: uninvoiced, error: uninvoicedError } = await api.GET(
+        "/api/engagements/{engagement_id}/uninvoiced",
+        { params: { path: { engagement_id: engagementId } } },
+      );
+      if (uninvoicedError || !uninvoiced) {
+        throw new Error("Failed to load uninvoiced work.");
+      }
+      const source = uninvoiced as UninvoicedResponse;
+      const timeEntryIds = source.time_entries.map((row) => row.id);
+      const expenseIds = source.expenses.map((row) => row.id);
+      if (timeEntryIds.length + expenseIds.length === 0) {
+        throw new NothingLeftToInvoiceError();
+      }
+
+      const { data, error } = await api.POST(
+        "/api/engagements/{engagement_id}/invoices",
+        {
+          params: { path: { engagement_id: engagementId } },
+          body: {
+            tax: "0",
+            time_entry_ids: timeEntryIds,
+            expense_ids: expenseIds,
+          },
+        },
+      );
+      if (error || !data) {
+        const detail = (error as { detail?: string } | undefined)?.detail;
+        throw new Error(detail ?? "Failed to create invoice.");
+      }
+      return data as InvoiceDetail;
+    },
+    onSuccess: (invoice) => {
+      invalidateInvoiceWorkflow(qc, invoice.engagement_id);
+    },
+  });
+}
+
 export function useSendInvoice(invoiceId: string, engagementId?: string) {
   const qc = useQueryClient();
   return useMutation({
