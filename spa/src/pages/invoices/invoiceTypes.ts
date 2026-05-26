@@ -35,10 +35,13 @@ export interface InvoiceTotals {
   outstanding: string;
 }
 
+export type InvoiceStatusCounts = Record<InvoiceListStatus, number>;
+
 export interface InvoiceListResponse {
   invoices: InvoiceListRow[];
   summary: InvoiceSummaryRow[];
   totals: InvoiceTotals;
+  status_counts: InvoiceStatusCounts;
 }
 
 export interface InvoiceLineItem {
