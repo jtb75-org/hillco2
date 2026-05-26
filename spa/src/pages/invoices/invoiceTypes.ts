@@ -52,6 +52,17 @@ export interface InvoiceLineItem {
   source_id: string | null;
 }
 
+export interface InvoiceEmailAudit {
+  id: string;
+  to_address: string;
+  cc_addresses: string[];
+  bcc_addresses: string[];
+  subject: string;
+  sent_at: string;
+  smtp_message_id: string | null;
+  sent_by_name: string | null;
+}
+
 export interface InvoiceDetail {
   id: string;
   invoice_number: string;
@@ -73,6 +84,7 @@ export interface InvoiceDetail {
     household_name: string;
   };
   line_items: InvoiceLineItem[];
+  emails: InvoiceEmailAudit[];
 }
 
 export interface UninvoicedTimeEntry {
@@ -118,4 +130,12 @@ export interface CustomLineItemBody {
   description: string;
   quantity: string;
   unit_price: string;
+}
+
+export interface EmailInvoiceBody {
+  to?: string | null;
+  cc?: string[];
+  bcc?: string[];
+  subject?: string | null;
+  body?: string | null;
 }
