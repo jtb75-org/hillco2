@@ -391,6 +391,13 @@ async def test_email_invoice_sends_pdf_records_audit_and_flips_status(
 
     from app.routes import invoices as invoices_mod  # noqa: PLC0415
     monkeypatch.setattr(invoices_mod, "send_email", fake_send_email)
+    # WeasyPrint isn't installed in the pytest container (libpango/cairo
+    # missing) — short-circuit the PDF render here. End-to-end PDF byte
+    # generation is exercised in the e2e container which does ship the
+    # native libs.
+    async def fake_render(_conn, _invoice):
+        return b"%PDF-1.4\n% stub from test\n"
+    monkeypatch.setattr(invoices_mod, "_render_invoice_pdf", fake_render)
 
     # First call: default recipient = billing guardian; status flips.
     r = await authed_client.post(f"/api/invoices/{invoice_id}/email", json={})
