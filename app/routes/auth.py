@@ -1,4 +1,5 @@
 import logging
+from datetime import UTC, datetime, timedelta
 
 from authlib.integrations.base_client.errors import OAuthError
 from fastapi import APIRouter, Request
@@ -25,7 +26,20 @@ POST_LOGIN_ERROR_REDIRECT = "/"
 @router.get("/auth/login")
 async def auth_login(request: Request):
     redirect_uri = str(request.url_for("auth_callback"))
-    return await oauth.google.authorize_redirect(request, redirect_uri)
+    return await oauth.google.authorize_redirect(
+        request,
+        redirect_uri,
+        access_type="offline",
+        prompt="consent",
+    )
+
+
+def _token_expires_at(token: dict) -> datetime | None:
+    if token.get("expires_at") is not None:
+        return datetime.fromtimestamp(token["expires_at"], tz=UTC)
+    if token.get("expires_in") is not None:
+        return datetime.now(UTC) + timedelta(seconds=token["expires_in"])
+    return None
 
 
 @router.get("/auth/callback", name="auth_callback")
@@ -150,6 +164,29 @@ async def auth_callback(request: Request):
                 "UPDATE auth SET last_login_at = NOW() WHERE person_id = $1",
                 person_id,
             )
+
+        await conn.execute(
+            """
+            INSERT INTO google_oauth_tokens (
+              person_id, refresh_token, access_token, access_token_expires_at, scope
+            )
+            VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT (person_id) DO UPDATE SET
+              refresh_token = COALESCE(
+                EXCLUDED.refresh_token,
+                google_oauth_tokens.refresh_token
+              ),
+              access_token = EXCLUDED.access_token,
+              access_token_expires_at = EXCLUDED.access_token_expires_at,
+              scope = COALESCE(EXCLUDED.scope, google_oauth_tokens.scope),
+              updated_at = NOW()
+            """,
+            person_id,
+            token.get("refresh_token"),
+            token.get("access_token"),
+            _token_expires_at(token),
+            token.get("scope"),
+        )
 
         # Refetch the composed display name + email after any update above.
         row = await conn.fetchrow(
