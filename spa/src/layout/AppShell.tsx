@@ -4,6 +4,10 @@ import {
   Avatar,
   Box,
   Divider,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Drawer,
   IconButton,
   List,
@@ -15,20 +19,24 @@ import {
   MenuItem,
   Toolbar,
   Typography,
+  Button,
 } from "@mui/material";
 import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
 import AssignmentOutlinedIcon from "@mui/icons-material/AssignmentOutlined";
 import AutoStoriesOutlinedIcon from "@mui/icons-material/AutoStoriesOutlined";
+import CheckIcon from "@mui/icons-material/Check";
 import ContactsIcon from "@mui/icons-material/Contacts";
 import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 import GroupsIcon from "@mui/icons-material/Groups";
 import HomeIcon from "@mui/icons-material/Home";
 import LogoutIcon from "@mui/icons-material/Logout";
+import PaletteOutlinedIcon from "@mui/icons-material/PaletteOutlined";
 import ReceiptLongOutlinedIcon from "@mui/icons-material/ReceiptLongOutlined";
 import SchoolIcon from "@mui/icons-material/School";
 import { Link, Outlet, useLocation } from "react-router-dom";
 
 import { signOut, useAuth } from "../auth";
+import { useAppTheme } from "../themeProvider";
 
 const DRAWER_WIDTH = 240;
 
@@ -55,8 +63,10 @@ const NAV_ITEMS: ReadonlyArray<NavEntry> = [
 
 export function AppShell() {
   const { user } = useAuth();
+  const appTheme = useAppTheme();
   const { pathname } = useLocation();
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
+  const [themeDialogOpen, setThemeDialogOpen] = useState(false);
   return (
     <Box sx={{ display: "flex", minHeight: "100vh", bgcolor: "background.default" }}>
       <AppBar
@@ -104,6 +114,23 @@ export function AppShell() {
                   </Typography>
                 </Box>
                 <Divider />
+                <MenuItem
+                  onClick={() => {
+                    setMenuAnchor(null);
+                    setThemeDialogOpen(true);
+                  }}
+                >
+                  <ListItemIcon>
+                    <PaletteOutlinedIcon fontSize="small" />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary="Color scheme"
+                    secondary={
+                      appTheme.available.find((option) => option.name === appTheme.current)
+                        ?.label
+                    }
+                  />
+                </MenuItem>
                 <MenuItem onClick={() => { setMenuAnchor(null); signOut(); }}>
                   <ListItemIcon>
                     <LogoutIcon fontSize="small" />
@@ -115,6 +142,35 @@ export function AppShell() {
           )}
         </Toolbar>
       </AppBar>
+      <Dialog
+        open={themeDialogOpen}
+        onClose={() => setThemeDialogOpen(false)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Color scheme</DialogTitle>
+        <DialogContent>
+          <List disablePadding>
+            {appTheme.available.map((option) => (
+              <ListItem key={option.name} disablePadding>
+                <ListItemButton
+                  selected={option.name === appTheme.current}
+                  onClick={() => {
+                    appTheme.setCurrent(option.name);
+                    setThemeDialogOpen(false);
+                  }}
+                >
+                  <ListItemText primary={option.label} />
+                  {option.name === appTheme.current && <CheckIcon fontSize="small" />}
+                </ListItemButton>
+              </ListItem>
+            ))}
+          </List>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setThemeDialogOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
       <Drawer
         variant="permanent"
         sx={{
@@ -149,11 +205,11 @@ export function AppShell() {
                       borderRadius: 1,
                       minHeight: 42,
                       "&.Mui-selected": {
-                        bgcolor: "#eff6ff",
+                        bgcolor: "action.selected",
                         color: "primary.dark",
                       },
                       "&.Mui-selected:hover": {
-                        bgcolor: "#eff6ff",
+                        bgcolor: "action.selected",
                       },
                     }}
                   >
