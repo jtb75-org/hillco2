@@ -16,9 +16,12 @@ import {
   TableRow,
   ToggleButton,
   ToggleButtonGroup,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
+import ViewKanbanIcon from "@mui/icons-material/ViewKanban";
+import ViewListIcon from "@mui/icons-material/ViewList";
 import dayjs from "dayjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
@@ -180,12 +183,16 @@ function ViewPill({
         },
       }}
     >
-      <ToggleButton value="list" disableRipple>
-        List
-      </ToggleButton>
-      <ToggleButton value="kanban" disableRipple>
-        Kanban
-      </ToggleButton>
+      <Tooltip title="List">
+        <ToggleButton value="list" aria-label="List" disableRipple>
+          <ViewListIcon fontSize="small" />
+        </ToggleButton>
+      </Tooltip>
+      <Tooltip title="Kanban">
+        <ToggleButton value="kanban" aria-label="Kanban" disableRipple>
+          <ViewKanbanIcon fontSize="small" />
+        </ToggleButton>
+      </Tooltip>
     </ToggleButtonGroup>
   );
 }
