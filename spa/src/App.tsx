@@ -77,6 +77,14 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function AdminGate({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
+  if (user?.role !== "admin") {
+    return <Navigate to="/dashboard" replace />;
+  }
+  return <>{children}</>;
+}
+
 export function App() {
   return (
     <AuthProvider>
@@ -106,7 +114,14 @@ export function App() {
               <Route path="contracts" element={<CatalogContracts />} />
               <Route path="firm-settings" element={<CatalogFirmSettings />} />
             </Route>
-            <Route path="/admin" element={<AdminLayout />}>
+            <Route
+              path="/admin"
+              element={
+                <AdminGate>
+                  <AdminLayout />
+                </AdminGate>
+              }
+            >
               <Route index element={<Navigate to="users" replace />} />
               <Route path="users" element={<AdminUsers />} />
               <Route path="audit-log" element={<AdminAuditLog />} />

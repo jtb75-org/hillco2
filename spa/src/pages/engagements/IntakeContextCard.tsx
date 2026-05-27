@@ -2,6 +2,8 @@ import { Box, Chip, Divider, Paper, Stack, Typography } from "@mui/material";
 import dayjs from "dayjs";
 import { Link as RouterLink } from "react-router-dom";
 
+import { sanitizeRichTextHtml } from "../../utils/richText";
+
 /** Read-only snapshot of the intake conversation that spawned this
  *  engagement. Stored on engagements.intake_snapshot at convert time
  *  so the engagement keeps a stable record even if the intake row is
@@ -162,9 +164,6 @@ function Section({ label, children }: { label: string; children: React.ReactNode
 }
 
 function RichBody({ html }: { html: string }) {
-  // Snapshot text is the consultant's own HTML from the intake form's
-  // RichTextEditor — already sanitized server-side via the same
-  // pipeline as student notes. Rendering inline.
   return (
     <Box
       sx={{
@@ -173,7 +172,7 @@ function RichBody({ html }: { html: string }) {
         "& p:last-child": { mb: 0 },
         "& ul, & ol": { my: 0.5, pl: 3 },
       }}
-      dangerouslySetInnerHTML={{ __html: html }}
+      dangerouslySetInnerHTML={{ __html: sanitizeRichTextHtml(html) }}
     />
   );
 }

@@ -34,6 +34,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { RichTextEditor } from "../../components/RichTextEditor";
 import { useSnackbar } from "../../components/Snackbar";
+import { sanitizeRichTextHtml } from "../../utils/richText";
 import {
   ActivityKindBody,
   KIND_HAS_BODY,
@@ -742,7 +743,7 @@ function NotesInput({
           color: "text.secondary",
           "&:hover": { color: "text.primary" },
         }}
-        dangerouslySetInnerHTML={{ __html: value }}
+        dangerouslySetInnerHTML={{ __html: sanitizeRichTextHtml(value) }}
       />
     );
   }
