@@ -212,6 +212,19 @@ test("authenticated app shell loads", async ({ page, baseURL }) => {
   await expect(page.getByText("HillCo Portal")).toBeVisible();
   await expect(page.getByText("Browser E2E")).toBeVisible();
   await expect(page.getByRole("link", { name: /engagements/i })).toBeVisible();
+
+  await page.getByRole("button", { name: "Account menu" }).click();
+  await page.getByRole("menuitem", { name: /Color scheme/ }).click();
+  const themeDialog = page.getByRole("dialog", { name: "Color scheme" });
+  await themeDialog.getByRole("button", { name: "Intake" }).click();
+  await expect(themeDialog).toBeHidden();
+  await expect
+    .poll(() => page.evaluate(() => window.localStorage.getItem("hillco2.theme")))
+    .toBe("intake");
+
+  await page.reload();
+  await expect(page.getByText("HillCo Portal")).toBeVisible();
+  expect(await page.evaluate(() => window.localStorage.getItem("hillco2.theme"))).toBe("intake");
 });
 
 test("invoice list opens detail and previews PDF", async ({ page, baseURL }) => {
