@@ -14,6 +14,7 @@ from .db import db
 from .routes import admin as admin_routes
 from .routes import agreements as agreements_routes
 from .routes import auth as auth_routes
+from .routes import calendar as calendar_routes
 from .routes import catalog as catalog_routes
 from .routes import contacts as contacts_routes
 from .routes import contract_templates as contract_templates_routes
@@ -174,6 +175,7 @@ async def auth_aware_validation_error(request: Request, exc: RequestValidationEr
 
 app.include_router(health_routes.router)
 app.include_router(auth_routes.router)
+app.include_router(calendar_routes.router)
 app.include_router(me_routes.router)
 app.include_router(families_routes.router)
 app.include_router(students_routes.router)

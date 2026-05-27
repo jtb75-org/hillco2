@@ -2,6 +2,7 @@
 
 import base64
 import json
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import itsdangerous
@@ -64,10 +65,13 @@ async def test_auth_callback_first_time_google_signup_creates_session(
     async with db_pool.acquire() as conn:
         row = await conn.fetchrow(
             """
-            SELECT p.id, a.status, ai.provider_subject
+            SELECT
+              p.id, a.status, ai.provider_subject,
+              got.refresh_token, got.access_token, got.scope
             FROM people p
             JOIN auth a ON a.person_id = p.id
             JOIN auth_identities ai ON ai.person_id = p.id
+            LEFT JOIN google_oauth_tokens got ON got.person_id = p.id
             WHERE p.email = $1
             """,
             email,
@@ -76,6 +80,74 @@ async def test_auth_callback_first_time_google_signup_creates_session(
     assert str(row["id"]) == session["user_id"]
     assert row["status"] == "active"
     assert row["provider_subject"] == email
+    assert row["refresh_token"] is None
+    assert row["access_token"] is None
+
+
+async def test_auth_callback_persists_google_tokens_and_preserves_refresh_token(
+    client, db_pool, monkeypatch
+):
+    email = f"token-user-{uuid4()}@example.com"
+    _patch_allowed_emails(monkeypatch, email)
+    async with db_pool.acquire() as conn:
+        person_id = await conn.fetchval(
+            """
+            INSERT INTO people (kind, first_name, last_name, email)
+            VALUES ('other', 'Token', 'User', $1)
+            RETURNING id
+            """,
+            email,
+        )
+        await conn.execute(
+            "INSERT INTO auth (person_id, status, app_role) VALUES ($1, 'active', 'admin')",
+            person_id,
+        )
+        await conn.execute(
+            """
+            INSERT INTO auth_identities (person_id, provider, provider_subject)
+            VALUES ($1, 'google', $2)
+            """,
+            person_id,
+            email,
+        )
+
+    _patch_oauth_token(
+        monkeypatch,
+        {
+            "userinfo": {"email": email, "name": "Token User"},
+            "refresh_token": "initial-refresh",
+            "access_token": "initial-access",
+            "expires_in": 3600,
+            "scope": "openid email profile https://www.googleapis.com/auth/calendar.readonly",
+        },
+    )
+    r = await client.get("/auth/callback", follow_redirects=False)
+    assert r.status_code == 303
+
+    _patch_oauth_token(
+        monkeypatch,
+        {
+            "userinfo": {"email": email, "name": "Token User"},
+            "access_token": "silent-access",
+            "expires_in": 1800,
+        },
+    )
+    r = await client.get("/auth/callback", follow_redirects=False)
+    assert r.status_code == 303
+
+    async with db_pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT refresh_token, access_token, access_token_expires_at, scope
+            FROM google_oauth_tokens
+            WHERE person_id = $1
+            """,
+            person_id,
+        )
+    assert row["refresh_token"] == "initial-refresh"
+    assert row["access_token"] == "silent-access"
+    assert row["access_token_expires_at"] > datetime.now(UTC) + timedelta(minutes=20)
+    assert row["scope"] == "openid email profile https://www.googleapis.com/auth/calendar.readonly"
 
 
 async def test_auth_callback_oauth_error_redirects_and_clears_session(
