@@ -11,7 +11,7 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from ..auth import require_user
+from ..auth import require_admin, require_user
 from ..db import get_conn
 
 router = APIRouter(prefix="/api", tags=["org_settings"])
@@ -51,7 +51,7 @@ async def get_org_settings(
 @router.patch("/org-settings")
 async def update_org_settings(
     body: OrgSettingsUpdate,
-    _user=Depends(require_user),
+    _user=Depends(require_admin),
     conn=Depends(get_conn),
 ):
     fields = body.model_dump(exclude_unset=True)

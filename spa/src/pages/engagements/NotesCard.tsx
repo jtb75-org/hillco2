@@ -22,6 +22,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { RichTextEditor } from "../../components/RichTextEditor";
 import { useSnackbar } from "../../components/Snackbar";
+import { sanitizeRichTextHtml } from "../../utils/richText";
 
 type NoteKind =
   | "parent_intake"
@@ -220,7 +221,7 @@ function NoteBodyPreview({ html }: { html: string }) {
         "& p:last-child": { mb: 0 },
         "& ul, & ol": { my: 0.5, pl: 3 },
       }}
-      dangerouslySetInnerHTML={{ __html: html }}
+      dangerouslySetInnerHTML={{ __html: sanitizeRichTextHtml(html) }}
     />
   );
 }

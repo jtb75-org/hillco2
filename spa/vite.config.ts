@@ -12,7 +12,7 @@ import path from "node:path";
 // locally on a different host/port.
 const API_BASE = process.env.VITE_API_BASE ?? "https://hillco2.ng20.org";
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [react()],
   // SPA serves at /app/ — ingress routes /app/* to this container, with
   // /api/* and /auth/* going to the backend tier and `/` going to the
@@ -48,6 +48,6 @@ export default defineConfig({
   },
   build: {
     outDir: "dist",
-    sourcemap: true,
+    sourcemap: mode !== "production",
   },
-});
+}));
