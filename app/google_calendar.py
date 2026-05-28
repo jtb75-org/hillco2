@@ -15,6 +15,42 @@ class ReauthRequired(Exception):
     """Google credentials are missing, expired, or revoked."""
 
 
+class CalendarAccessDenied(Exception):
+    """Google Calendar API access is denied upstream."""
+
+    def __init__(self, detail: str | None = None) -> None:
+        self.detail = detail or "Google Calendar access is unavailable."
+        super().__init__(self.detail)
+
+
+class CalendarUnavailable(Exception):
+    """Google Calendar returned an unexpected upstream error."""
+
+    def __init__(self, detail: str | None = None) -> None:
+        self.detail = detail or "Google Calendar is temporarily unavailable."
+        super().__init__(self.detail)
+
+
+def _google_error_message(response: httpx.Response) -> str | None:
+    try:
+        payload = response.json()
+    except ValueError:
+        return None
+
+    error = payload.get("error") if isinstance(payload, dict) else None
+    if isinstance(error, dict):
+        message = error.get("message")
+        if isinstance(message, str) and message.strip():
+            return message.strip()
+    if isinstance(error, str) and error.strip():
+        return error.strip()
+
+    message = payload.get("message") if isinstance(payload, dict) else None
+    if isinstance(message, str) and message.strip():
+        return message.strip()
+    return None
+
+
 def _expires_at(expires_in: int | None) -> datetime | None:
     if expires_in is None:
         return None
@@ -107,7 +143,10 @@ async def list_upcoming(
 
     if response.status_code == 401:
         raise ReauthRequired()
-    response.raise_for_status()
+    if response.status_code == 403:
+        raise CalendarAccessDenied(_google_error_message(response))
+    if response.status_code >= 400:
+        raise CalendarUnavailable(_google_error_message(response))
 
     events = []
     for item in response.json().get("items", []):

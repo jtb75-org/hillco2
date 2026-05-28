@@ -3,7 +3,13 @@ from fastapi.responses import JSONResponse
 
 from ..auth import require_user
 from ..db import get_conn
-from ..google_calendar import ReauthRequired, get_access_token, list_upcoming
+from ..google_calendar import (
+    CalendarAccessDenied,
+    CalendarUnavailable,
+    ReauthRequired,
+    get_access_token,
+    list_upcoming,
+)
 
 router = APIRouter(prefix="/api/calendar", tags=["calendar"])
 
@@ -24,5 +30,21 @@ async def upcoming_events(
             content={
                 "code": "reauth_required",
                 "detail": "Google Calendar access expired",
+            },
+        )
+    except CalendarAccessDenied as exc:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "code": "calendar_access_denied",
+                "detail": exc.detail,
+            },
+        )
+    except CalendarUnavailable as exc:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "code": "calendar_unavailable",
+                "detail": exc.detail,
             },
         )

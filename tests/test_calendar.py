@@ -164,6 +164,66 @@ async def test_calendar_upcoming_revoked_refresh_token_returns_reauth(
     }
 
 
+async def test_calendar_upcoming_google_401_returns_reauth(
+    authed_client,
+    db_pool,
+    test_user,
+):
+    await _insert_token(db_pool, test_user["id"], access_token="stale-token")
+
+    async with respx.mock(assert_all_mocked=False) as router:
+        router.get(EVENTS_URL).mock(
+            return_value=httpx.Response(
+                401,
+                json={
+                    "error": {
+                        "code": 401,
+                        "message": "Invalid Credentials",
+                        "status": "UNAUTHENTICATED",
+                    }
+                },
+            )
+        )
+
+        r = await authed_client.get("/api/calendar/upcoming")
+
+    assert r.status_code == 401
+    assert r.json() == {
+        "code": "reauth_required",
+        "detail": "Google Calendar access expired",
+    }
+
+
+async def test_calendar_upcoming_google_403_returns_typed_access_denied(
+    authed_client,
+    db_pool,
+    test_user,
+):
+    await _insert_token(db_pool, test_user["id"], access_token="fresh-token")
+
+    async with respx.mock(assert_all_mocked=False) as router:
+        router.get(EVENTS_URL).mock(
+            return_value=httpx.Response(
+                403,
+                json={
+                    "error": {
+                        "code": 403,
+                        "message": "Google Calendar API has not been used in project.",
+                        "status": "PERMISSION_DENIED",
+                    }
+                },
+            )
+        )
+
+        r = await authed_client.get("/api/calendar/upcoming")
+
+    assert r.status_code == 503
+    assert r.json() == {
+        "code": "calendar_access_denied",
+        "detail": "Google Calendar API has not been used in project.",
+    }
+
+
 async def test_calendar_upcoming_missing_token_row_returns_reauth(authed_client):
     r = await authed_client.get("/api/calendar/upcoming")
 
