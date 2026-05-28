@@ -227,6 +227,58 @@ test("authenticated app shell loads", async ({ page, baseURL }) => {
   expect(await page.evaluate(() => window.localStorage.getItem("hillco2.theme"))).toBe("intake");
 });
 
+test("dashboard calendar card handles reauth state", async ({ page }) => {
+  await page.route("**/api/me", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: "user-1",
+        email: "browser-e2e@example.com",
+        name: "Browser E2E",
+        role: "admin",
+      }),
+    });
+  });
+  await page.route("**/api/dashboard", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        today: "2026-05-28",
+        stats: {
+          my_open_followups: 0,
+          my_overdue_followups: 0,
+          active_engagements: 0,
+          outstanding_total: "0",
+          overdue_invoice_count: 0,
+          uninvoiced_total: "0",
+        },
+        my_followups: [],
+        outstanding_invoices: [],
+        recent_notes: [],
+        audit: [],
+      }),
+    });
+  });
+  await page.route("**/api/calendar/upcoming?*", async (route) => {
+    await route.fulfill({
+      status: 401,
+      contentType: "application/json",
+      body: JSON.stringify({
+        code: "reauth_required",
+        detail: "Google Calendar authorization required.",
+      }),
+    });
+  });
+
+  await page.goto("/app/dashboard");
+
+  await expect(page.getByRole("heading", { name: /welcome, browser/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Upcoming" })).toBeVisible();
+  await expect(page.getByText("Reconnect Google Calendar to see upcoming events")).toBeVisible();
+});
+
 test("invoice list opens detail and previews PDF", async ({ page, baseURL }) => {
   await login(page, baseURL);
   const pickerFixture = await createInvoiceFixture(page);

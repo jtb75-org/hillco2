@@ -25,6 +25,7 @@ import { PageHeader } from "../components/PageHeader";
 import { SectionPanel } from "../components/SectionPanel";
 import { StatusChip } from "../components/StatusChip";
 import { useSnackbar } from "../components/Snackbar";
+import { UpcomingCalendarCard } from "./dashboard/UpcomingCalendarCard";
 import { PickOrCreateFamilyDialog } from "./intake/PickOrCreateFamilyDialog";
 
 dayjs.extend(relativeTime);
@@ -258,6 +259,8 @@ export function Dashboard() {
 
         <Grid item xs={12} md={6}>
           <Stack spacing={2}>
+            <UpcomingCalendarCard />
+
             <SectionPanel
               title="Outstanding invoices"
               count={data?.outstanding_invoices.length}
