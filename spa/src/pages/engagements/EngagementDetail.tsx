@@ -125,7 +125,7 @@ export function EngagementDetail() {
                     ? "success"
                     : "neutral"
               }
-              variant="outlined"
+              variant="soft"
             />
           </Stack>
         }
