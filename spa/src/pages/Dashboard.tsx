@@ -11,6 +11,12 @@ import {
   Stack,
 } from "@mui/material";
 import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutline";
+import AssignmentLateOutlinedIcon from "@mui/icons-material/AssignmentLateOutlined";
+import AssignmentTurnedInOutlinedIcon from "@mui/icons-material/AssignmentTurnedInOutlined";
+import HourglassEmptyOutlinedIcon from "@mui/icons-material/HourglassEmptyOutlined";
+import PaidOutlinedIcon from "@mui/icons-material/PaidOutlined";
+import ReceiptLongOutlinedIcon from "@mui/icons-material/ReceiptLongOutlined";
+import WorkOutlineOutlinedIcon from "@mui/icons-material/WorkOutlineOutlined";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import { useState } from "react";
@@ -20,9 +26,9 @@ import { Link as RouterLink, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import type { components } from "../api/schema";
 import { useAuth } from "../auth";
-import { MetricCard } from "../components/MetricCard";
 import { PageHeader } from "../components/PageHeader";
 import { SectionPanel } from "../components/SectionPanel";
+import { StatCard } from "../components/StatCard";
 import { StatusChip } from "../components/StatusChip";
 import { useSnackbar } from "../components/Snackbar";
 import { UpcomingCalendarCard } from "./dashboard/UpcomingCalendarCard";
@@ -139,49 +145,61 @@ export function Dashboard() {
         {isPending || !stats ? (
           Array.from({ length: 6 }).map((_, i) => (
             <Grid key={i} item xs={12} sm={6} md={4} lg={2}>
-              <Skeleton variant="rounded" height={88} />
+              <Skeleton variant="rounded" height={128} />
             </Grid>
           ))
         ) : (
           <>
             <Grid item xs={12} sm={6} md={4} lg={2}>
-              <MetricCard
+              <StatCard
                 label="My Followups"
                 value={String(stats.my_open_followups)}
+                subtitle="Open & assigned to you"
+                icon={<AssignmentTurnedInOutlinedIcon />}
               />
             </Grid>
             <Grid item xs={12} sm={6} md={4} lg={2}>
-              <MetricCard
+              <StatCard
                 label="Overdue Followups"
                 value={String(stats.my_overdue_followups)}
+                subtitle="Past their due date"
+                icon={<AssignmentLateOutlinedIcon />}
                 emphasis={stats.my_overdue_followups > 0 ? "alert" : "muted"}
               />
             </Grid>
             <Grid item xs={12} sm={6} md={4} lg={2}>
-              <MetricCard
+              <StatCard
                 label="Active Engagements"
                 value={String(stats.active_engagements)}
+                subtitle="Open client work"
+                icon={<WorkOutlineOutlinedIcon />}
               />
             </Grid>
             <Grid item xs={12} sm={6} md={4} lg={2}>
-              <MetricCard
+              <StatCard
                 label="Outstanding"
                 value={usd.format(Number(stats.outstanding_total))}
+                subtitle="Unpaid invoice balance"
+                icon={<PaidOutlinedIcon />}
                 onClick={() => navigate("/invoices?status=open")}
               />
             </Grid>
             <Grid item xs={12} sm={6} md={4} lg={2}>
-              <MetricCard
+              <StatCard
                 label="Overdue Invoices"
                 value={String(stats.overdue_invoice_count)}
+                subtitle="Past due date"
+                icon={<ReceiptLongOutlinedIcon />}
                 emphasis={stats.overdue_invoice_count > 0 ? "alert" : "muted"}
                 onClick={() => navigate("/invoices?status=open&due=overdue")}
               />
             </Grid>
             <Grid item xs={12} sm={6} md={4} lg={2}>
-              <MetricCard
+              <StatCard
                 label="Uninvoiced"
                 value={usd.format(Number(stats.uninvoiced_total))}
+                subtitle="Logged work, not yet billed"
+                icon={<HourglassEmptyOutlinedIcon />}
                 onClick={() => navigate("/invoices?focus=uninvoiced")}
               />
             </Grid>

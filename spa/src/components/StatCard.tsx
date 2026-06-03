@@ -8,27 +8,57 @@ import {
 } from "@mui/material";
 import type { ReactNode } from "react";
 
-interface StatCardProps extends Omit<CardProps, "title"> {
+type Emphasis = "default" | "alert" | "muted";
+
+interface StatCardProps extends Omit<CardProps, "title" | "onClick"> {
   label: ReactNode;
   value: ReactNode;
   subtitle?: ReactNode;
   icon?: ReactNode;
+  emphasis?: Emphasis;
+  onClick?: () => void;
 }
+
+// Color the value, not the whole card, when emphasis is set.
+// "alert" = error red (e.g. an overdue counter), "muted" = de-emphasized
+// (zero/empty state).
+const VALUE_COLOR: Record<Emphasis, string> = {
+  default: "text.primary",
+  alert: "error.main",
+  muted: "text.disabled",
+};
 
 export function StatCard({
   label,
   value,
   subtitle,
   icon,
+  emphasis = "default",
+  onClick,
   sx,
   ...cardProps
 }: StatCardProps) {
+  const clickable = Boolean(onClick);
   return (
     <Card
       variant="outlined"
+      onClick={onClick}
+      role={clickable ? "button" : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      onKeyDown={(e) => {
+        if (!onClick) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
       {...cardProps}
       sx={{
         height: "100%",
+        cursor: clickable ? "pointer" : undefined,
+        "&:hover": clickable
+          ? { borderColor: "primary.main", bgcolor: "action.hover" }
+          : undefined,
         ...sx,
       }}
     >
@@ -42,7 +72,10 @@ export function StatCard({
             >
               {label}
             </Typography>
-            <Typography variant="h4" sx={{ mt: 0.25 }}>
+            <Typography
+              variant="h4"
+              sx={{ mt: 0.25, color: VALUE_COLOR[emphasis] }}
+            >
               {value}
             </Typography>
           </Box>
