@@ -1,5 +1,7 @@
 import { createTheme } from "@mui/material/styles";
 
+const SERIF_HEADER_STACK = ['"Georgia"', '"Times New Roman"', "serif"].join(",");
+
 const baseTypography = {
   fontFamily: ['"Inter"', "system-ui", "Helvetica", "Arial", "sans-serif"].join(","),
   h4: {
@@ -7,10 +9,12 @@ const baseTypography = {
     lineHeight: 1.25,
     fontWeight: 700,
     letterSpacing: 0,
+    fontFamily: SERIF_HEADER_STACK,
   },
   h5: {
     fontWeight: 700,
     letterSpacing: 0,
+    fontFamily: SERIF_HEADER_STACK,
   },
   h6: {
     fontWeight: 650,
@@ -51,6 +55,7 @@ function commonComponents(tableHeadBg: string, tableHeadColor: string) {
       styleOverrides: {
         root: {
           backgroundImage: "none",
+          borderRadius: 12,
         },
       },
     },
@@ -65,6 +70,13 @@ function commonComponents(tableHeadBg: string, tableHeadColor: string) {
       styleOverrides: {
         root: {
           backgroundImage: "none",
+        },
+        // Scoped to outlined so menus/popovers/tooltips (elevation
+        // variant) keep their default radius. Outlined Papers are
+        // SectionPanel-style content containers — they get the
+        // larger rounded-xl look.
+        outlined: {
+          borderRadius: 12,
         },
       },
     },
@@ -154,15 +166,14 @@ export const themes = {
     },
     typography: {
       ...baseTypography,
+      // Georgia is inherited from baseTypography; intake adds italic
+      // for a more editorial feel.
       h4: {
         ...baseTypography.h4,
-        fontFamily: ['"Georgia"', '"Times New Roman"', "serif"].join(","),
         fontStyle: "italic",
-        fontWeight: 700,
       },
       h5: {
         ...baseTypography.h5,
-        fontFamily: ['"Georgia"', '"Times New Roman"', "serif"].join(","),
         fontStyle: "italic",
       },
     },
