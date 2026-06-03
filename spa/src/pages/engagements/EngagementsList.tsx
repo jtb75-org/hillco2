@@ -8,8 +8,10 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  Grid,
   InputAdornment,
   MenuItem,
+  Skeleton,
   Stack,
   Table,
   TableBody,
@@ -19,7 +21,11 @@ import {
   TextField,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
+import BlockOutlinedIcon from "@mui/icons-material/BlockOutlined";
 import SearchIcon from "@mui/icons-material/Search";
+import TaskAltOutlinedIcon from "@mui/icons-material/TaskAltOutlined";
+import WorkOutlineOutlinedIcon from "@mui/icons-material/WorkOutlineOutlined";
+import WorkspacesOutlinedIcon from "@mui/icons-material/WorkspacesOutlined";
 import dayjs from "dayjs";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
@@ -28,6 +34,7 @@ import { api } from "../../api/client";
 import { DataTableContainer } from "../../components/DataTableContainer";
 import { DataToolbar } from "../../components/DataToolbar";
 import { PageHeader } from "../../components/PageHeader";
+import { StatCard } from "../../components/StatCard";
 import { StatusChip } from "../../components/StatusChip";
 import { useEngagementTypes } from "../../hooks/useEngagementTypes";
 
@@ -53,6 +60,38 @@ interface EngagementRow {
 // in_progress + on_hold. Match the API's filter values exactly.
 type StatusFilter = "active" | "completed" | "cancelled" | "all";
 
+const STAT_CARDS: Array<{
+  key: StatusFilter;
+  label: string;
+  subtitle: string;
+  icon: JSX.Element;
+}> = [
+  {
+    key: "active",
+    label: "Active",
+    subtitle: "In progress + on hold",
+    icon: <WorkOutlineOutlinedIcon />,
+  },
+  {
+    key: "completed",
+    label: "Completed",
+    subtitle: "Finished engagements",
+    icon: <TaskAltOutlinedIcon />,
+  },
+  {
+    key: "cancelled",
+    label: "Cancelled",
+    subtitle: "Closed without completion",
+    icon: <BlockOutlinedIcon />,
+  },
+  {
+    key: "all",
+    label: "All",
+    subtitle: "Every status combined",
+    icon: <WorkspacesOutlinedIcon />,
+  },
+];
+
 export function EngagementsList() {
   const navigate = useNavigate();
   const [status, setStatus] = useState<StatusFilter>("active");
@@ -60,31 +99,49 @@ export function EngagementsList() {
   const [startOpen, setStartOpen] = useState(false);
   const { labelFor: labelForType } = useEngagementTypes();
 
+  // Single pull of every status so the stat-strip counts stay accurate
+  // regardless of which filter is active. Status + search filter then
+  // run client-side; homelab scale (tens of engagements) means the
+  // saved round-trips comfortably beat the cost of any extra payload.
   const { data, isPending, error } = useQuery<EngagementRow[], Error>({
-    queryKey: ["engagements", "list", status],
+    queryKey: ["engagements", "list", "all"],
     queryFn: async () => {
       const { data, error: respError } = await api.GET("/api/engagements", {
-        params: { query: { status } },
+        params: { query: { status: "all" } },
       });
       if (respError || !data) throw new Error("engagements fetch failed");
       return data as unknown as EngagementRow[];
     },
   });
 
-  // Lightweight client-side filter — list size is small (homelab scale)
-  // and the search-as-you-type latency this avoids isn't worth a server
-  // round-trip.
+  const counts = useMemo(() => {
+    const c = { active: 0, completed: 0, cancelled: 0, all: 0 };
+    if (!data) return c;
+    for (const e of data) {
+      c.all++;
+      if (e.status === "in_progress" || e.status === "on_hold") c.active++;
+      else if (e.status === "completed") c.completed++;
+      else if (e.status === "cancelled") c.cancelled++;
+    }
+    return c;
+  }, [data]);
+
   const filtered = useMemo(() => {
     if (!data) return [];
+    const byStatus = data.filter((e) => {
+      if (status === "all") return true;
+      if (status === "active") return e.status === "in_progress" || e.status === "on_hold";
+      return e.status === status;
+    });
     const q = search.trim().toLowerCase();
-    if (!q) return data;
-    return data.filter((e) =>
+    if (!q) return byStatus;
+    return byStatus.filter((e) =>
       e.household_name.toLowerCase().includes(q) ||
       (e.student_name?.toLowerCase().includes(q) ?? false) ||
       (e.lead_consultant_name?.toLowerCase().includes(q) ?? false) ||
       e.engagement_type.toLowerCase().includes(q),
     );
-  }, [data, search]);
+  }, [data, search, status]);
 
   if (error) {
     return <Alert severity="error">Failed to load engagements: {error.message}</Alert>;
@@ -105,6 +162,29 @@ export function EngagementsList() {
           </Button>
         }
       />
+
+      <Grid container spacing={2}>
+        {STAT_CARDS.map((card) => (
+          <Grid key={card.key} item xs={6} sm={3}>
+            {isPending ? (
+              <Skeleton variant="rounded" height={128} />
+            ) : (
+              <StatCard
+                label={card.label}
+                value={counts[card.key].toLocaleString()}
+                subtitle={card.subtitle}
+                icon={card.icon}
+                onClick={() => setStatus(card.key)}
+                sx={
+                  status === card.key
+                    ? { borderColor: "primary.main", borderWidth: 1.5 }
+                    : undefined
+                }
+              />
+            )}
+          </Grid>
+        ))}
+      </Grid>
 
       <DataToolbar>
         <TextField
@@ -181,7 +261,7 @@ export function EngagementsList() {
                     size="small"
                     label={e.status.replace(/_/g, " ")}
                     tone={toneForStatus(e.status)}
-                    variant="outlined"
+                    variant="soft"
                   />
                 </TableCell>
                 <TableCell>
