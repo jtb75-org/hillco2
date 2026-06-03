@@ -28,17 +28,21 @@ import {
   Typography,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
+import HourglassEmptyOutlinedIcon from "@mui/icons-material/HourglassEmptyOutlined";
+import PaidOutlinedIcon from "@mui/icons-material/PaidOutlined";
 import PictureAsPdfOutlinedIcon from "@mui/icons-material/PictureAsPdfOutlined";
+import ReceiptLongOutlinedIcon from "@mui/icons-material/ReceiptLongOutlined";
 import SearchIcon from "@mui/icons-material/Search";
+import TaskAltOutlinedIcon from "@mui/icons-material/TaskAltOutlined";
 import ViewKanbanIcon from "@mui/icons-material/ViewKanban";
 import ViewListIcon from "@mui/icons-material/ViewList";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { DataTableContainer } from "../../components/DataTableContainer";
-import { MetricCard } from "../../components/MetricCard";
 import { PageHeader } from "../../components/PageHeader";
 import { useSnackbar } from "../../components/Snackbar";
+import { StatCard } from "../../components/StatCard";
 import { InvoiceStatusChip } from "./InvoiceStatusChip";
 import {
   NothingLeftToInvoiceError,
@@ -204,28 +208,36 @@ export function InvoicesList() {
 
       <Grid container spacing={2}>
         <Grid item xs={12} sm={6} md={3}>
-          <MetricCard
+          <StatCard
             label="Outstanding"
             value={formatInvoiceMoney(invoices.data?.totals.outstanding)}
+            subtitle="Unpaid invoice balance"
+            icon={<PaidOutlinedIcon />}
           />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <MetricCard
+          <StatCard
             label="Invoiced"
             value={formatInvoiceMoney(invoices.data?.totals.invoiced)}
+            subtitle="Total invoice volume"
+            icon={<ReceiptLongOutlinedIcon />}
           />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <MetricCard
+          <StatCard
             label="Paid"
             value={formatInvoiceMoney(invoices.data?.totals.paid)}
+            subtitle="Collected payments"
+            icon={<TaskAltOutlinedIcon />}
             emphasis="muted"
           />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <MetricCard
+          <StatCard
             label="Uninvoiced"
             value={formatInvoiceMoney(invoices.data?.totals.uninvoiced)}
+            subtitle="Logged work, not yet billed"
+            icon={<HourglassEmptyOutlinedIcon />}
             emphasis={focus === "uninvoiced" ? "alert" : "default"}
           />
         </Grid>
