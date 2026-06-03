@@ -11,7 +11,7 @@ import { PageHeader } from "../../components/PageHeader";
 const TABS = [
   { value: "users", label: "Users", to: "/admin/users" },
   { value: "audit-log", label: "Audit Log", to: "/admin/audit-log" },
-  { value: "about", label: "About", to: "/admin/about" },
+  { value: "about", label: "Overview", to: "/admin/about" },
 ] as const;
 
 type TabValue = (typeof TABS)[number]["value"];
