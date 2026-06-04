@@ -24,6 +24,7 @@ import { api } from "../../api/client";
 import { NewEngagementDialog } from "./NewEngagementDialog";
 import { PageHeader } from "../../components/PageHeader";
 import { SectionPanel } from "../../components/SectionPanel";
+import { StatusChip } from "../../components/StatusChip";
 
 import { AddParentDialog } from "./AddParentDialog";
 import { AddStudentDialog } from "./AddStudentDialog";
@@ -212,10 +213,10 @@ function ParentsCard({
                             override live on the drawer. */}
                         <Stack direction="row" spacing={0.5} sx={{ mb: 1, minHeight: 24 }}>
                           {p.id === primaryId && (
-                            <Chip size="small" label="primary" color="primary" variant="outlined" />
+                            <StatusChip size="small" label="primary" tone="info" variant="soft" />
                           )}
                           {isBilling && (
-                            <Chip size="small" label="billing" color="success" variant="outlined" />
+                            <StatusChip size="small" label="billing" tone="success" variant="soft" />
                           )}
                         </Stack>
                         <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
@@ -458,11 +459,11 @@ function EngagementsCard({
                 <Typography variant="body1" sx={{ flex: 1, fontWeight: 500 }}>
                   {e.engagement_type.replace(/_/g, " ")}
                 </Typography>
-                <Chip
+                <StatusChip
                   size="small"
-                  label={e.status}
-                  color={e.status === "in_progress" ? "primary" : "default"}
-                  variant="outlined"
+                  label={e.status.replace(/_/g, " ")}
+                  tone={e.status === "in_progress" ? "info" : "neutral"}
+                  variant="soft"
                 />
                 {e.start_date && (
                   <Typography variant="caption" color="text.secondary">
