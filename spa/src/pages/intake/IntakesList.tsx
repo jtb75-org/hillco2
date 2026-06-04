@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Box,
@@ -6,8 +6,9 @@ import {
   Card,
   CardActionArea,
   CardContent,
-  Chip,
+  Grid,
   Paper,
+  Skeleton,
   Stack,
   Table,
   TableBody,
@@ -20,6 +21,10 @@ import {
   Typography,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
+import ArchiveOutlinedIcon from "@mui/icons-material/ArchiveOutlined";
+import HourglassEmptyOutlinedIcon from "@mui/icons-material/HourglassEmptyOutlined";
+import SpaOutlinedIcon from "@mui/icons-material/SpaOutlined";
+import TaskAltOutlinedIcon from "@mui/icons-material/TaskAltOutlined";
 import ViewKanbanIcon from "@mui/icons-material/ViewKanban";
 import ViewListIcon from "@mui/icons-material/ViewList";
 import dayjs from "dayjs";
@@ -30,6 +35,8 @@ import { api } from "../../api/client";
 import { DataTableContainer } from "../../components/DataTableContainer";
 import { PageHeader } from "../../components/PageHeader";
 import { useSnackbar } from "../../components/Snackbar";
+import { StatCard } from "../../components/StatCard";
+import { StatusChip } from "../../components/StatusChip";
 
 import { PickOrCreateFamilyDialog } from "./PickOrCreateFamilyDialog";
 import { OUTCOME_STATUS_DISPLAY, type Outcome } from "./intakeTypes";
@@ -52,6 +59,52 @@ interface IntakeRow {
 type ViewMode = "list" | "kanban";
 const VIEW_STORAGE_KEY = "intakesView";
 
+type Bucket = "in_progress" | "nurturing" | "converted" | "closed" | "all";
+
+// Matches the kanban column groupings so the stat-strip counts and
+// the kanban columns stay in lockstep. Lifted out of KANBAN_COLUMNS
+// so the list view can filter by the same logic.
+const BUCKET_MATCH: Record<Exclude<Bucket, "all">, (r: IntakeRow) => boolean> = {
+  in_progress: (r) =>
+    r.outcome == null || (r.outcome === "converting" && r.converted_at == null),
+  nurturing: (r) => r.outcome === "nurture",
+  converted: (r) => r.outcome === "converting" && r.converted_at != null,
+  closed: (r) =>
+    r.outcome != null && r.outcome !== "converting" && r.outcome !== "nurture",
+};
+
+const STAT_CARDS: Array<{
+  key: Bucket;
+  label: string;
+  subtitle: string;
+  icon: JSX.Element;
+}> = [
+  {
+    key: "in_progress",
+    label: "In Progress",
+    subtitle: "Awaiting next step",
+    icon: <HourglassEmptyOutlinedIcon />,
+  },
+  {
+    key: "nurturing",
+    label: "Nurturing",
+    subtitle: "Follow up later",
+    icon: <SpaOutlinedIcon />,
+  },
+  {
+    key: "converted",
+    label: "Converted",
+    subtitle: "Engagement spawned",
+    icon: <TaskAltOutlinedIcon />,
+  },
+  {
+    key: "closed",
+    label: "Closed",
+    subtitle: "Declined / no response",
+    icon: <ArchiveOutlinedIcon />,
+  },
+];
+
 function loadInitialView(): ViewMode {
   if (typeof window === "undefined") return "list";
   const v = window.localStorage.getItem(VIEW_STORAGE_KEY);
@@ -64,6 +117,7 @@ export function IntakesList() {
   const snackbar = useSnackbar();
   const [pickOpen, setPickOpen] = useState(false);
   const [view, setView] = useState<ViewMode>(() => loadInitialView());
+  const [bucket, setBucket] = useState<Bucket>("all");
 
   useEffect(() => {
     window.localStorage.setItem(VIEW_STORAGE_KEY, view);
@@ -106,6 +160,28 @@ export function IntakesList() {
 
   const rows = data ?? [];
 
+  const counts = useMemo(() => {
+    const c: Record<Bucket, number> = {
+      in_progress: 0,
+      nurturing: 0,
+      converted: 0,
+      closed: 0,
+      all: rows.length,
+    };
+    for (const r of rows) {
+      if (BUCKET_MATCH.in_progress(r)) c.in_progress++;
+      else if (BUCKET_MATCH.nurturing(r)) c.nurturing++;
+      else if (BUCKET_MATCH.converted(r)) c.converted++;
+      else if (BUCKET_MATCH.closed(r)) c.closed++;
+    }
+    return c;
+  }, [rows]);
+
+  const filtered = useMemo(() => {
+    if (bucket === "all") return rows;
+    return rows.filter(BUCKET_MATCH[bucket]);
+  }, [rows, bucket]);
+
   return (
     <Stack spacing={2}>
       <PageHeader
@@ -122,14 +198,41 @@ export function IntakesList() {
         }
       />
 
+      <Grid container spacing={2}>
+        {STAT_CARDS.map((card) => (
+          <Grid key={card.key} item xs={6} sm={3}>
+            {isPending ? (
+              <Skeleton variant="rounded" height={128} />
+            ) : (
+              <StatCard
+                label={card.label}
+                value={counts[card.key].toLocaleString()}
+                subtitle={card.subtitle}
+                icon={card.icon}
+                // Clicking the active card toggles back to "all" so the
+                // strip doubles as a clear-filter affordance.
+                onClick={() =>
+                  setBucket((prev) => (prev === card.key ? "all" : card.key))
+                }
+                sx={
+                  bucket === card.key
+                    ? { borderColor: "primary.main", borderWidth: 1.5 }
+                    : undefined
+                }
+              />
+            )}
+          </Grid>
+        ))}
+      </Grid>
+
       <Box sx={{ display: "flex", justifyContent: "flex-start" }}>
         <ViewPill view={view} onChange={setView} />
       </Box>
 
       {view === "list" ? (
-        <ListView rows={rows} loading={isPending} onNew={() => setPickOpen(true)} />
+        <ListView rows={filtered} loading={isPending} onNew={() => setPickOpen(true)} />
       ) : (
-        <KanbanView rows={rows} loading={isPending} onNew={() => setPickOpen(true)} />
+        <KanbanView rows={filtered} loading={isPending} onNew={() => setPickOpen(true)} />
       )}
 
       <PickOrCreateFamilyDialog
@@ -440,6 +543,19 @@ function KanbanCard({ row }: { row: IntakeRow }) {
 
 // ---- Shared chip --------------------------------------------------------
 
+// Map MUI's color shorthand from OUTCOME_STATUS_DISPLAY to our
+// StatusChip tone vocabulary so the chips render via the soft variant.
+const TONE_FOR_COLOR: Record<
+  "default" | "primary" | "success" | "warning" | "error",
+  "neutral" | "info" | "success" | "warning" | "danger"
+> = {
+  default: "neutral",
+  primary: "info",
+  success: "success",
+  warning: "warning",
+  error: "danger",
+};
+
 function OutcomeChip({
   outcome,
   convertedAt,
@@ -448,15 +564,20 @@ function OutcomeChip({
   convertedAt: string | null;
 }) {
   if (!outcome) {
-    return (
-      <Chip size="small" label="In progress" color="primary" variant="outlined" />
-    );
+    return <StatusChip size="small" label="In progress" tone="info" variant="soft" />;
   }
   // Override the 'Converting' label once the convert flow has actually
   // spawned engagements — at that point the work is done, not in flight.
   if (outcome === "converting" && convertedAt) {
-    return <Chip size="small" label="Converted" color="success" />;
+    return <StatusChip size="small" label="Converted" tone="success" variant="soft" />;
   }
   const display = OUTCOME_STATUS_DISPLAY[outcome];
-  return <Chip size="small" label={display.label} color={display.color} />;
+  return (
+    <StatusChip
+      size="small"
+      label={display.label}
+      tone={TONE_FOR_COLOR[display.color]}
+      variant="soft"
+    />
+  );
 }
