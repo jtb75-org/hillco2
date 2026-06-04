@@ -223,7 +223,7 @@ function ContactRow({
           size="small"
           label={kindLabel}
           tone={kindTone}
-          variant="outlined"
+          variant="soft"
         />
       </TableCell>
       <TableCell sx={{ color: p.email ? undefined : "text.disabled" }}>

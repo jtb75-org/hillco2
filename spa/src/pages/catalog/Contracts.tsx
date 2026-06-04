@@ -30,6 +30,7 @@ import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useSnackbar } from "../../components/Snackbar";
+import { StatusChip } from "../../components/StatusChip";
 
 type AgreementType = "services_contract" | "medical_release";
 
@@ -146,7 +147,7 @@ export function CatalogContracts() {
                 >
                   <TableCell>{t.name}</TableCell>
                   <TableCell>
-                    <Chip size="small" variant="outlined" label={TYPE_LABEL[t.kind]} />
+                    <StatusChip size="small" tone="neutral" variant="soft" label={TYPE_LABEL[t.kind]} />
                   </TableCell>
                   <TableCell>
                     <Stack direction="row" useFlexGap flexWrap="wrap" sx={{ gap: 0.5 }}>
@@ -172,9 +173,9 @@ export function CatalogContracts() {
                   </TableCell>
                   <TableCell>
                     {t.is_active ? (
-                      <Chip size="small" color="success" label="Active" />
+                      <StatusChip size="small" tone="success" variant="soft" label="Active" />
                     ) : (
-                      <Chip size="small" variant="outlined" label="Inactive" />
+                      <StatusChip size="small" tone="neutral" variant="soft" label="Inactive" />
                     )}
                   </TableCell>
                   <TableCell align="right">

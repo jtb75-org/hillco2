@@ -252,7 +252,7 @@ export function FamiliesList() {
                         size="small"
                         label="archived"
                         tone="warning"
-                        variant="outlined"
+                        variant="soft"
                         sx={{ ml: 1 }}
                       />
                     )}
@@ -271,7 +271,7 @@ export function FamiliesList() {
                         size="small"
                         label={f.active_engagements}
                         tone="info"
-                        variant="outlined"
+                        variant="soft"
                       />
                     ) : (
                       <Box component="span" sx={{ color: "text.disabled" }}>—</Box>

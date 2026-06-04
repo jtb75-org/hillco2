@@ -164,7 +164,7 @@ function HeaderBlock({ person }: { person: PersonDetail }) {
           size="small"
           label={KIND_LABEL[person.kind] ?? person.kind}
           tone="info"
-          variant="outlined"
+          variant="soft"
         />
         {person.current_grade && (
           <Typography variant="caption" color="text.secondary">
@@ -432,7 +432,7 @@ function FamilySection({ person }: { person: PersonDetail }) {
                   size="small"
                   label="archived"
                   tone="warning"
-                  variant="outlined"
+                  variant="soft"
                 />
               )}
             </Stack>
