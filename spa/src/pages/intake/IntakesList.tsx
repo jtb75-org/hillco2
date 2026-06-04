@@ -370,7 +370,7 @@ function ListView({
 // ---- Kanban view --------------------------------------------------------
 
 interface KanbanColumnDef {
-  key: string;
+  key: Exclude<Bucket, "all">;
   title: string;
   match: (row: IntakeRow) => boolean;
 }
@@ -391,26 +391,14 @@ interface KanbanColumnDef {
 // flagging unfinished work the operator needs to revisit. The list
 // view still labels those rows "Converting" via OutcomeChip so the
 // stated intent stays visible.
+//
+// Match fns delegate to BUCKET_MATCH so the stat strip and the kanban
+// columns can't drift apart.
 const KANBAN_COLUMNS: KanbanColumnDef[] = [
-  {
-    key: "in_progress",
-    title: "In Progress",
-    match: (r) =>
-      r.outcome == null ||
-      (r.outcome === "converting" && r.converted_at == null),
-  },
-  { key: "nurturing", title: "Nurturing", match: (r) => r.outcome === "nurture" },
-  {
-    key: "converted",
-    title: "Converted",
-    match: (r) => r.outcome === "converting" && r.converted_at != null,
-  },
-  {
-    key: "closed",
-    title: "Closed",
-    match: (r) =>
-      r.outcome != null && r.outcome !== "converting" && r.outcome !== "nurture",
-  },
+  { key: "in_progress", title: "In Progress", match: BUCKET_MATCH.in_progress },
+  { key: "nurturing", title: "Nurturing", match: BUCKET_MATCH.nurturing },
+  { key: "converted", title: "Converted", match: BUCKET_MATCH.converted },
+  { key: "closed", title: "Closed", match: BUCKET_MATCH.closed },
 ];
 
 function KanbanView({
