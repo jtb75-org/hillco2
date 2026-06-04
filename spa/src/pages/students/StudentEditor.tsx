@@ -5,10 +5,8 @@ import {
   Button,
   Chip,
   CircularProgress,
-  Divider,
   Grid,
   MenuItem,
-  Paper,
   Popover,
   Select,
   Stack,
@@ -22,6 +20,7 @@ import dayjs from "dayjs";
 
 import { api } from "../../api/client";
 import { LabeledField } from "../../components/LabeledField";
+import { SectionPanel } from "../../components/SectionPanel";
 import { ghostFieldSx } from "../../components/ghostFieldSx";
 import { useSnackbar } from "../../components/Snackbar";
 
@@ -126,6 +125,28 @@ export function StudentEditor({
 
 // ---- Panels ----------------------------------------------------------------
 
+function OverlineTitle({
+  children,
+  color = "text.secondary",
+}: {
+  children: React.ReactNode;
+  color?: string;
+}) {
+  return (
+    <Box
+      component="span"
+      sx={{
+        typography: "overline",
+        color,
+        display: "block",
+        lineHeight: 1.4,
+      }}
+    >
+      {children}
+    </Box>
+  );
+}
+
 function DangerZoneCard({
   student,
   onRemoved,
@@ -153,40 +174,38 @@ function DangerZoneCard({
     onError: (e: Error) => snackbar.show(e.message, "error"),
   });
   return (
-    <Paper variant="outlined" sx={{ p: 2.5 }}>
-      <Typography variant="overline" color="error.main" sx={{ display: "block", mb: 1 }}>
-        Danger zone
-      </Typography>
-      <Divider sx={{ mb: 1.5 }} />
-      {!confirming ? (
-        <Button
-          color="error"
-          variant="outlined"
-          startIcon={<DeleteOutlineIcon />}
-          onClick={() => setConfirming(true)}
-        >
-          Remove from family
-        </Button>
-      ) : (
-        <Stack spacing={1}>
-          <Typography variant="body2" color="text.secondary">
-            Soft-delete {student.name}? They'll disappear from the family
-            roster and contacts. Engagement history stays intact.
-          </Typography>
-          <Stack direction="row" spacing={1}>
-            <Button
-              color="error"
-              variant="contained"
-              onClick={() => remove.mutate()}
-              disabled={remove.isPending}
-            >
-              Confirm remove
-            </Button>
-            <Button onClick={() => setConfirming(false)}>Cancel</Button>
+    <SectionPanel title={<OverlineTitle color="error.main">Danger zone</OverlineTitle>}>
+      <Box sx={{ p: 2.5 }}>
+        {!confirming ? (
+          <Button
+            color="error"
+            variant="outlined"
+            startIcon={<DeleteOutlineIcon />}
+            onClick={() => setConfirming(true)}
+          >
+            Remove from family
+          </Button>
+        ) : (
+          <Stack spacing={1}>
+            <Typography variant="body2" color="text.secondary">
+              Soft-delete {student.name}? They'll disappear from the family
+              roster and contacts. Engagement history stays intact.
+            </Typography>
+            <Stack direction="row" spacing={1}>
+              <Button
+                color="error"
+                variant="contained"
+                onClick={() => remove.mutate()}
+                disabled={remove.isPending}
+              >
+                Confirm remove
+              </Button>
+              <Button onClick={() => setConfirming(false)}>Cancel</Button>
+            </Stack>
           </Stack>
-        </Stack>
-      )}
-    </Paper>
+        )}
+      </Box>
+    </SectionPanel>
   );
 }
 
@@ -209,76 +228,78 @@ function HeaderStrip({
     staleTime: 5 * 60 * 1000,
   });
   return (
-    <Paper variant="outlined" sx={{ p: 2.5 }}>
-      <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-        <Box sx={{ flex: 1 }}>
-          <LabeledField label="First name" required>
-            <NameField
-              initial={student.first_name}
-              onCommit={(v) => v.trim() && onPatch({ first_name: v.trim() })}
-            />
-          </LabeledField>
-        </Box>
-        <Box sx={{ flex: 1 }}>
-          <LabeledField label="Last name" required>
-            <NameField
-              initial={student.last_name ?? ""}
-              onCommit={(v) => v.trim() && onPatch({ last_name: v.trim() })}
-            />
-          </LabeledField>
-        </Box>
-        <Box sx={{ width: { xs: "100%", sm: 140 } }}>
-          <LabeledField label="Grade">
-            <NameField
-              initial={student.current_grade ?? ""}
-              placeholder='e.g. "8th"'
-              onCommit={(v) => onPatch({ current_grade: v.trim() || null })}
-            />
-          </LabeledField>
-        </Box>
-      </Stack>
-      <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ mt: 2 }}>
-        <Box sx={{ flex: 1 }}>
-          <LabeledField label="DOB">
-            <DatePicker
-              value={student.dob ? dayjs(student.dob) : null}
-              onChange={(d) =>
-                onPatch({
-                  dob: d && d.isValid() ? d.format("YYYY-MM-DD") : null,
-                })
-              }
-              slotProps={{
-                textField: { size: "small", fullWidth: true, sx: ghostFieldSx },
-              }}
-            />
-          </LabeledField>
-        </Box>
-        <Box sx={{ flex: 2 }}>
-          <LabeledField label="School">
-            <TextField
-              select
-              size="small"
-              fullWidth
-              sx={ghostFieldSx}
-              value={student.current_school_id ?? ""}
-              onChange={(e) =>
-                onPatch({ current_school_id: e.target.value || null })
-              }
-              SelectProps={{ displayEmpty: true }}
-            >
-              <MenuItem value="">
-                <em>— None —</em>
-              </MenuItem>
-              {(schools.data ?? []).map((s) => (
-                <MenuItem key={s.id} value={s.id}>
-                  {s.name}
+    <SectionPanel>
+      <Box sx={{ p: 2.5 }}>
+        <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+          <Box sx={{ flex: 1 }}>
+            <LabeledField label="First name" required>
+              <NameField
+                initial={student.first_name}
+                onCommit={(v) => v.trim() && onPatch({ first_name: v.trim() })}
+              />
+            </LabeledField>
+          </Box>
+          <Box sx={{ flex: 1 }}>
+            <LabeledField label="Last name" required>
+              <NameField
+                initial={student.last_name ?? ""}
+                onCommit={(v) => v.trim() && onPatch({ last_name: v.trim() })}
+              />
+            </LabeledField>
+          </Box>
+          <Box sx={{ width: { xs: "100%", sm: 140 } }}>
+            <LabeledField label="Grade">
+              <NameField
+                initial={student.current_grade ?? ""}
+                placeholder='e.g. "8th"'
+                onCommit={(v) => onPatch({ current_grade: v.trim() || null })}
+              />
+            </LabeledField>
+          </Box>
+        </Stack>
+        <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ mt: 2 }}>
+          <Box sx={{ flex: 1 }}>
+            <LabeledField label="DOB">
+              <DatePicker
+                value={student.dob ? dayjs(student.dob) : null}
+                onChange={(d) =>
+                  onPatch({
+                    dob: d && d.isValid() ? d.format("YYYY-MM-DD") : null,
+                  })
+                }
+                slotProps={{
+                  textField: { size: "small", fullWidth: true, sx: ghostFieldSx },
+                }}
+              />
+            </LabeledField>
+          </Box>
+          <Box sx={{ flex: 2 }}>
+            <LabeledField label="School">
+              <TextField
+                select
+                size="small"
+                fullWidth
+                sx={ghostFieldSx}
+                value={student.current_school_id ?? ""}
+                onChange={(e) =>
+                  onPatch({ current_school_id: e.target.value || null })
+                }
+                SelectProps={{ displayEmpty: true }}
+              >
+                <MenuItem value="">
+                  <em>— None —</em>
                 </MenuItem>
-              ))}
-            </TextField>
-          </LabeledField>
-        </Box>
-      </Stack>
-    </Paper>
+                {(schools.data ?? []).map((s) => (
+                  <MenuItem key={s.id} value={s.id}>
+                    {s.name}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </LabeledField>
+          </Box>
+        </Stack>
+      </Box>
+    </SectionPanel>
   );
 }
 
@@ -322,82 +343,81 @@ function AtAGlanceCard({
   onPatch: (body: Record<string, unknown>) => void;
 }) {
   return (
-    <Paper variant="outlined" sx={{ p: 2.5 }}>
-      <Typography variant="overline" color="text.secondary" sx={{ display: "block", mb: 1.5 }}>
-        At a glance
-      </Typography>
-      <Grid container columnSpacing={3} rowSpacing={1.25}>
-        <FlagCell>
-          <FlagRow
-            label="504 Plan"
-            on={student.has_504}
-            onToggle={(v) => onPatch({ has_504: v })}
-          />
-        </FlagCell>
-        <FlagCell>
-          <FlagRow
-            label="ADHD / ADD"
-            on={student.has_adhd}
-            onToggle={(v) => onPatch({ has_adhd: v })}
-          />
-        </FlagCell>
-        <FlagCell>
-          <FlagRow
-            label="IEP"
-            on={student.has_iep}
-            onToggle={(v) => onPatch({ has_iep: v })}
-          />
-        </FlagCell>
-        <FlagCell>
-          <FlagRow
-            label="Intellectual disability"
-            on={student.has_intellectual_disability}
-            onToggle={(v) => onPatch({ has_intellectual_disability: v })}
-            notes={student.intellectual_disability_notes}
-            onNotes={(v) => onPatch({ intellectual_disability_notes: v })}
-          />
-        </FlagCell>
-        <FlagCell>
-          <FlagRow
-            label="Learning disability"
-            on={student.has_learning_disability}
-            onToggle={(v) => onPatch({ has_learning_disability: v })}
-            notes={student.learning_disability_notes}
-            onNotes={(v) => onPatch({ learning_disability_notes: v })}
-          />
-        </FlagCell>
-        <FlagCell>
-          <FlagRow
-            label="Health impairment"
-            on={student.has_health_impairment}
-            onToggle={(v) => onPatch({ has_health_impairment: v })}
-            notes={student.health_impairment_notes}
-            onNotes={(v) => onPatch({ health_impairment_notes: v })}
-          />
-        </FlagCell>
-        <FlagCell>
-          <AutismRow
-            level={student.autism_level}
-            onSet={(lvl) => onPatch({ autism_level: lvl })}
-          />
-        </FlagCell>
-        <FlagCell>
-          <FlagRow
-            label="Emotional disturbance"
-            on={student.has_emotional_disturbance}
-            onToggle={(v) => onPatch({ has_emotional_disturbance: v })}
-            notes={student.emotional_disturbance_notes}
-            onNotes={(v) => onPatch({ emotional_disturbance_notes: v })}
-          />
-        </FlagCell>
-        <FlagCell>
-          <OtherRow
-            text={student.diagnosis_other}
-            onSet={(v) => onPatch({ diagnosis_other: v })}
-          />
-        </FlagCell>
-      </Grid>
-    </Paper>
+    <SectionPanel title={<OverlineTitle>At a glance</OverlineTitle>}>
+      <Box sx={{ p: 2.5 }}>
+        <Grid container columnSpacing={3} rowSpacing={1.25}>
+          <FlagCell>
+            <FlagRow
+              label="504 Plan"
+              on={student.has_504}
+              onToggle={(v) => onPatch({ has_504: v })}
+            />
+          </FlagCell>
+          <FlagCell>
+            <FlagRow
+              label="ADHD / ADD"
+              on={student.has_adhd}
+              onToggle={(v) => onPatch({ has_adhd: v })}
+            />
+          </FlagCell>
+          <FlagCell>
+            <FlagRow
+              label="IEP"
+              on={student.has_iep}
+              onToggle={(v) => onPatch({ has_iep: v })}
+            />
+          </FlagCell>
+          <FlagCell>
+            <FlagRow
+              label="Intellectual disability"
+              on={student.has_intellectual_disability}
+              onToggle={(v) => onPatch({ has_intellectual_disability: v })}
+              notes={student.intellectual_disability_notes}
+              onNotes={(v) => onPatch({ intellectual_disability_notes: v })}
+            />
+          </FlagCell>
+          <FlagCell>
+            <FlagRow
+              label="Learning disability"
+              on={student.has_learning_disability}
+              onToggle={(v) => onPatch({ has_learning_disability: v })}
+              notes={student.learning_disability_notes}
+              onNotes={(v) => onPatch({ learning_disability_notes: v })}
+            />
+          </FlagCell>
+          <FlagCell>
+            <FlagRow
+              label="Health impairment"
+              on={student.has_health_impairment}
+              onToggle={(v) => onPatch({ has_health_impairment: v })}
+              notes={student.health_impairment_notes}
+              onNotes={(v) => onPatch({ health_impairment_notes: v })}
+            />
+          </FlagCell>
+          <FlagCell>
+            <AutismRow
+              level={student.autism_level}
+              onSet={(lvl) => onPatch({ autism_level: lvl })}
+            />
+          </FlagCell>
+          <FlagCell>
+            <FlagRow
+              label="Emotional disturbance"
+              on={student.has_emotional_disturbance}
+              onToggle={(v) => onPatch({ has_emotional_disturbance: v })}
+              notes={student.emotional_disturbance_notes}
+              onNotes={(v) => onPatch({ emotional_disturbance_notes: v })}
+            />
+          </FlagCell>
+          <FlagCell>
+            <OtherRow
+              text={student.diagnosis_other}
+              onSet={(v) => onPatch({ diagnosis_other: v })}
+            />
+          </FlagCell>
+        </Grid>
+      </Box>
+    </SectionPanel>
   );
 }
 
@@ -698,18 +718,17 @@ function NeedsGoalsCard({
   onPatch: (body: Record<string, unknown>) => void;
 }) {
   return (
-    <Paper variant="outlined" sx={{ p: 2.5 }}>
-      <Typography variant="overline" color="text.secondary" sx={{ display: "block", mb: 1.5 }}>
-        Needs &amp; goals
-      </Typography>
-      <DebouncedTextField
-        initial={student.needs_goals ?? ""}
-        placeholder="What is this student working toward? Skills, accommodations, supports, fit factors."
-        multiline
-        minRows={4}
-        onCommit={(v) => onPatch({ needs_goals: v || null })}
-      />
-    </Paper>
+    <SectionPanel title={<OverlineTitle>Needs &amp; goals</OverlineTitle>}>
+      <Box sx={{ p: 2.5 }}>
+        <DebouncedTextField
+          initial={student.needs_goals ?? ""}
+          placeholder="What is this student working toward? Skills, accommodations, supports, fit factors."
+          multiline
+          minRows={4}
+          onCommit={(v) => onPatch({ needs_goals: v || null })}
+        />
+      </Box>
+    </SectionPanel>
   );
 }
 
@@ -745,4 +764,3 @@ function DebouncedTextField({
     />
   );
 }
-
