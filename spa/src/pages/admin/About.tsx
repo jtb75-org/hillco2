@@ -1,18 +1,23 @@
+import { useState } from "react";
 import {
   Alert,
   Box,
   Button,
   Divider,
   Grid,
+  IconButton,
   List,
   ListItem,
   ListItemText,
   Skeleton,
   Stack,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import AssignmentOutlinedIcon from "@mui/icons-material/AssignmentOutlined";
 import AutoStoriesOutlinedIcon from "@mui/icons-material/AutoStoriesOutlined";
+import CheckIcon from "@mui/icons-material/Check";
+import ContentCopyOutlinedIcon from "@mui/icons-material/ContentCopyOutlined";
 import GroupsIcon from "@mui/icons-material/Groups";
 import HistoryOutlinedIcon from "@mui/icons-material/HistoryOutlined";
 import PeopleAltOutlinedIcon from "@mui/icons-material/PeopleAltOutlined";
@@ -311,17 +316,28 @@ function BuildPanel({
           <Typography variant="overline" color="text.secondary">
             Commit
           </Typography>
-          <Typography
-            variant="h5"
-            sx={{
-              mt: 0.25,
-              fontFamily: "monospace",
-              fontWeight: 650,
-              wordBreak: "break-all",
-            }}
-          >
-            {loading || !data ? <Skeleton width={140} /> : data.build_commit}
-          </Typography>
+          {loading || !data ? (
+            <Skeleton width={140} sx={{ mt: 0.25 }} />
+          ) : (
+            <Stack
+              direction="row"
+              spacing={0.5}
+              alignItems="center"
+              sx={{ mt: 0.25, "&:hover .copy-btn": { opacity: 1 } }}
+            >
+              <Typography
+                variant="h5"
+                sx={{
+                  fontFamily: "monospace",
+                  fontWeight: 650,
+                  wordBreak: "break-all",
+                }}
+              >
+                {data.build_commit}
+              </Typography>
+              <CopyButton value={data.build_commit} />
+            </Stack>
+          )}
         </Box>
         <Divider />
         <Box>
@@ -406,5 +422,41 @@ function RevisionRow({ label, value }: { label: string; value: string | null }) 
         )}
       </Typography>
     </Box>
+  );
+}
+
+// Tiny clipboard-copy affordance — fades in on parent hover, flips to
+// a checkmark for ~1.2s after a successful copy.
+function CopyButton({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false);
+  const onCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
+    } catch {
+      // Clipboard write can be blocked (e.g. http context); fail silently
+      // — the value is still on screen for a manual copy.
+    }
+  };
+  return (
+    <Tooltip title={copied ? "Copied!" : "Copy"} placement="top">
+      <IconButton
+        size="small"
+        onClick={onCopy}
+        className="copy-btn"
+        sx={{
+          opacity: copied ? 1 : 0,
+          transition: "opacity 0.15s",
+          "&:focus-visible": { opacity: 1 },
+        }}
+      >
+        {copied ? (
+          <CheckIcon fontSize="inherit" sx={{ fontSize: 16, color: "success.main" }} />
+        ) : (
+          <ContentCopyOutlinedIcon fontSize="inherit" sx={{ fontSize: 16 }} />
+        )}
+      </IconButton>
+    </Tooltip>
   );
 }

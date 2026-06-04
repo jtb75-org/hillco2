@@ -44,6 +44,14 @@ const ROLE_OPTIONS: Array<CreateUserRequest["role"]> = [
   "admin",
 ];
 
+// admin is the only role with actual permissions today; surface it
+// distinctly so the eye finds owners at a glance.
+const ROLE_TONE: Record<string, "info" | "neutral"> = {
+  admin: "info",
+  consultant: "neutral",
+  assistant: "neutral",
+};
+
 export function AdminUsers() {
   const { user: me } = useAuth();
   const qc = useQueryClient();
@@ -167,25 +175,44 @@ export function AdminUsers() {
                 return (
                   <TableRow key={u.id} hover>
                     <TableCell>
-                      {u.name}
-                      {isMe && (
-                        <Box component="span" sx={{ color: "text.disabled", ml: 1, fontSize: 12 }}>
-                          (you)
-                        </Box>
-                      )}
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <span>{u.name}</span>
+                        {isMe && (
+                          <StatusChip
+                            size="small"
+                            label="you"
+                            tone="neutral"
+                            variant="soft"
+                            sx={{ height: 18, fontSize: 10, "& .MuiChip-label": { px: 0.75 } }}
+                          />
+                        )}
+                      </Stack>
                     </TableCell>
                     <TableCell>{u.email}</TableCell>
-                    <TableCell>{u.role}</TableCell>
+                    <TableCell>
+                      <StatusChip
+                        size="small"
+                        label={u.role}
+                        tone={ROLE_TONE[u.role] ?? "neutral"}
+                        variant="soft"
+                      />
+                    </TableCell>
                     <TableCell>
                       <StatusChip
                         size="small"
                         label={u.is_active ? "active" : "inactive"}
                         tone={u.is_active ? "success" : "neutral"}
-                        variant={u.is_active ? "filled" : "outlined"}
+                        variant="soft"
                       />
                     </TableCell>
                     <TableCell>
-                      {u.last_login_at ? dayjs(u.last_login_at).fromNow() : "—"}
+                      {u.last_login_at ? (
+                        <Tooltip title={dayjs(u.last_login_at).format()}>
+                          <span>{dayjs(u.last_login_at).fromNow()}</span>
+                        </Tooltip>
+                      ) : (
+                        "—"
+                      )}
                     </TableCell>
                     <TableCell>{dayjs(u.created_at).format("MMM D, YYYY")}</TableCell>
                     {isAdmin && (

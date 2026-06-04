@@ -109,7 +109,7 @@ export function AdminAuditLog() {
                       size="small"
                       label={row.action}
                       tone={row.action === "DELETE" ? "danger" : row.action === "INSERT" ? "info" : "neutral"}
-                      variant="outlined"
+                      variant="soft"
                       sx={{ fontFamily: "monospace", fontSize: 11 }}
                     />
                   </TableCell>
