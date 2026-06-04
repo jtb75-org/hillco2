@@ -10,7 +10,6 @@ import {
   DialogTitle,
   FormControlLabel,
   IconButton,
-  Paper,
   Stack,
   Switch,
   TextField,
@@ -23,6 +22,7 @@ import LockIcon from "@mui/icons-material/Lock";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link as RouterLink } from "react-router-dom";
 
+import { SectionPanel } from "../../components/SectionPanel";
 import { useSnackbar } from "../../components/Snackbar";
 
 interface Expense {
@@ -109,38 +109,41 @@ export function ExpensesCard({ engagementId }: { engagementId: string }) {
     .reduce((acc, r) => acc + Number(r.amount || 0), 0);
 
   return (
-    <Paper variant="outlined" sx={{ p: 2.5 }}>
-      <Stack direction="row" alignItems="baseline" spacing={1} sx={{ mb: 1.5 }}>
-        <Typography variant="overline" color="text.secondary" sx={{ flex: 1 }}>
-          Expenses
-        </Typography>
-        <Typography variant="caption" color="text.secondary">
-          ${total.toFixed(2)} total · ${billable.toFixed(2)} billable
-        </Typography>
-        <Button size="small" startIcon={<AddIcon />} onClick={() => setAddOpen(true)}>
-          Add expense
-        </Button>
-      </Stack>
-
-      {expenses.isPending ? (
-        <Typography variant="body2" color="text.disabled">Loading…</Typography>
-      ) : rows.length === 0 ? (
-        <Typography variant="body2" color="text.disabled">
-          No expenses logged yet.
-        </Typography>
-      ) : (
-        <Stack divider={<Box sx={{ borderTop: 1, borderColor: "divider" }} />}>
-          {rows.map((r) => (
-            <ExpenseRow
-              key={r.id}
-              expense={r}
-              categoryOptions={categories.data ?? []}
-              onPatch={(body) => patch.mutate({ id: r.id, body })}
-              onDelete={() => remove.mutate(r.id)}
-            />
-          ))}
+    <SectionPanel
+      title="Expenses"
+      titleVariant="overline"
+      actions={
+        <Stack direction="row" alignItems="center" spacing={1} sx={{ flexWrap: "wrap" }}>
+          <Typography variant="caption" color="text.secondary">
+            ${total.toFixed(2)} total · ${billable.toFixed(2)} billable
+          </Typography>
+          <Button size="small" startIcon={<AddIcon />} onClick={() => setAddOpen(true)}>
+            Add expense
+          </Button>
         </Stack>
-      )}
+      }
+    >
+      <Box sx={{ p: 2.5 }}>
+        {expenses.isPending ? (
+          <Typography variant="body2" color="text.disabled">Loading…</Typography>
+        ) : rows.length === 0 ? (
+          <Typography variant="body2" color="text.disabled">
+            No expenses logged yet.
+          </Typography>
+        ) : (
+          <Stack divider={<Box sx={{ borderTop: 1, borderColor: "divider" }} />}>
+            {rows.map((r) => (
+              <ExpenseRow
+                key={r.id}
+                expense={r}
+                categoryOptions={categories.data ?? []}
+                onPatch={(body) => patch.mutate({ id: r.id, body })}
+                onDelete={() => remove.mutate(r.id)}
+              />
+            ))}
+          </Stack>
+        )}
+      </Box>
 
       <AddExpenseDialog
         open={addOpen}
@@ -152,7 +155,7 @@ export function ExpensesCard({ engagementId }: { engagementId: string }) {
           invalidate();
         }}
       />
-    </Paper>
+    </SectionPanel>
   );
 }
 

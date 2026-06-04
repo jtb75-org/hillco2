@@ -15,7 +15,6 @@ import {
   Menu,
   MenuItem,
   Link as MuiLink,
-  Paper,
   Stack,
   TextField,
   Tooltip,
@@ -31,6 +30,7 @@ import { Link as RouterLink, useNavigate, useParams } from "react-router-dom";
 
 import { api } from "../../api/client";
 import { PageHeader } from "../../components/PageHeader";
+import { SectionPanel } from "../../components/SectionPanel";
 import { useSnackbar } from "../../components/Snackbar";
 import { StatusChip } from "../../components/StatusChip";
 import { useEngagementTypes } from "../../hooks/useEngagementTypes";
@@ -326,67 +326,69 @@ function EngagementActionsMenu({ engagement }: { engagement: EngagementDetail })
 
 function HeaderStrip({ engagement }: { engagement: EngagementDetail }) {
   return (
-    <Paper variant="outlined" sx={{ p: 2.5 }}>
-      <Box
-        sx={{
-          display: "grid",
-          gridTemplateColumns: "auto 1fr auto 1fr",
-          columnGap: 2,
-          rowGap: 1,
-        }}
-      >
-        <Label>Student</Label>
-        <Value>
-          {engagement.student ? (
-            <MuiLink
-              component={RouterLink}
-              to={`/students/${engagement.student.id}`}
-              underline="hover"
-            >
-              {engagement.student.name}
-            </MuiLink>
-          ) : (
-            <Box component="span" sx={{ color: "text.disabled" }}>—</Box>
-          )}
-          {engagement.student?.current_grade && (
-            <Box component="span" sx={{ color: "text.secondary", ml: 1, fontSize: 13 }}>
-              · Grade {engagement.student.current_grade}
-            </Box>
-          )}
-        </Value>
-        <Label>Lead</Label>
-        <Value>{engagement.lead_consultant?.name ?? "—"}</Value>
-        <Label>Started</Label>
-        <Value>
-          {engagement.start_date ? dayjs(engagement.start_date).format("MMM D, YYYY") : "—"}
-        </Value>
-        <Label>Target end</Label>
-        <Value>
-          {engagement.target_end_date
-            ? dayjs(engagement.target_end_date).format("MMM D, YYYY")
-            : "—"}
-        </Value>
-        <Label>Rate</Label>
-        <Value>
-          <RateEditor engagement={engagement} />
-        </Value>
-        <Label>Tasks</Label>
-        <Value>
-          {engagement.counts.tasks_completed} / {engagement.counts.tasks_total} complete
-          {engagement.counts.tasks_na > 0 ? ` · ${engagement.counts.tasks_na} N/A` : ""}
-        </Value>
-      </Box>
-      {engagement.notes && (
-        <Box sx={{ mt: 2, pt: 2, borderTop: 1, borderColor: "divider" }}>
-          <Typography variant="caption" color="text.secondary">
-            Notes
-          </Typography>
-          <Typography variant="body2" sx={{ whiteSpace: "pre-line", mt: 0.5 }}>
-            {engagement.notes}
-          </Typography>
+    <SectionPanel>
+      <Box sx={{ p: 2.5 }}>
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: "auto 1fr auto 1fr",
+            columnGap: 2,
+            rowGap: 1,
+          }}
+        >
+          <Label>Student</Label>
+          <Value>
+            {engagement.student ? (
+              <MuiLink
+                component={RouterLink}
+                to={`/students/${engagement.student.id}`}
+                underline="hover"
+              >
+                {engagement.student.name}
+              </MuiLink>
+            ) : (
+              <Box component="span" sx={{ color: "text.disabled" }}>—</Box>
+            )}
+            {engagement.student?.current_grade && (
+              <Box component="span" sx={{ color: "text.secondary", ml: 1, fontSize: 13 }}>
+                · Grade {engagement.student.current_grade}
+              </Box>
+            )}
+          </Value>
+          <Label>Lead</Label>
+          <Value>{engagement.lead_consultant?.name ?? "—"}</Value>
+          <Label>Started</Label>
+          <Value>
+            {engagement.start_date ? dayjs(engagement.start_date).format("MMM D, YYYY") : "—"}
+          </Value>
+          <Label>Target end</Label>
+          <Value>
+            {engagement.target_end_date
+              ? dayjs(engagement.target_end_date).format("MMM D, YYYY")
+              : "—"}
+          </Value>
+          <Label>Rate</Label>
+          <Value>
+            <RateEditor engagement={engagement} />
+          </Value>
+          <Label>Tasks</Label>
+          <Value>
+            {engagement.counts.tasks_completed} / {engagement.counts.tasks_total} complete
+            {engagement.counts.tasks_na > 0 ? ` · ${engagement.counts.tasks_na} N/A` : ""}
+          </Value>
         </Box>
-      )}
-    </Paper>
+        {engagement.notes && (
+          <Box sx={{ mt: 2, pt: 2, borderTop: 1, borderColor: "divider" }}>
+            <Typography variant="caption" color="text.secondary">
+              Notes
+            </Typography>
+            <Typography variant="body2" sx={{ whiteSpace: "pre-line", mt: 0.5 }}>
+              {engagement.notes}
+            </Typography>
+          </Box>
+        )}
+      </Box>
+    </SectionPanel>
   );
 }
 
@@ -468,5 +470,5 @@ function Label({ children }: { children: React.ReactNode }) {
 }
 
 function Value({ children }: { children: React.ReactNode }) {
-  return <Typography variant="body2">{children}</Typography>;
+  return <Typography component="div" variant="body2">{children}</Typography>;
 }

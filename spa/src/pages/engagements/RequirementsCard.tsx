@@ -9,7 +9,6 @@ import {
   DialogTitle,
   IconButton,
   MenuItem,
-  Paper,
   Select,
   Stack,
   TextField,
@@ -19,6 +18,7 @@ import AddIcon from "@mui/icons-material/Add";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { SectionPanel } from "../../components/SectionPanel";
 import { useSnackbar } from "../../components/Snackbar";
 
 export type RequirementStatus = "needed" | "requested" | "received" | "waived";
@@ -101,11 +101,10 @@ export function RequirementsCard({ engagementId }: { engagementId: string }) {
   const rows = sortByStatusThenKind(requirements.data ?? []);
 
   return (
-    <Paper variant="outlined" sx={{ p: 2.5 }}>
-      <Stack direction="row" alignItems="baseline" spacing={1} sx={{ mb: 1.5 }}>
-        <Typography variant="overline" color="text.secondary" sx={{ flex: 1 }}>
-          Requirements
-        </Typography>
+    <SectionPanel
+      title="Requirements"
+      titleVariant="overline"
+      actions={
         <Button
           size="small"
           startIcon={<AddIcon />}
@@ -113,26 +112,28 @@ export function RequirementsCard({ engagementId }: { engagementId: string }) {
         >
           Add requirement
         </Button>
-      </Stack>
-
-      {rows.length === 0 ? (
-        <Typography variant="body2" color="text.disabled">
-          No requirements captured yet.
-        </Typography>
-      ) : (
-        <Stack divider={<Box sx={{ borderTop: 1, borderColor: "divider" }} />}>
-          {rows.map((r) => (
-            <RequirementRow
-              key={r.id}
-              requirement={r}
-              onStatusChange={(status) => patch.mutate({ id: r.id, body: { status } })}
-              onNotesCommit={(notes) => patch.mutate({ id: r.id, body: { notes } })}
-              onValueCommit={(value) => patch.mutate({ id: r.id, body: { value } })}
-              onRemove={() => remove.mutate(r.id)}
-            />
-          ))}
-        </Stack>
-      )}
+      }
+    >
+      <Box sx={{ p: 2.5 }}>
+        {rows.length === 0 ? (
+          <Typography variant="body2" color="text.disabled">
+            No requirements captured yet.
+          </Typography>
+        ) : (
+          <Stack divider={<Box sx={{ borderTop: 1, borderColor: "divider" }} />}>
+            {rows.map((r) => (
+              <RequirementRow
+                key={r.id}
+                requirement={r}
+                onStatusChange={(status) => patch.mutate({ id: r.id, body: { status } })}
+                onNotesCommit={(notes) => patch.mutate({ id: r.id, body: { notes } })}
+                onValueCommit={(value) => patch.mutate({ id: r.id, body: { value } })}
+                onRemove={() => remove.mutate(r.id)}
+              />
+            ))}
+          </Stack>
+        )}
+      </Box>
 
       <AddRequirementDialog
         open={addOpen}
@@ -143,7 +144,7 @@ export function RequirementsCard({ engagementId }: { engagementId: string }) {
           qc.invalidateQueries({ queryKey: ["engagements", engagementId, "requirements"] });
         }}
       />
-    </Paper>
+    </SectionPanel>
   );
 }
 

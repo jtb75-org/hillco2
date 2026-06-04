@@ -11,7 +11,6 @@ import {
   Divider,
   IconButton,
   MenuItem,
-  Paper,
   Select,
   Stack,
   TextField,
@@ -28,6 +27,7 @@ import dayjs from "dayjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link as RouterLink } from "react-router-dom";
 
+import { SectionPanel } from "../../components/SectionPanel";
 import { useSnackbar } from "../../components/Snackbar";
 
 type AgreementType = "services_contract" | "medical_release";
@@ -242,54 +242,55 @@ export function ContractCard({ engagementId }: { engagementId: string }) {
   };
 
   return (
-    <Paper variant="outlined" sx={{ p: 2.5 }}>
-      <Stack direction="row" alignItems="baseline" spacing={1} sx={{ mb: 1.5 }}>
-        <Typography variant="overline" color="text.secondary" sx={{ flex: 1 }}>
-          Contracts
-        </Typography>
+    <SectionPanel
+      title="Contracts"
+      titleVariant="overline"
+      actions={
         <Button size="small" startIcon={<AddIcon />} onClick={() => setAddOpen(true)}>
           New agreement
         </Button>
-      </Stack>
-
-      {(["services_contract", "medical_release"] as AgreementType[]).map((t) => {
-        const list = byType(t);
-        const current = currentOf(t);
-        const history = list.filter((a) => a.id !== current?.id);
-        return (
-          <Box key={t} sx={{ mb: 2, "&:last-of-type": { mb: 0 } }}>
-            <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.5 }}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                {TYPE_LABEL[t]}
-              </Typography>
-              {history.length > 0 && (
-                <Button
-                  size="small"
-                  startIcon={<HistoryIcon fontSize="small" />}
-                  onClick={() => setHistoryFor(t)}
-                  sx={{ ml: "auto", color: "text.secondary" }}
-                >
-                  {history.length} prior
-                </Button>
+      }
+    >
+      <Box sx={{ p: 2.5 }}>
+        {(["services_contract", "medical_release"] as AgreementType[]).map((t) => {
+          const list = byType(t);
+          const current = currentOf(t);
+          const history = list.filter((a) => a.id !== current?.id);
+          return (
+            <Box key={t} sx={{ mb: 2, "&:last-of-type": { mb: 0 } }}>
+              <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.5 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                  {TYPE_LABEL[t]}
+                </Typography>
+                {history.length > 0 && (
+                  <Button
+                    size="small"
+                    startIcon={<HistoryIcon fontSize="small" />}
+                    onClick={() => setHistoryFor(t)}
+                    sx={{ ml: "auto", color: "text.secondary" }}
+                  >
+                    {history.length} prior
+                  </Button>
+                )}
+              </Stack>
+              {current ? (
+                <AgreementRow
+                  agreement={current}
+                  onMarkSent={() => markSent.mutate(current.id)}
+                  onUploadSigned={(file) => uploadSigned.mutate({ id: current.id, file })}
+                  onRemove={() => remove.mutate(current.id)}
+                  onEditBody={() => setEditBodyFor(current)}
+                  busy={markSent.isPending || uploadSigned.isPending || remove.isPending}
+                />
+              ) : (
+                <Typography variant="body2" color="text.disabled" sx={{ ml: 0.5 }}>
+                  No {TYPE_LABEL[t].toLowerCase()} yet.
+                </Typography>
               )}
-            </Stack>
-            {current ? (
-              <AgreementRow
-                agreement={current}
-                onMarkSent={() => markSent.mutate(current.id)}
-                onUploadSigned={(file) => uploadSigned.mutate({ id: current.id, file })}
-                onRemove={() => remove.mutate(current.id)}
-                onEditBody={() => setEditBodyFor(current)}
-                busy={markSent.isPending || uploadSigned.isPending || remove.isPending}
-              />
-            ) : (
-              <Typography variant="body2" color="text.disabled" sx={{ ml: 0.5 }}>
-                No {TYPE_LABEL[t].toLowerCase()} yet.
-              </Typography>
-            )}
-          </Box>
-        );
-      })}
+            </Box>
+          );
+        })}
+      </Box>
 
       <AddAgreementDialog
         open={addOpen}
@@ -319,7 +320,7 @@ export function ContractCard({ engagementId }: { engagementId: string }) {
           invalidate();
         }}
       />
-    </Paper>
+    </SectionPanel>
   );
 }
 

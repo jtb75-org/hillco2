@@ -9,7 +9,6 @@ import {
   DialogTitle,
   FormControlLabel,
   IconButton,
-  Paper,
   Stack,
   Switch,
   TextField,
@@ -22,6 +21,7 @@ import LockIcon from "@mui/icons-material/Lock";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link as RouterLink } from "react-router-dom";
 
+import { SectionPanel } from "../../components/SectionPanel";
 import { useSnackbar } from "../../components/Snackbar";
 
 interface TimeEntry {
@@ -98,37 +98,40 @@ export function TimeEntriesCard({ engagementId }: { engagementId: string }) {
     .reduce((acc, r) => acc + Number(r.hours || 0), 0);
 
   return (
-    <Paper variant="outlined" sx={{ p: 2.5 }}>
-      <Stack direction="row" alignItems="baseline" spacing={1} sx={{ mb: 1.5 }}>
-        <Typography variant="overline" color="text.secondary" sx={{ flex: 1 }}>
-          Time entries
-        </Typography>
-        <Typography variant="caption" color="text.secondary">
-          {totalHours.toFixed(2)}h total · {billableHours.toFixed(2)}h billable
-        </Typography>
-        <Button size="small" startIcon={<AddIcon />} onClick={() => setAddOpen(true)}>
-          Log time
-        </Button>
-      </Stack>
-
-      {entries.isPending ? (
-        <Typography variant="body2" color="text.disabled">Loading…</Typography>
-      ) : rows.length === 0 ? (
-        <Typography variant="body2" color="text.disabled">
-          No time logged yet.
-        </Typography>
-      ) : (
-        <Stack divider={<Box sx={{ borderTop: 1, borderColor: "divider" }} />}>
-          {rows.map((r) => (
-            <TimeEntryRow
-              key={r.id}
-              entry={r}
-              onPatch={(body) => patch.mutate({ id: r.id, body })}
-              onDelete={() => remove.mutate(r.id)}
-            />
-          ))}
+    <SectionPanel
+      title="Time entries"
+      titleVariant="overline"
+      actions={
+        <Stack direction="row" alignItems="center" spacing={1} sx={{ flexWrap: "wrap" }}>
+          <Typography variant="caption" color="text.secondary">
+            {totalHours.toFixed(2)}h total · {billableHours.toFixed(2)}h billable
+          </Typography>
+          <Button size="small" startIcon={<AddIcon />} onClick={() => setAddOpen(true)}>
+            Log time
+          </Button>
         </Stack>
-      )}
+      }
+    >
+      <Box sx={{ p: 2.5 }}>
+        {entries.isPending ? (
+          <Typography variant="body2" color="text.disabled">Loading…</Typography>
+        ) : rows.length === 0 ? (
+          <Typography variant="body2" color="text.disabled">
+            No time logged yet.
+          </Typography>
+        ) : (
+          <Stack divider={<Box sx={{ borderTop: 1, borderColor: "divider" }} />}>
+            {rows.map((r) => (
+              <TimeEntryRow
+                key={r.id}
+                entry={r}
+                onPatch={(body) => patch.mutate({ id: r.id, body })}
+                onDelete={() => remove.mutate(r.id)}
+              />
+            ))}
+          </Stack>
+        )}
+      </Box>
 
       <AddTimeEntryDialog
         open={addOpen}
@@ -139,7 +142,7 @@ export function TimeEntriesCard({ engagementId }: { engagementId: string }) {
           invalidate();
         }}
       />
-    </Paper>
+    </SectionPanel>
   );
 }
 

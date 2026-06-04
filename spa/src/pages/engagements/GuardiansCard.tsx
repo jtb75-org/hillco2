@@ -1,13 +1,9 @@
 import { useState } from "react";
 import {
-  Accordion,
-  AccordionDetails,
-  AccordionSummary,
   Box,
   Chip,
   FormControlLabel,
   IconButton,
-  Paper,
   Stack,
   Switch,
   Tooltip,
@@ -17,6 +13,7 @@ import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { SectionPanel } from "../../components/SectionPanel";
 import { useSnackbar } from "../../components/Snackbar";
 import { ParentDrawer, type ParentDrawerTarget } from "../families/ParentDrawer";
 
@@ -50,6 +47,7 @@ export function GuardiansCard({ familyId }: { familyId: string }) {
   const qc = useQueryClient();
   const snackbar = useSnackbar();
   const [drawerTarget, setDrawerTarget] = useState<ParentDrawerTarget | null>(null);
+  const [expanded, setExpanded] = useState(true);
 
   const family = useQuery<FamilyDetail, Error>({
     queryKey: ["families", familyId],
@@ -92,35 +90,27 @@ export function GuardiansCard({ familyId }: { familyId: string }) {
   const guardians = family.data?.parents ?? [];
 
   return (
-    <Paper variant="outlined" sx={{ p: 0 }}>
-      <Accordion
-        defaultExpanded
-        disableGutters
-        elevation={0}
-        sx={{
-          "&:before": { display: "none" },
-          bgcolor: "transparent",
-        }}
-      >
-        <AccordionSummary
-          expandIcon={<ExpandMoreIcon />}
+    <SectionPanel
+      title="Guardians"
+      titleVariant="overline"
+      count={guardians.length}
+      actions={
+        <IconButton
+          size="small"
+          aria-label={expanded ? "Collapse guardians" : "Expand guardians"}
+          aria-expanded={expanded}
+          onClick={() => setExpanded((prev) => !prev)}
           sx={{
-            px: 2.5,
-            "& .MuiAccordionSummary-content": {
-              my: 1.25,
-              alignItems: "center",
-              gap: 1,
-            },
+            transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
+            transition: (theme) => theme.transitions.create("transform"),
           }}
         >
-          <Typography variant="overline" color="text.secondary">
-            Guardians
-          </Typography>
-          <Typography variant="caption" color="text.disabled">
-            ({guardians.length})
-          </Typography>
-        </AccordionSummary>
-        <AccordionDetails sx={{ px: 2.5, pt: 0, pb: 2 }}>
+          <ExpandMoreIcon fontSize="small" />
+        </IconButton>
+      }
+    >
+      {expanded && (
+        <Box sx={{ p: 2.5 }}>
           {family.isPending ? (
             <Typography variant="body2" color="text.disabled">
               Loading…
@@ -165,8 +155,8 @@ export function GuardiansCard({ familyId }: { familyId: string }) {
               ))}
             </Stack>
           )}
-        </AccordionDetails>
-      </Accordion>
+        </Box>
+      )}
 
       <ParentDrawer
         open={!!drawerTarget}
@@ -178,7 +168,7 @@ export function GuardiansCard({ familyId }: { familyId: string }) {
           invalidate();
         }}
       />
-    </Paper>
+    </SectionPanel>
   );
 }
 
