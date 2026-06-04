@@ -9,7 +9,6 @@ import {
   DialogTitle,
   IconButton,
   MenuItem,
-  Paper,
   Select,
   Stack,
   TextField,
@@ -21,6 +20,7 @@ import dayjs from "dayjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { RichTextEditor } from "../../components/RichTextEditor";
+import { SectionPanel } from "../../components/SectionPanel";
 import { useSnackbar } from "../../components/Snackbar";
 import { sanitizeRichTextHtml } from "../../utils/richText";
 
@@ -100,34 +100,35 @@ export function NotesCard({ engagementId }: { engagementId: string }) {
   const rows = notes.data ?? [];
 
   return (
-    <Paper variant="outlined" sx={{ p: 2.5 }}>
-      <Stack direction="row" alignItems="baseline" spacing={1} sx={{ mb: 1.5 }}>
-        <Typography variant="overline" color="text.secondary" sx={{ flex: 1 }}>
-          Notes
-        </Typography>
+    <SectionPanel
+      title="Notes"
+      titleVariant="overline"
+      actions={
         <Button size="small" startIcon={<AddIcon />} onClick={() => setAddOpen(true)}>
           Add note
         </Button>
-      </Stack>
-
-      {notes.isPending ? (
-        <Typography variant="body2" color="text.disabled">Loading…</Typography>
-      ) : rows.length === 0 ? (
-        <Typography variant="body2" color="text.disabled">
-          No notes yet.
-        </Typography>
-      ) : (
-        <Stack divider={<Box sx={{ borderTop: 1, borderColor: "divider" }} />} spacing={0}>
-          {rows.map((n) => (
-            <NoteRow
-              key={n.id}
-              note={n}
-              onEdit={() => setEditing(n)}
-              onDelete={() => remove.mutate(n.id)}
-            />
-          ))}
-        </Stack>
-      )}
+      }
+    >
+      <Box sx={{ p: 2.5 }}>
+        {notes.isPending ? (
+          <Typography variant="body2" color="text.disabled">Loading…</Typography>
+        ) : rows.length === 0 ? (
+          <Typography variant="body2" color="text.disabled">
+            No notes yet.
+          </Typography>
+        ) : (
+          <Stack divider={<Box sx={{ borderTop: 1, borderColor: "divider" }} />} spacing={0}>
+            {rows.map((n) => (
+              <NoteRow
+                key={n.id}
+                note={n}
+                onEdit={() => setEditing(n)}
+                onDelete={() => remove.mutate(n.id)}
+              />
+            ))}
+          </Stack>
+        )}
+      </Box>
 
       <NoteDialog
         mode={addOpen ? "create" : editing ? "edit" : null}
@@ -143,7 +144,7 @@ export function NotesCard({ engagementId }: { engagementId: string }) {
           invalidate();
         }}
       />
-    </Paper>
+    </SectionPanel>
   );
 }
 

@@ -13,6 +13,7 @@ import { EmptyState } from "./EmptyState";
 
 interface SectionPanelProps extends Omit<PaperProps, "title"> {
   title?: ReactNode;
+  titleVariant?: "subtitle1" | "overline";
   subtitle?: ReactNode;
   count?: number;
   actions?: ReactNode;
@@ -24,6 +25,7 @@ interface SectionPanelProps extends Omit<PaperProps, "title"> {
 
 export function SectionPanel({
   title,
+  titleVariant = "subtitle1",
   subtitle,
   count,
   actions,
@@ -57,7 +59,15 @@ export function SectionPanel({
           >
             <Box sx={{ minWidth: 0, flex: 1 }}>
               {title && (
-                <Typography variant="subtitle1" sx={{ fontWeight: 650 }}>
+                <Typography
+                  variant={titleVariant}
+                  color={titleVariant === "overline" ? "text.secondary" : undefined}
+                  sx={{
+                    display: titleVariant === "overline" ? "block" : undefined,
+                    fontWeight: titleVariant === "subtitle1" ? 650 : undefined,
+                    lineHeight: titleVariant === "overline" ? 1.4 : undefined,
+                  }}
+                >
                   {title}
                 </Typography>
               )}

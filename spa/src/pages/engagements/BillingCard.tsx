@@ -7,7 +7,6 @@ import {
   Chip,
   Divider,
   Link as MuiLink,
-  Paper,
   Skeleton,
   Stack,
   Table,
@@ -33,6 +32,7 @@ import {
   formatInvoiceDate,
   formatInvoiceMoney,
 } from "../invoices/invoiceFormatters";
+import { SectionPanel } from "../../components/SectionPanel";
 import { useSnackbar } from "../../components/Snackbar";
 
 interface BillingCardProps {
@@ -120,21 +120,16 @@ export function BillingCard({
   };
 
   return (
-    <Paper variant="outlined" sx={{ p: 2.5 }}>
-      <Stack spacing={2}>
-        <Stack
-          direction={{ xs: "column", md: "row" }}
-          alignItems={{ md: "baseline" }}
-          spacing={1.5}
-        >
-          <Typography variant="overline" color="text.secondary" sx={{ flex: 1 }}>
-            Billing
-          </Typography>
-          <Typography variant="caption" color="text.secondary">
-            {formatInvoiceMoney(selectedTotal)} selected
-          </Typography>
-        </Stack>
-
+    <SectionPanel
+      title="Billing"
+      titleVariant="overline"
+      actions={
+        <Typography variant="caption" color="text.secondary">
+          {formatInvoiceMoney(selectedTotal)} selected
+        </Typography>
+      }
+    >
+      <Stack spacing={2} sx={{ p: 2.5 }}>
         {uninvoiced.error && (
           <Alert
             severity="error"
@@ -254,7 +249,7 @@ export function BillingCard({
           </Stack>
         </Stack>
       </Stack>
-    </Paper>
+    </SectionPanel>
   );
 }
 

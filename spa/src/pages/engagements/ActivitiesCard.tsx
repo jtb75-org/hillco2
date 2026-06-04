@@ -14,7 +14,6 @@ import {
   IconButton,
   Menu,
   MenuItem,
-  Paper,
   Select,
   Stack,
   Switch,
@@ -33,6 +32,7 @@ import RemoveCircleOutlineIcon from "@mui/icons-material/RemoveCircleOutline";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { RichTextEditor } from "../../components/RichTextEditor";
+import { SectionPanel } from "../../components/SectionPanel";
 import { useSnackbar } from "../../components/Snackbar";
 import { sanitizeRichTextHtml } from "../../utils/richText";
 import {
@@ -281,170 +281,174 @@ export function ActivitiesCard({ engagementId }: { engagementId: string }) {
   };
 
   return (
-    <Paper variant="outlined" sx={{ p: 2.5 }}>
-      <Stack
-        direction="row"
-        alignItems="baseline"
-        spacing={1}
-        sx={{ mb: 1.5, flexWrap: "wrap" }}
-      >
-        <Typography variant="overline" color="text.secondary" sx={{ flex: 1 }}>
-          Activities
-        </Typography>
-        <Typography variant="caption" color="text.secondary">
-          {counts.done} / {counts.eff} complete
-          {counts.skipped > 0 ? ` · ${counts.skipped} skipped` : ""}
-        </Typography>
-        <FormControlLabel
-          control={
-            <Switch
-              size="small"
-              checked={showSkipped}
-              onChange={(e) => setShowSkipped(e.target.checked)}
-            />
-          }
-          label={
-            <Typography variant="caption" color="text.secondary">
-              Show skipped
-            </Typography>
-          }
-          sx={{ ml: 1 }}
-        />
-        <Button
-          size="small"
-          startIcon={<AddIcon />}
-          endIcon={<ArrowDropDownIcon />}
-          onClick={(e) => setAddMenuAnchor(e.currentTarget)}
+    <SectionPanel
+      title="Activities"
+      titleVariant="overline"
+      actions={
+        <Stack
+          direction="row"
+          alignItems="center"
+          justifyContent="flex-end"
+          spacing={1}
+          sx={{ flexWrap: "wrap" }}
         >
-          Add activity
-        </Button>
-        <Menu
-          anchorEl={addMenuAnchor}
-          open={!!addMenuAnchor}
-          onClose={() => setAddMenuAnchor(null)}
-          anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-          transformOrigin={{ vertical: "top", horizontal: "right" }}
-        >
-          <MenuItem
-            onClick={() => {
-              setAddMenuAnchor(null);
-              setAddOpen("task");
-            }}
+          <Typography variant="caption" color="text.secondary">
+            {counts.done} / {counts.eff} complete
+            {counts.skipped > 0 ? ` · ${counts.skipped} skipped` : ""}
+          </Typography>
+          <FormControlLabel
+            control={
+              <Switch
+                size="small"
+                checked={showSkipped}
+                onChange={(e) => setShowSkipped(e.target.checked)}
+              />
+            }
+            label={
+              <Typography variant="caption" color="text.secondary">
+                Show skipped
+              </Typography>
+            }
+            sx={{ ml: 0 }}
+          />
+          <Button
+            size="small"
+            startIcon={<AddIcon />}
+            endIcon={<ArrowDropDownIcon />}
+            onClick={(e) => setAddMenuAnchor(e.currentTarget)}
           >
-            Bespoke task
-          </MenuItem>
-          <MenuItem
-            onClick={() => {
-              setAddMenuAnchor(null);
-              setAddOpen("visit");
-            }}
+            Add activity
+          </Button>
+          <Menu
+            anchorEl={addMenuAnchor}
+            open={!!addMenuAnchor}
+            onClose={() => setAddMenuAnchor(null)}
+            anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+            transformOrigin={{ vertical: "top", horizontal: "right" }}
           >
-            Campus visit
-          </MenuItem>
-          <MenuItem
-            onClick={() => {
-              setAddMenuAnchor(null);
-              setAddOpen("recommendation");
-            }}
-          >
-            School recommendation
-          </MenuItem>
-        </Menu>
-      </Stack>
-
-      {tasks.isPending ? (
-        <Typography variant="body2" color="text.disabled">
-          Loading…
-        </Typography>
-      ) : rows.length === 0 ? (
-        <Typography variant="body2" color="text.disabled">
-          No activities yet. Use Add activity to start a bespoke item.
-        </Typography>
-      ) : (
-        <Stack spacing={0.75}>
-          {phaseGroups.map((group) => {
-            const done = group.rows.filter((r) => r.status === "completed").length;
-            const skipped = group.rows.filter((r) => r.status === "not_applicable").length;
-            const effective = Math.max(group.rows.length - skipped, 0);
-            const allDone = effective > 0 && done === effective;
-            return (
-              <Accordion
-                key={group.key}
-                expanded={phaseExpanded.has(group.key)}
-                onChange={() => togglePhase(group.key)}
-                variant="outlined"
-                disableGutters
-                sx={{
-                  "&:before": { display: "none" },
-                  borderRadius: 1,
-                }}
-              >
-                <AccordionSummary
-                  expandIcon={<ExpandMoreIcon />}
-                  data-testid={`phase-summary-${group.title.toLowerCase().replace(/\s+/g, "-")}`}
+            <MenuItem
+              onClick={() => {
+                setAddMenuAnchor(null);
+                setAddOpen("task");
+              }}
+            >
+              Bespoke task
+            </MenuItem>
+            <MenuItem
+              onClick={() => {
+                setAddMenuAnchor(null);
+                setAddOpen("visit");
+              }}
+            >
+              Campus visit
+            </MenuItem>
+            <MenuItem
+              onClick={() => {
+                setAddMenuAnchor(null);
+                setAddOpen("recommendation");
+              }}
+            >
+              School recommendation
+            </MenuItem>
+          </Menu>
+        </Stack>
+      }
+    >
+      <Box sx={{ p: 2.5 }}>
+        {tasks.isPending ? (
+          <Typography variant="body2" color="text.disabled">
+            Loading…
+          </Typography>
+        ) : rows.length === 0 ? (
+          <Typography variant="body2" color="text.disabled">
+            No activities yet. Use Add activity to start a bespoke item.
+          </Typography>
+        ) : (
+          <Stack spacing={0.75}>
+            {phaseGroups.map((group) => {
+              const done = group.rows.filter((r) => r.status === "completed").length;
+              const skipped = group.rows.filter((r) => r.status === "not_applicable").length;
+              const effective = Math.max(group.rows.length - skipped, 0);
+              const allDone = effective > 0 && done === effective;
+              return (
+                <Accordion
+                  key={group.key}
+                  expanded={phaseExpanded.has(group.key)}
+                  onChange={() => togglePhase(group.key)}
+                  variant="outlined"
+                  disableGutters
                   sx={{
-                    "& .MuiAccordionSummary-content": {
-                      my: 0.5,
-                      alignItems: "center",
-                      gap: 1,
-                    },
+                    "&:before": { display: "none" },
+                    borderRadius: 1,
                   }}
                 >
-                  {allDone && (
-                    <CheckCircleOutlineIcon
-                      fontSize="small"
-                      sx={{ color: "success.main" }}
-                    />
-                  )}
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600, flex: 1 }}>
-                    {group.title}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {done} / {effective} complete
-                    {skipped > 0 ? ` · ${skipped} skipped` : ""}
-                  </Typography>
-                </AccordionSummary>
-                <AccordionDetails sx={{ px: 2, py: 0.5 }}>
-                  <Stack divider={<Box sx={{ borderTop: 1, borderColor: "divider" }} />}>
-                    {group.rows.map((row) => (
-                      <ActivityRowView
-                        key={row.id}
-                        row={row}
-                        engagementId={engagementId}
-                        isExpanded={expanded.has(row.id)}
-                        onToggleExpand={() => toggleExpand(row.id)}
-                        onStatusChange={(status) => patchStatus.mutate({ id: row.id, status })}
-                        onSkipToggle={() => {
-                          const next: TaskStatus =
-                            row.status === "not_applicable" ? "not_started" : "not_applicable";
-                          patchStatus.mutate({ id: row.id, status: next });
-                        }}
-                        onTitleCommit={(title) =>
-                          patchFields.mutate({ id: row.id, body: { title } as Partial<ActivityRow> })
-                        }
-                        onNotesCommit={(notes) =>
-                          patchFields.mutate({
-                            id: row.id,
-                            body: { notes } as Partial<ActivityRow>,
-                          })
-                        }
-                        onStructuredContentCommit={(structured_content) =>
-                          patchFields.mutate({
-                            id: row.id,
-                            body: { structured_content } as Partial<ActivityRow>,
-                          })
-                        }
-                        onLogTime={() => setLogTimeFor(row)}
-                        onDelete={() => remove.mutate(row.id)}
+                  <AccordionSummary
+                    expandIcon={<ExpandMoreIcon />}
+                    data-testid={`phase-summary-${group.title.toLowerCase().replace(/\s+/g, "-")}`}
+                    sx={{
+                      "& .MuiAccordionSummary-content": {
+                        my: 0.5,
+                        alignItems: "center",
+                        gap: 1,
+                      },
+                    }}
+                  >
+                    {allDone && (
+                      <CheckCircleOutlineIcon
+                        fontSize="small"
+                        sx={{ color: "success.main" }}
                       />
-                    ))}
-                  </Stack>
-                </AccordionDetails>
-              </Accordion>
-            );
-          })}
-        </Stack>
-      )}
+                    )}
+                    <Typography variant="subtitle2" sx={{ fontWeight: 600, flex: 1 }}>
+                      {group.title}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {done} / {effective} complete
+                      {skipped > 0 ? ` · ${skipped} skipped` : ""}
+                    </Typography>
+                  </AccordionSummary>
+                  <AccordionDetails sx={{ px: 2, py: 0.5 }}>
+                    <Stack divider={<Box sx={{ borderTop: 1, borderColor: "divider" }} />}>
+                      {group.rows.map((row) => (
+                        <ActivityRowView
+                          key={row.id}
+                          row={row}
+                          engagementId={engagementId}
+                          isExpanded={expanded.has(row.id)}
+                          onToggleExpand={() => toggleExpand(row.id)}
+                          onStatusChange={(status) => patchStatus.mutate({ id: row.id, status })}
+                          onSkipToggle={() => {
+                            const next: TaskStatus =
+                              row.status === "not_applicable" ? "not_started" : "not_applicable";
+                            patchStatus.mutate({ id: row.id, status: next });
+                          }}
+                          onTitleCommit={(title) =>
+                            patchFields.mutate({ id: row.id, body: { title } as Partial<ActivityRow> })
+                          }
+                          onNotesCommit={(notes) =>
+                            patchFields.mutate({
+                              id: row.id,
+                              body: { notes } as Partial<ActivityRow>,
+                            })
+                          }
+                          onStructuredContentCommit={(structured_content) =>
+                            patchFields.mutate({
+                              id: row.id,
+                              body: { structured_content } as Partial<ActivityRow>,
+                            })
+                          }
+                          onLogTime={() => setLogTimeFor(row)}
+                          onDelete={() => remove.mutate(row.id)}
+                        />
+                      ))}
+                    </Stack>
+                  </AccordionDetails>
+                </Accordion>
+              );
+            })}
+          </Stack>
+        )}
+      </Box>
 
       <AddActivityDialog
         open={addOpen === "task"}
@@ -495,7 +499,7 @@ export function ActivitiesCard({ engagementId }: { engagementId: string }) {
           });
         }}
       />
-    </Paper>
+    </SectionPanel>
   );
 }
 
