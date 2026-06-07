@@ -383,8 +383,10 @@ test("invoice list opens detail and previews PDF", async ({ page, baseURL }) => 
   await expect(page).toHaveURL(new RegExp(`/app/invoices/${invoiceId}$`));
 
   // Reload directly back to /invoices and confirm the kanban choice
-  // survived (localStorage persistence).
-  await page.goto("/app/invoices");
+  // survived (localStorage persistence). status=all keeps the
+  // freshly-created draft invoice visible once we flip back to List
+  // view below — without it the default status=open hides drafts.
+  await page.goto("/app/invoices?status=all");
   await expect(page.getByText(/^Draft \(/)).toBeVisible();
   await page.getByRole("button", { name: "List" }).click();
   await expect
