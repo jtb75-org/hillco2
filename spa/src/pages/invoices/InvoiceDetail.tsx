@@ -8,7 +8,6 @@ import {
   DialogContent,
   DialogTitle,
   Divider,
-  Grid,
   IconButton,
   Link as MuiLink,
   Paper,
@@ -232,46 +231,61 @@ export function InvoiceDetail() {
         </DataTableContainer>
       ) : (
         <>
-          <Grid container spacing={2}>
-            <Grid item xs={12} md={7}>
-              <Paper variant="outlined" sx={{ p: 2.5, height: "100%" }}>
-                <Typography variant="subtitle1" sx={{ fontWeight: 650, mb: 2 }}>
-                  Invoice details
-                </Typography>
-                <Grid container spacing={2}>
-                  <DetailItem label="Household" value={data.family.household_name} />
-                  <DetailItem label="Issued" value={formatInvoiceDate(data.issue_date)} />
-                  <DetailItem label="Due" value={formatInvoiceDate(data.due_date)} />
-                  <DetailItem label="Sent" value={formatInvoiceDate(data.sent_at)} />
-                  <DetailItem label="Paid" value={formatInvoiceDate(data.paid_date)} />
-                  <DetailItem label="Engagement" value={data.engagement_id.slice(0, 8)} />
-                </Grid>
-              </Paper>
-            </Grid>
-            <Grid item xs={12} md={5}>
-              <Paper variant="outlined" sx={{ p: 2.5, height: "100%" }}>
-                <Typography variant="subtitle1" sx={{ fontWeight: 650, mb: 2 }}>
-                  Totals
-                </Typography>
-                <Stack spacing={1}>
-                  <TotalRow label="Subtotal" value={formatInvoiceMoney(data.subtotal)} />
-                  <TotalRow label="Tax" value={formatInvoiceMoney(data.tax)} />
-                  <Divider />
+          {/* CSS grid — Grid v1's negative-margin gutters were
+              pulling the top-row panels a few pixels off the left/right
+              of the cards below. Box-grid with `gap` aligns flush with
+              the rest of the page rhythm. */}
+          <Box
+            sx={{
+              display: "grid",
+              gap: 2,
+              gridTemplateColumns: {
+                xs: "1fr",
+                md: "7fr 5fr",
+              },
+            }}
+          >
+            <Paper variant="outlined" sx={{ p: 2.5, height: "100%" }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 650, mb: 2 }}>
+                Invoice details
+              </Typography>
+              <Box
+                sx={{
+                  display: "grid",
+                  gap: 2,
+                  gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
+                }}
+              >
+                <DetailItem label="Household" value={data.family.household_name} />
+                <DetailItem label="Issued" value={formatInvoiceDate(data.issue_date)} />
+                <DetailItem label="Due" value={formatInvoiceDate(data.due_date)} />
+                <DetailItem label="Sent" value={formatInvoiceDate(data.sent_at)} />
+                <DetailItem label="Paid" value={formatInvoiceDate(data.paid_date)} />
+                <DetailItem label="Engagement" value={data.engagement_id.slice(0, 8)} />
+              </Box>
+            </Paper>
+            <Paper variant="outlined" sx={{ p: 2.5, height: "100%" }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 650, mb: 2 }}>
+                Totals
+              </Typography>
+              <Stack spacing={1}>
+                <TotalRow label="Subtotal" value={formatInvoiceMoney(data.subtotal)} />
+                <TotalRow label="Tax" value={formatInvoiceMoney(data.tax)} />
+                <Divider />
+                <TotalRow
+                  label="Total"
+                  value={formatInvoiceMoney(data.total)}
+                  strong
+                />
+                {data.paid_amount && (
                   <TotalRow
-                    label="Total"
-                    value={formatInvoiceMoney(data.total)}
-                    strong
+                    label="Paid"
+                    value={formatInvoiceMoney(data.paid_amount)}
                   />
-                  {data.paid_amount && (
-                    <TotalRow
-                      label="Paid"
-                      value={formatInvoiceMoney(data.paid_amount)}
-                    />
-                  )}
-                </Stack>
-              </Paper>
-            </Grid>
-          </Grid>
+                )}
+              </Stack>
+            </Paper>
+          </Box>
 
           <DataTableContainer
             empty={data.line_items.length === 0}
@@ -457,12 +471,12 @@ export function InvoiceDetail() {
 
 function DetailItem({ label, value }: { label: string; value: string }) {
   return (
-    <Grid item xs={12} sm={6}>
+    <Box>
       <Typography variant="overline" color="text.secondary">
         {label}
       </Typography>
       <Typography variant="body2">{value}</Typography>
-    </Grid>
+    </Box>
   );
 }
 
