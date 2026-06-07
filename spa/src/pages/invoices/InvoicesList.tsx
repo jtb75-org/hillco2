@@ -144,6 +144,38 @@ export function InvoicesList() {
     }, { replace: true });
   };
 
+  // Multi-key variant — used by the stat-card click handlers, which
+  // need to set status and clear focus atomically.
+  const updateParams = (updates: Record<string, string | null>) => {
+    setParams((current) => {
+      const next = new URLSearchParams(current);
+      for (const [key, value] of Object.entries(updates)) {
+        if (value) next.set(key, value);
+        else next.delete(key);
+      }
+      return next;
+    }, { replace: true });
+  };
+
+  // Which stat card matches the current filter state. When focus is
+  // "uninvoiced" the Uninvoiced card takes over so the status cards
+  // don't double-highlight.
+  const focusUninvoiced = focus === "uninvoiced";
+  const activeCard: "outstanding" | "invoiced" | "paid" | "uninvoiced" | null =
+    focusUninvoiced
+      ? "uninvoiced"
+      : status === "open"
+        ? "outstanding"
+        : status === "all"
+          ? "invoiced"
+          : status === "paid"
+            ? "paid"
+            : null;
+  const selectedSx = (key: typeof activeCard) =>
+    activeCard === key
+      ? { borderColor: "primary.main", borderWidth: 1.5 }
+      : undefined;
+
   const handleCreateInvoice = (engagementId: string) => {
     createInvoice.mutate(engagementId, {
       onSuccess: (invoice) => {
@@ -213,6 +245,13 @@ export function InvoicesList() {
             value={formatInvoiceMoney(invoices.data?.totals.outstanding)}
             subtitle="Unpaid invoice balance"
             icon={<PaidOutlinedIcon />}
+            onClick={() =>
+              updateParams({
+                status: activeCard === "outstanding" ? "all" : "open",
+                focus: null,
+              })
+            }
+            sx={selectedSx("outstanding")}
           />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
@@ -221,6 +260,8 @@ export function InvoicesList() {
             value={formatInvoiceMoney(invoices.data?.totals.invoiced)}
             subtitle="Total invoice volume"
             icon={<ReceiptLongOutlinedIcon />}
+            onClick={() => updateParams({ status: "all", focus: null })}
+            sx={selectedSx("invoiced")}
           />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
@@ -230,6 +271,13 @@ export function InvoicesList() {
             subtitle="Collected payments"
             icon={<TaskAltOutlinedIcon />}
             emphasis="muted"
+            onClick={() =>
+              updateParams({
+                status: activeCard === "paid" ? "all" : "paid",
+                focus: null,
+              })
+            }
+            sx={selectedSx("paid")}
           />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
@@ -238,7 +286,11 @@ export function InvoicesList() {
             value={formatInvoiceMoney(invoices.data?.totals.uninvoiced)}
             subtitle="Logged work, not yet billed"
             icon={<HourglassEmptyOutlinedIcon />}
-            emphasis={focus === "uninvoiced" ? "alert" : "default"}
+            emphasis={focusUninvoiced ? "alert" : "default"}
+            onClick={() =>
+              updateParam("focus", focusUninvoiced ? null : "uninvoiced")
+            }
+            sx={selectedSx("uninvoiced")}
           />
         </Grid>
       </Grid>
@@ -253,7 +305,12 @@ export function InvoicesList() {
           {view === "list" ? (
             <Tabs
               value={status}
-              onChange={(_e, value: InvoiceListStatus) => updateParam("status", value)}
+              onChange={(_e, value: InvoiceListStatus) =>
+                // Status tabs exit focus=uninvoiced atomically — otherwise
+                // the Uninvoiced card stays highlighted and the summary
+                // table stays visible after the user picks a status.
+                updateParams({ status: value, focus: null })
+              }
               sx={{ borderBottom: 1, borderColor: "divider", flex: 1 }}
             >
               {STATUS_TABS.map((tab) => (
