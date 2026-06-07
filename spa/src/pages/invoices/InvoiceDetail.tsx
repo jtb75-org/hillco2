@@ -669,24 +669,28 @@ function EditInvoiceDialog({
   onClose: () => void;
   onSave: (body: InvoiceDraftUpdateBody) => void;
 }) {
+  // Defensive String(): the OpenAPI schema types tax as string (Decimal
+  // serialized that way), but in practice the FastAPI route can hand
+  // back a JSON number. We later call .trim() on tax/notes, so make
+  // sure local state is always a string regardless of wire format.
   const [issueDate, setIssueDate] = useState(invoice.issue_date ?? "");
   const [dueDate, setDueDate] = useState(invoice.due_date ?? "");
-  const [tax, setTax] = useState(invoice.tax ?? "0");
-  const [notes, setNotes] = useState(invoice.notes ?? "");
+  const [tax, setTax] = useState(String(invoice.tax ?? "0"));
+  const [notes, setNotes] = useState(String(invoice.notes ?? ""));
 
   useEffect(() => {
     if (!open) return;
     setIssueDate(invoice.issue_date ?? "");
     setDueDate(invoice.due_date ?? "");
-    setTax(invoice.tax ?? "0");
-    setNotes(invoice.notes ?? "");
+    setTax(String(invoice.tax ?? "0"));
+    setNotes(String(invoice.notes ?? ""));
   }, [open, invoice.id, invoice.issue_date, invoice.due_date, invoice.tax, invoice.notes]);
 
   const reset = () => {
     setIssueDate(invoice.issue_date ?? "");
     setDueDate(invoice.due_date ?? "");
-    setTax(invoice.tax ?? "0");
-    setNotes(invoice.notes ?? "");
+    setTax(String(invoice.tax ?? "0"));
+    setNotes(String(invoice.notes ?? ""));
   };
 
   return (
