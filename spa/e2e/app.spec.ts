@@ -371,8 +371,9 @@ test("invoice list opens detail and previews PDF", async ({ page, baseURL }) => 
   await expect(page.getByRole("row", { name: new RegExp(invoiceNumber) })).toBeVisible();
 
   await page.getByRole("button", { name: "Kanban" }).click();
+  // View choice now persists in localStorage, not the URL.
   await expect
-    .poll(() => new URL(page.url()).searchParams.get("view"))
+    .poll(() => page.evaluate(() => window.localStorage.getItem("invoicesView")))
     .toBe("kanban");
   await expect(page.getByText(/^Draft \(/)).toBeVisible();
   await expect(page.getByText(/^Open \(/)).toBeVisible();
@@ -381,11 +382,14 @@ test("invoice list opens detail and previews PDF", async ({ page, baseURL }) => 
   await page.getByRole("button", { name: new RegExp(invoiceNumber) }).click();
   await expect(page).toHaveURL(new RegExp(`/app/invoices/${invoiceId}$`));
 
-  await page.goto("/app/invoices?status=all&view=kanban");
+  // Reload directly back to /invoices and confirm the kanban choice
+  // survived (localStorage persistence).
+  await page.goto("/app/invoices");
+  await expect(page.getByText(/^Draft \(/)).toBeVisible();
   await page.getByRole("button", { name: "List" }).click();
   await expect
-    .poll(() => new URL(page.url()).searchParams.get("view"))
-    .toBe(null);
+    .poll(() => page.evaluate(() => window.localStorage.getItem("invoicesView")))
+    .toBe("list");
   await expect(page.getByRole("tab", { name: /^All / })).toBeVisible();
 
   await page.getByRole("row", { name: new RegExp(invoiceNumber) }).click();
