@@ -66,6 +66,17 @@ const STATUS_TABS: Array<{ value: InvoiceListStatus; label: string }> = [
 
 type ViewMode = "list" | "kanban";
 
+// View choice persists per-browser (not in the URL) so a reload keeps
+// the consultant on whichever mode they last picked. Mirrors the
+// pattern used on IntakesList.
+const VIEW_STORAGE_KEY = "invoicesView";
+
+function loadInitialView(): ViewMode {
+  if (typeof window === "undefined") return "list";
+  const v = window.localStorage.getItem(VIEW_STORAGE_KEY);
+  return v === "kanban" ? "kanban" : "list";
+}
+
 const KANBAN_COLUMNS: Array<{ value: Exclude<InvoiceListStatus, "all">; label: string }> = [
   { value: "draft", label: "Draft" },
   { value: "open", label: "Open" },
@@ -79,10 +90,6 @@ function parseStatus(value: string | null): InvoiceListStatus {
     : "open";
 }
 
-function parseView(value: string | null): ViewMode {
-  return value === "kanban" ? "kanban" : "list";
-}
-
 function formatTabLabel(label: string, count: number | undefined) {
   return count === undefined ? label : `${label} (${count})`;
 }
@@ -92,7 +99,10 @@ export function InvoicesList() {
   const snackbar = useSnackbar();
   const [params, setParams] = useSearchParams();
   const status = parseStatus(params.get("status"));
-  const view = parseView(params.get("view"));
+  const [view, setView] = useState<ViewMode>(() => loadInitialView());
+  useEffect(() => {
+    window.localStorage.setItem(VIEW_STORAGE_KEY, view);
+  }, [view]);
   const q = params.get("q") ?? "";
   const issuedFrom = params.get("issued_from") ?? "";
   const issuedTo = params.get("issued_to") ?? "";
@@ -302,6 +312,7 @@ export function InvoicesList() {
           alignItems={{ sm: "center" }}
           justifyContent="space-between"
         >
+          <ViewPill view={view} onChange={setView} />
           {view === "list" ? (
             <Tabs
               value={status}
@@ -324,7 +335,6 @@ export function InvoicesList() {
           ) : (
             <Box sx={{ flex: 1 }} />
           )}
-          <ViewPill view={view} onChange={(next) => updateParam("view", next === "list" ? null : next)} />
         </Stack>
         <Stack direction={{ xs: "column", lg: "row" }} spacing={1.5}>
           <TextField
