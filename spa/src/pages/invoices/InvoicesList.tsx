@@ -305,7 +305,12 @@ export function InvoicesList() {
           {view === "list" ? (
             <Tabs
               value={status}
-              onChange={(_e, value: InvoiceListStatus) => updateParam("status", value)}
+              onChange={(_e, value: InvoiceListStatus) =>
+                // Status tabs exit focus=uninvoiced atomically — otherwise
+                // the Uninvoiced card stays highlighted and the summary
+                // table stays visible after the user picks a status.
+                updateParams({ status: value, focus: null })
+              }
               sx={{ borderBottom: 1, borderColor: "divider", flex: 1 }}
             >
               {STATUS_TABS.map((tab) => (
