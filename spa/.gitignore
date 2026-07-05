@@ -10,3 +10,7 @@ openapi-ts-error-*.log
 # by `npm run codegen` (which `npm run build` runs first). client.ts
 # is hand-written and is committed.
 src/api/schema.ts
+
+# Playwright output
+test-results/
+playwright-report/

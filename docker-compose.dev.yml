@@ -1,0 +1,30 @@
+# Local dev dependencies for hillco2.
+# Only Postgres — the app talks to it via asyncpg; S3/SMTP are optional and
+# disabled by default in dev (empty s3_bucket / noop SMTP). See app/config.py.
+#
+#   make dev-deps         # start
+#   make dev-deps-down    # stop (data persists)
+#   make dev-deps-reset   # stop + delete volume
+#
+# Host port 15434 is chosen to avoid colliding with silkstrand (15432/15433)
+# and blue (5432) if those stacks are also running.
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: hillco2-postgres
+    environment:
+      POSTGRES_DB: hillco2
+      POSTGRES_USER: hillco2
+      POSTGRES_PASSWORD: localdev
+    ports:
+      - "15434:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hillco2"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:
