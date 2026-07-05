@@ -16,6 +16,7 @@ export function formatInvoiceDate(value: string | null | undefined) {
 }
 
 export function isInvoiceOverdue(status: InvoiceStatus, dueDate: string | null | undefined) {
+  if (status === "overdue") return true;
   return status === "sent" && !!dueDate && dayjs(dueDate).isBefore(dayjs(), "day");
 }
 

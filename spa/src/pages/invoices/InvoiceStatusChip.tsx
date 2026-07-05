@@ -17,7 +17,7 @@ export function InvoiceStatusChip({
   dueDate,
   size = "small",
 }: InvoiceStatusChipProps) {
-  const overdue = status === "overdue" || isInvoiceOverdue(status, dueDate);
+  const overdue = isInvoiceOverdue(status, dueDate);
   const color: ChipProps["color"] =
     overdue ? "error" : status === "paid" ? "success" : status === "void" ? "default" : "primary";
   const variant: ChipProps["variant"] =
