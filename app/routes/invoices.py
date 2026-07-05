@@ -338,6 +338,7 @@ async def create_invoice(
             WHERE t.id = ANY($1::uuid[]) AND t.engagement_id = $2
               AND t.invoice_id IS NULL AND t.billable = TRUE
             ORDER BY t.work_date, t.id
+            FOR UPDATE OF t
             """,
             body.time_entry_ids, engagement_id,
         )
@@ -385,6 +386,7 @@ async def create_invoice(
             WHERE x.id = ANY($1::uuid[]) AND x.engagement_id = $2
               AND x.invoice_id IS NULL AND x.billable = TRUE
             ORDER BY x.expense_date, x.id
+            FOR UPDATE
             """,
             body.expense_ids, engagement_id,
         )

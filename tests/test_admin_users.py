@@ -226,14 +226,28 @@ async def test_reactivate_user_requires_admin_role(authed_client, db_pool, test_
     assert r.status_code == 403
 
 
-async def test_list_users_is_not_admin_gated(authed_client, db_pool, test_user):
-    """The list endpoint stays open — read access for the page itself
-    so a consultant can still view the users page (the SPA hides the
-    write buttons)."""
+async def test_list_users_requires_admin_role(authed_client, db_pool, test_user):
+    """The list endpoint is admin-gated: it exposes every user's email,
+    role, and last-login, and the SPA's AdminGate redirects non-admins
+    away from the users page anyway."""
     async with db_pool.acquire() as conn:
         await conn.execute(
             "UPDATE auth SET app_role = 'consultant' WHERE person_id = $1",
             test_user["id"],
         )
     r = await authed_client.get("/api/admin/users")
-    assert r.status_code == 200
+    assert r.status_code == 403
+
+
+async def test_audit_log_requires_admin_role(authed_client, db_pool, test_user):
+    """Audit entries carry full before/after row snapshots (including
+    soft-deleted values and student data), so reads are admin-only."""
+    async with db_pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE auth SET app_role = 'consultant' WHERE person_id = $1",
+            test_user["id"],
+        )
+    r = await authed_client.get("/api/admin/audit-log")
+    assert r.status_code == 403
+    r = await authed_client.get("/api/admin/audit-log/1")
+    assert r.status_code == 403

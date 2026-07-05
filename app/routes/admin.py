@@ -109,11 +109,11 @@ _ADMIN_USER_SELECT = """
 @router.get("/users", response_model=list[AdminUser])
 async def list_users(
     include_inactive: bool = False,
-    _user=Depends(require_user),
+    _user=Depends(require_admin),
     conn=Depends(get_conn),
 ):
     """All users (auth-provisioned people), sorted by active first then
-    name. Anyone authenticated can read this for now.
+    name. Admin-only: exposes emails, roles, and last-login times.
 
     Deactivation soft-deletes the underlying people row, so by default
     those rows are filtered out. Admins can pass `include_inactive=true`
@@ -246,7 +246,7 @@ async def reactivate_user(
 async def list_audit_log(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
-    _user=Depends(require_user),
+    _user=Depends(require_admin),
     conn=Depends(get_conn),
 ):
     """Recent audit_log entries, newest first. Offset-paginated;
@@ -281,7 +281,7 @@ async def list_audit_log(
 @router.get("/audit-log/{audit_id}", response_model=AuditLogDetail)
 async def get_audit_log_entry(
     audit_id: int,
-    _user=Depends(require_user),
+    _user=Depends(require_admin),
     conn=Depends(get_conn),
 ):
     """Single audit_log row with the captured before/after JSONB.

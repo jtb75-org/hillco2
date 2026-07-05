@@ -182,11 +182,18 @@ async function createInvoiceFixture(page: Page) {
   return { engagement: engagement as { id: string }, householdName };
 }
 
+// Due date must stay in the future relative to the run date: a sent
+// invoice past its due date renders the "Overdue" chip, and the smoke
+// test asserts "Sent". A hardcoded date here rotted once already.
+const INVOICE_DUE_DATE = new Date(Date.now() + 30 * 86_400_000)
+  .toISOString()
+  .slice(0, 10);
+
 async function createDraftInvoiceViaBilling(page: Page) {
   const { engagement, householdName } = await createInvoiceFixture(page);
   await page.goto(`/app/engagements/${engagement.id}`);
   await page.getByLabel("Select E2E invoice smoke review").check();
-  await page.getByLabel("Due date").fill("2026-06-25");
+  await page.getByLabel("Due date").fill(INVOICE_DUE_DATE);
   await page.getByLabel("Notes").fill("E2E invoice smoke notes");
   await page.getByRole("button", { name: "Create draft" }).click();
   await expect(page).toHaveURL(/\/app\/invoices\/[0-9a-f-]+$/);
@@ -360,14 +367,14 @@ test("invoice list opens detail and previews PDF", async ({ page, baseURL }) => 
     .toBe(householdName);
   await expect(page.getByRole("row", { name: new RegExp(invoiceNumber) })).toBeVisible();
 
-  await page.getByLabel("Due from").fill("2026-06-25");
-  await page.getByLabel("Due to").fill("2026-06-25");
+  await page.getByLabel("Due from").fill(INVOICE_DUE_DATE);
+  await page.getByLabel("Due to").fill(INVOICE_DUE_DATE);
   await expect
     .poll(() => new URL(page.url()).searchParams.get("due_from"))
-    .toBe("2026-06-25");
+    .toBe(INVOICE_DUE_DATE);
   await expect
     .poll(() => new URL(page.url()).searchParams.get("due_to"))
-    .toBe("2026-06-25");
+    .toBe(INVOICE_DUE_DATE);
   await expect(page.getByRole("row", { name: new RegExp(invoiceNumber) })).toBeVisible();
 
   await page.getByRole("button", { name: "Kanban" }).click();
