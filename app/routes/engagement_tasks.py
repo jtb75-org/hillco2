@@ -22,6 +22,7 @@ ActivityKind = Literal[
     "feedback_meeting",
     "school_visit",
     "school_recommendation",
+    "intake_summary",
 ]
 
 
@@ -57,6 +58,14 @@ class FeedbackMeetingContent(BaseModel):
     follow_on: str = ""
 
 
+class IntakeSummaryContent(BaseModel):
+    """Snapshot of which slice of the intake-summary read-out this row
+    renders. Live data is fetched per-engagement at render time; the
+    section here is the only thing the task itself owns."""
+    model_config = ConfigDict(extra="forbid")
+    section: Literal["contacts", "current_school", "diagnoses", "goals"]
+
+
 _CONTENT_SCHEMAS: dict[str, type[BaseModel]] = {
     "task": _EmptyContent,
     "document_review": DocumentReviewContent,
@@ -64,6 +73,7 @@ _CONTENT_SCHEMAS: dict[str, type[BaseModel]] = {
     "feedback_meeting": FeedbackMeetingContent,
     "school_visit": _EmptyContent,
     "school_recommendation": _EmptyContent,
+    "intake_summary": IntakeSummaryContent,
 }
 
 # Engagement-type → service-item membership now lives in the database
@@ -251,7 +261,7 @@ async def applicable_catalog(
         SELECT si.id, si.phase_id, si.title, si.description, si.sort_order,
                si.default_est_hours, si.default_billable,
                si.default_deliverable, si.default_owner_role,
-               si.default_activity_kind,
+               si.default_activity_kind, si.intake_summary_section,
                cp.sort_order AS phase_sort_order, cp.title AS phase_title
         FROM service_items si
         JOIN service_item_engagement_types siet ON siet.service_item_id = si.id
@@ -431,7 +441,7 @@ async def seed_catalog_for_engagement(
         SELECT si.id, si.phase_id, si.title, si.description, si.sort_order,
                si.default_est_hours, si.default_billable,
                si.default_deliverable, si.default_owner_role,
-               si.default_activity_kind
+               si.default_activity_kind, si.intake_summary_section
         FROM service_items si
         JOIN service_item_engagement_types siet ON siet.service_item_id = si.id
         JOIN engagement_types et
@@ -459,16 +469,27 @@ async def seed_catalog_for_engagement(
         )
         if existing:
             continue
+        # Snapshot the section into structured_content for
+        # intake_summary kinds so the body renders without re-joining
+        # service_items. Other kinds start with the empty dict.
+        if (
+            s["default_activity_kind"] == "intake_summary"
+            and s["intake_summary_section"]
+        ):
+            structured = json.dumps({"section": s["intake_summary_section"]})
+        else:
+            structured = "{}"
         new_id = await conn.fetchval(
             """
             INSERT INTO engagement_tasks (
               engagement_id, service_item_id, phase_id,
               title, description,
               est_hours, billable, deliverable, owner_role,
-              sort_order, created_by, activity_kind
+              sort_order, created_by, activity_kind,
+              structured_content
             ) VALUES (
               $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
-              $12::activity_kind
+              $12::activity_kind, $13::jsonb
             )
             RETURNING id
             """,
@@ -477,6 +498,7 @@ async def seed_catalog_for_engagement(
             s["default_est_hours"], s["default_billable"],
             s["default_deliverable"], s["default_owner_role"],
             s["sort_order"], user_id, s["default_activity_kind"],
+            structured,
         )
         created_ids.append(new_id)
     return {"matched_applicable": len(items), "created_ids": created_ids}

@@ -69,7 +69,14 @@ type ActivityKind =
   | "best_environment"
   | "feedback_meeting"
   | "school_visit"
-  | "school_recommendation";
+  | "school_recommendation"
+  | "intake_summary";
+
+type IntakeSummarySection =
+  | "contacts"
+  | "current_school"
+  | "diagnoses"
+  | "goals";
 
 interface Item {
   id: string;
@@ -82,6 +89,7 @@ interface Item {
   default_deliverable: string | null;
   default_owner_role: OwnerRole | null;
   default_activity_kind: ActivityKind;
+  intake_summary_section: IntakeSummarySection | null;
   engagement_type_ids: string[];
 }
 
@@ -92,6 +100,17 @@ const KIND_OPTIONS: Array<{ value: ActivityKind; label: string; hint: string }> 
   { value: "feedback_meeting",       label: "Feedback meeting",   hint: "Recommendations / admissions strategy / follow-on" },
   { value: "school_visit",           label: "Campus visit",       hint: "Backed by a school_visits row with hours + facts + opinions" },
   { value: "school_recommendation",  label: "School recommendation", hint: "Backed by a school_recommendations row" },
+  { value: "intake_summary",         label: "Intake summary",     hint: "Read-only slice of intake data (contacts / school / diagnoses / goals)" },
+];
+
+const INTAKE_SECTION_OPTIONS: Array<{
+  value: IntakeSummarySection;
+  label: string;
+}> = [
+  { value: "contacts",       label: "Contacts" },
+  { value: "current_school", label: "Current school" },
+  { value: "diagnoses",      label: "Diagnoses" },
+  { value: "goals",          label: "Needs & goals" },
 ];
 
 interface EngagementType {
@@ -1124,9 +1143,28 @@ function ItemDetails({
           size="small"
           label="Activity kind"
           value={item.default_activity_kind}
-          onChange={(e) =>
-            onPatch({ default_activity_kind: e.target.value as ActivityKind })
-          }
+          onChange={(e) => {
+            const next = e.target.value as ActivityKind;
+            // Switching INTO intake_summary requires a section; the
+            // server's CHECK rejects kind=intake_summary without one,
+            // so we default to the first option and let the operator
+            // re-select. Switching OUT clears the section so the
+            // patched row stays valid.
+            if (next === "intake_summary") {
+              onPatch({
+                default_activity_kind: next,
+                intake_summary_section:
+                  item.intake_summary_section ?? "contacts",
+              });
+            } else if (item.intake_summary_section !== null) {
+              onPatch({
+                default_activity_kind: next,
+                intake_summary_section: null,
+              });
+            } else {
+              onPatch({ default_activity_kind: next });
+            }
+          }}
           helperText={
             KIND_OPTIONS.find((o) => o.value === item.default_activity_kind)?.hint
           }
@@ -1138,6 +1176,26 @@ function ItemDetails({
             </MenuItem>
           ))}
         </TextField>
+        {item.default_activity_kind === "intake_summary" ? (
+          <TextField
+            select
+            size="small"
+            label="Intake section"
+            value={item.intake_summary_section ?? ""}
+            onChange={(e) =>
+              onPatch({
+                intake_summary_section: e.target.value as IntakeSummarySection,
+              })
+            }
+            sx={{ minWidth: 200 }}
+          >
+            {INTAKE_SECTION_OPTIONS.map((o) => (
+              <MenuItem key={o.value} value={o.value}>
+                {o.label}
+              </MenuItem>
+            ))}
+          </TextField>
+        ) : null}
         <BlurField
           label="Est. hours"
           initial={item.default_est_hours ?? ""}
