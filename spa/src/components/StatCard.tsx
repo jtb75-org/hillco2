@@ -1,4 +1,5 @@
 import {
+  alpha,
   Box,
   Card,
   CardContent,
@@ -19,9 +20,11 @@ interface StatCardProps extends Omit<CardProps, "title" | "onClick"> {
   onClick?: () => void;
 }
 
-// Color the value, not the whole card, when emphasis is set.
-// "alert" = error red (e.g. an overdue counter), "muted" = de-emphasized
-// (zero/empty state).
+// "alert" (e.g. an overdue counter) colors the value error-red AND gives
+// the whole card a faint red wash so problem cards pop at a glance;
+// "muted" de-emphasizes the value (zero/empty state). Neutral cards stay
+// untinted on purpose — an uncolored card is the all-clear signal, so
+// color only ever means "needs attention".
 const VALUE_COLOR: Record<Emphasis, string> = {
   default: "text.primary",
   alert: "error.main",
@@ -39,6 +42,7 @@ export function StatCard({
   ...cardProps
 }: StatCardProps) {
   const clickable = Boolean(onClick);
+  const alert = emphasis === "alert";
   return (
     <Card
       variant="outlined"
@@ -56,8 +60,17 @@ export function StatCard({
       sx={{
         height: "100%",
         cursor: clickable ? "pointer" : undefined,
+        ...(alert && {
+          bgcolor: (theme) => alpha(theme.palette.error.main, 0.05),
+          borderColor: (theme) => alpha(theme.palette.error.main, 0.4),
+        }),
         "&:hover": clickable
-          ? { borderColor: "primary.main", bgcolor: "action.hover" }
+          ? alert
+            ? {
+                borderColor: "error.main",
+                bgcolor: (theme) => alpha(theme.palette.error.main, 0.1),
+              }
+            : { borderColor: "primary.main", bgcolor: "action.hover" }
           : undefined,
         ...sx,
       }}
@@ -85,8 +98,10 @@ export function StatCard({
                 width: 36,
                 height: 36,
                 borderRadius: 2,
-                bgcolor: "action.hover",
-                color: "text.secondary",
+                bgcolor: alert
+                  ? (theme) => alpha(theme.palette.error.main, 0.1)
+                  : "action.hover",
+                color: alert ? "error.main" : "text.secondary",
                 display: "grid",
                 placeItems: "center",
                 flexShrink: 0,

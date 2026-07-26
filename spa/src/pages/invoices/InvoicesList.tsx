@@ -296,7 +296,6 @@ export function InvoicesList() {
             value={formatInvoiceMoney(invoices.data?.totals.uninvoiced)}
             subtitle="Logged work, not yet billed"
             icon={<HourglassEmptyOutlinedIcon />}
-            emphasis={focusUninvoiced ? "alert" : "default"}
             onClick={() =>
               updateParam("focus", focusUninvoiced ? null : "uninvoiced")
             }
