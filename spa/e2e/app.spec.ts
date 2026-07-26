@@ -189,6 +189,14 @@ const INVOICE_DUE_DATE = new Date(Date.now() + 30 * 86_400_000)
   .toISOString()
   .slice(0, 10);
 
+// The invoices-list date filters are MUI DatePickers, which take typed
+// input in the display format (MM/DD/YYYY), not the ISO value format
+// native date inputs use.
+const INVOICE_DUE_DATE_DISPLAY = (() => {
+  const [y, m, d] = INVOICE_DUE_DATE.split("-");
+  return `${m}/${d}/${y}`;
+})();
+
 async function createDraftInvoiceViaBilling(page: Page) {
   const { engagement, householdName } = await createInvoiceFixture(page);
   await page.goto(`/app/engagements/${engagement.id}`);
@@ -367,8 +375,8 @@ test("invoice list opens detail and previews PDF", async ({ page, baseURL }) => 
     .toBe(householdName);
   await expect(page.getByRole("row", { name: new RegExp(invoiceNumber) })).toBeVisible();
 
-  await page.getByLabel("Due from").fill(INVOICE_DUE_DATE);
-  await page.getByLabel("Due to").fill(INVOICE_DUE_DATE);
+  await page.getByLabel("Due from").fill(INVOICE_DUE_DATE_DISPLAY);
+  await page.getByLabel("Due to").fill(INVOICE_DUE_DATE_DISPLAY);
   await expect
     .poll(() => new URL(page.url()).searchParams.get("due_from"))
     .toBe(INVOICE_DUE_DATE);

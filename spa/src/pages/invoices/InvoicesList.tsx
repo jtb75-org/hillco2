@@ -36,6 +36,8 @@ import SearchIcon from "@mui/icons-material/Search";
 import TaskAltOutlinedIcon from "@mui/icons-material/TaskAltOutlined";
 import ViewKanbanIcon from "@mui/icons-material/ViewKanban";
 import ViewListIcon from "@mui/icons-material/ViewList";
+import { DatePicker } from "@mui/x-date-pickers";
+import dayjs, { type Dayjs } from "dayjs";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
@@ -113,13 +115,21 @@ export function InvoicesList() {
   const [qDraft, setQDraft] = useState(q);
   const [newInvoiceOpen, setNewInvoiceOpen] = useState(false);
 
-  // Safari renders an EMPTY <input type="date"> with today's date in
-  // normal ink, so an unset filter looks applied. Dim the text until a
-  // value is actually set, so the phantom date reads as a placeholder
-  // (Chrome's mm/dd/yyyy placeholder is already gray; this matches it).
-  const dateFilterSx = (value: string) => ({
-    width: { xs: "100%", sm: 160 } as const,
-    ...(value ? {} : { "& input": { color: "text.disabled" } }),
+  // Date filters are DatePickers (not native type="date" inputs) so an
+  // unset filter shows a real empty MM/DD/YYYY mask — Safari renders an
+  // empty native date input with today's date, which reads as applied.
+  // The URL params stay ISO (YYYY-MM-DD); invalid partial input clears.
+  const dateFilterProps = (param: string, value: string) => ({
+    value: value ? dayjs(value) : null,
+    onChange: (v: Dayjs | null) =>
+      updateParam(param, v && v.isValid() ? v.format("YYYY-MM-DD") : null),
+    slotProps: {
+      textField: {
+        size: "small" as const,
+        sx: { width: { xs: "100%", sm: 180 } },
+      },
+      field: { clearable: true },
+    },
   });
 
   useEffect(() => {
@@ -360,44 +370,12 @@ export function InvoicesList() {
             sx={{ width: { xs: "100%", lg: 360 } }}
           />
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
-            <TextField
-              label="Issued from"
-              type="date"
-              size="small"
-              value={issuedFrom}
-              onChange={(e) => updateParam("issued_from", e.target.value || null)}
-              InputLabelProps={{ shrink: true }}
-              sx={dateFilterSx(issuedFrom)}
-            />
-            <TextField
-              label="Issued to"
-              type="date"
-              size="small"
-              value={issuedTo}
-              onChange={(e) => updateParam("issued_to", e.target.value || null)}
-              InputLabelProps={{ shrink: true }}
-              sx={dateFilterSx(issuedTo)}
-            />
+            <DatePicker label="Issued from" {...dateFilterProps("issued_from", issuedFrom)} />
+            <DatePicker label="Issued to" {...dateFilterProps("issued_to", issuedTo)} />
           </Stack>
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
-            <TextField
-              label="Due from"
-              type="date"
-              size="small"
-              value={dueFrom}
-              onChange={(e) => updateParam("due_from", e.target.value || null)}
-              InputLabelProps={{ shrink: true }}
-              sx={dateFilterSx(dueFrom)}
-            />
-            <TextField
-              label="Due to"
-              type="date"
-              size="small"
-              value={dueTo}
-              onChange={(e) => updateParam("due_to", e.target.value || null)}
-              InputLabelProps={{ shrink: true }}
-              sx={dateFilterSx(dueTo)}
-            />
+            <DatePicker label="Due from" {...dateFilterProps("due_from", dueFrom)} />
+            <DatePicker label="Due to" {...dateFilterProps("due_to", dueTo)} />
           </Stack>
         </Stack>
       </Stack>
