@@ -1,4 +1,5 @@
-import { createTheme } from "@mui/material/styles";
+import type { SxProps } from "@mui/material";
+import { alpha, createTheme, darken, type Theme } from "@mui/material/styles";
 
 const SERIF_HEADER_STACK = ['"Georgia"', '"Times New Roman"', "serif"].join(",");
 
@@ -107,10 +108,20 @@ function commonComponents(tableHeadBg: string, tableHeadColor: string) {
   };
 }
 
-export const themes = {
-  default: createTheme({
+// ---------------------------------------------------------------------------
+// Color schemes — the palette/typography axis ("Color scheme" in the UI).
+// `ink` is the scheme's darkest structural neutral; window styles derive
+// their header bars and solid buttons from it so the two axes compose.
+// ---------------------------------------------------------------------------
+
+const schemeDefs = {
+  default: {
+    label: "Default",
+    ink: "#243043",
+    tableHeadBg: "#f8fafc",
+    tableHeadColor: "#475569",
     palette: {
-      mode: "light",
+      mode: "light" as const,
       primary: {
         main: "#2563eb",
         dark: "#1d4ed8",
@@ -124,15 +135,15 @@ export const themes = {
       },
       divider: "#e2e8f0",
     },
-    shape: {
-      borderRadius: 6,
-    },
     typography: baseTypography,
-    components: commonComponents("#f8fafc", "#475569"),
-  }),
-  intake: createTheme({
+  },
+  intake: {
+    label: "Intake",
+    ink: "#1f2933",
+    tableHeadBg: "#fff9df",
+    tableHeadColor: "#5f4a12",
     palette: {
-      mode: "light",
+      mode: "light" as const,
       primary: {
         main: "#F8D660",
         dark: "#D8AE16",
@@ -161,9 +172,6 @@ export const themes = {
       },
       divider: "#e8edf0",
     },
-    shape: {
-      borderRadius: 6,
-    },
     typography: {
       ...baseTypography,
       // Georgia is inherited from baseTypography; intake adds italic
@@ -177,13 +185,175 @@ export const themes = {
         fontStyle: "italic",
       },
     },
-    components: commonComponents("#fff9df", "#5f4a12"),
-  }),
+  },
 };
 
-export type ThemeName = keyof typeof themes;
+export type SchemeName = keyof typeof schemeDefs;
 
-export const themeOptions: Array<{ name: ThemeName; label: string }> = [
-  { name: "default", label: "Default" },
-  { name: "intake", label: "Intake" },
+export const schemeOptions: Array<{ name: SchemeName; label: string }> = (
+  Object.keys(schemeDefs) as SchemeName[]
+).map((name) => ({ name, label: schemeDefs[name].label }));
+
+// ---------------------------------------------------------------------------
+// Window styles — the structure/contrast axis ("Window style" in the UI).
+// Chosen from the 2026-07 design-options review: classic is the shipped
+// look; sharp/ink/ledger step up section-header and button contrast.
+// ---------------------------------------------------------------------------
+
+export type WindowStyleName = "classic" | "sharp" | "ink" | "ledger";
+
+export const windowStyleOptions: Array<{ name: WindowStyleName; label: string }> = [
+  { name: "classic", label: "Classic" },
+  { name: "sharp", label: "Sharp" },
+  { name: "ink", label: "Ink" },
+  { name: "ledger", label: "Ledger" },
 ];
+
+export interface HillcoPanelTokens {
+  /** Ledger renders the panel title outside/above the Paper. */
+  outside: boolean;
+  /** Ink puts header content on a dark bar — light-ink overrides apply. */
+  onDark: boolean;
+  headerBg: string;
+  headerBorder: string;
+  /** null → classic per-variant title behavior (overline/subtitle1). */
+  titleSx: SxProps<Theme> | null;
+  /** Applied to text-variant buttons inside the panel header. */
+  actionSx: SxProps<Theme> | null;
+}
+
+export interface HillcoTokens {
+  windowStyle: WindowStyleName;
+  ink: string;
+  panel: HillcoPanelTokens;
+}
+
+declare module "@mui/material/styles" {
+  interface Theme {
+    hillco: HillcoTokens;
+  }
+  interface ThemeOptions {
+    hillco?: HillcoTokens;
+  }
+}
+
+export function buildTheme(schemeName: SchemeName, styleName: WindowStyleName): Theme {
+  const def = schemeDefs[schemeName];
+  const base = createTheme({
+    palette: def.palette,
+    shape: {
+      borderRadius: 6,
+    },
+    typography: def.typography,
+    components: commonComponents(def.tableHeadBg, def.tableHeadColor),
+  });
+
+  const ink = def.ink;
+  const primary = base.palette.primary;
+  let background = base.palette.background.default;
+  let divider = base.palette.divider;
+  let panel: HillcoPanelTokens;
+
+  switch (styleName) {
+    case "classic":
+      panel = {
+        outside: false,
+        onDark: false,
+        headerBg: "transparent",
+        headerBorder: divider,
+        titleSx: null,
+        actionSx: null,
+      };
+      break;
+    case "sharp":
+      // Same layout language, contrast turned up: tinted header strip,
+      // dark sentence-case titles, tonal buttons, deeper page ground.
+      background = darken(background, 0.045);
+      divider = darken(divider, 0.12);
+      panel = {
+        outside: false,
+        onDark: false,
+        headerBg: alpha(ink, 0.05),
+        headerBorder: divider,
+        titleSx: {
+          fontSize: "0.85rem",
+          fontWeight: 700,
+          lineHeight: 1.5,
+          color: "text.primary",
+        },
+        actionSx: {
+          px: 1.5,
+          bgcolor: alpha(primary.main, 0.1),
+          color: primary.dark,
+          border: "1px solid",
+          borderColor: alpha(primary.main, 0.4),
+          "&:hover": { bgcolor: alpha(primary.main, 0.18) },
+        },
+      };
+      break;
+    case "ink":
+      // Dark header bars with the scheme's primary as solid buttons —
+      // strongest section scanability.
+      background = darken(background, 0.06);
+      divider = darken(divider, 0.12);
+      panel = {
+        outside: false,
+        onDark: true,
+        headerBg: ink,
+        headerBorder: ink,
+        titleSx: {
+          fontSize: "0.75rem",
+          fontWeight: 700,
+          letterSpacing: "0.07em",
+          textTransform: "uppercase",
+          lineHeight: 1.6,
+          color: "#ffffff",
+        },
+        actionSx: {
+          px: 1.5,
+          bgcolor: primary.main,
+          color: primary.contrastText,
+          "&:hover": { bgcolor: primary.dark, color: primary.contrastText },
+        },
+      };
+      break;
+    case "ledger":
+      // Serif titles above the card over a heavy ink rule; solid ink
+      // buttons. The scheme's serif (and intake's italic) carries through
+      // because titleSx only sets the family, not the style.
+      background = darken(background, 0.035);
+      divider = darken(divider, 0.08);
+      panel = {
+        outside: true,
+        onDark: false,
+        headerBg: "transparent",
+        headerBorder: ink,
+        titleSx: {
+          fontFamily: SERIF_HEADER_STACK,
+          fontSize: "1.2rem",
+          fontWeight: 700,
+          lineHeight: 1.3,
+          color: "text.primary",
+        },
+        actionSx: {
+          px: 1.5,
+          bgcolor: ink,
+          color: "#ffffff",
+          "&:hover": { bgcolor: alpha(ink, 0.85) },
+        },
+      };
+      break;
+  }
+
+  return createTheme(base, {
+    palette: {
+      background: { default: background },
+      divider,
+    },
+    hillco: {
+      windowStyle: styleName,
+      ink,
+      panel,
+    },
+  });
+}

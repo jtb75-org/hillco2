@@ -7,38 +7,72 @@ import {
 } from "react";
 import { ThemeProvider } from "@mui/material/styles";
 
-import { themeOptions, themes, type ThemeName } from "./theme";
+import {
+  buildTheme,
+  schemeOptions,
+  windowStyleOptions,
+  type SchemeName,
+  type WindowStyleName,
+} from "./theme";
 
-const STORAGE_KEY = "hillco2.theme";
+// "hillco2.theme" predates the scheme/style split — keep the key so
+// existing users' color-scheme choice survives the upgrade.
+const SCHEME_STORAGE_KEY = "hillco2.theme";
+const STYLE_STORAGE_KEY = "hillco2.windowStyle";
 
 interface AppThemeContextValue {
-  current: ThemeName;
-  available: typeof themeOptions;
-  setCurrent: (name: ThemeName) => void;
+  scheme: SchemeName;
+  style: WindowStyleName;
+  schemes: typeof schemeOptions;
+  styles: typeof windowStyleOptions;
+  setScheme: (name: SchemeName) => void;
+  setStyle: (name: WindowStyleName) => void;
 }
 
 const AppThemeContext = createContext<AppThemeContextValue | null>(null);
 
-function readInitialTheme(): ThemeName {
-  if (typeof window === "undefined") return "default";
-  const stored = window.localStorage.getItem(STORAGE_KEY);
-  return stored && stored in themes ? (stored as ThemeName) : "default";
+function readStored<T extends string>(
+  key: string,
+  valid: readonly { name: T }[],
+  fallback: T,
+): T {
+  if (typeof window === "undefined") return fallback;
+  const stored = window.localStorage.getItem(key);
+  return valid.some((option) => option.name === stored) ? (stored as T) : fallback;
 }
 
 export function AppThemeProvider({ children }: { children: ReactNode }) {
-  const [current, setCurrentState] = useState<ThemeName>(() => readInitialTheme());
+  const [scheme, setSchemeState] = useState<SchemeName>(() =>
+    readStored(SCHEME_STORAGE_KEY, schemeOptions, "default"),
+  );
+  const [style, setStyleState] = useState<WindowStyleName>(() =>
+    readStored(STYLE_STORAGE_KEY, windowStyleOptions, "classic"),
+  );
 
   const value = useMemo<AppThemeContextValue>(() => {
-    const setCurrent = (name: ThemeName) => {
-      setCurrentState(name);
-      window.localStorage.setItem(STORAGE_KEY, name);
+    const setScheme = (name: SchemeName) => {
+      setSchemeState(name);
+      window.localStorage.setItem(SCHEME_STORAGE_KEY, name);
     };
-    return { current, available: themeOptions, setCurrent };
-  }, [current]);
+    const setStyle = (name: WindowStyleName) => {
+      setStyleState(name);
+      window.localStorage.setItem(STYLE_STORAGE_KEY, name);
+    };
+    return {
+      scheme,
+      style,
+      schemes: schemeOptions,
+      styles: windowStyleOptions,
+      setScheme,
+      setStyle,
+    };
+  }, [scheme, style]);
+
+  const theme = useMemo(() => buildTheme(scheme, style), [scheme, style]);
 
   return (
     <AppThemeContext.Provider value={value}>
-      <ThemeProvider theme={themes[current]}>{children}</ThemeProvider>
+      <ThemeProvider theme={theme}>{children}</ThemeProvider>
     </AppThemeContext.Provider>
   );
 }

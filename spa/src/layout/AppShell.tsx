@@ -32,6 +32,7 @@ import HomeIcon from "@mui/icons-material/Home";
 import LogoutIcon from "@mui/icons-material/Logout";
 import PaletteOutlinedIcon from "@mui/icons-material/PaletteOutlined";
 import ReceiptLongOutlinedIcon from "@mui/icons-material/ReceiptLongOutlined";
+import WebAssetOutlinedIcon from "@mui/icons-material/WebAssetOutlined";
 import SchoolIcon from "@mui/icons-material/School";
 import { Link, Outlet, useLocation } from "react-router-dom";
 
@@ -67,6 +68,7 @@ export function AppShell() {
   const { pathname } = useLocation();
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const [themeDialogOpen, setThemeDialogOpen] = useState(false);
+  const [styleDialogOpen, setStyleDialogOpen] = useState(false);
   return (
     <Box sx={{ display: "flex", minHeight: "100vh", bgcolor: "background.default" }}>
       <AppBar
@@ -126,7 +128,24 @@ export function AppShell() {
                   <ListItemText
                     primary="Color scheme"
                     secondary={
-                      appTheme.available.find((option) => option.name === appTheme.current)
+                      appTheme.schemes.find((option) => option.name === appTheme.scheme)
+                        ?.label
+                    }
+                  />
+                </MenuItem>
+                <MenuItem
+                  onClick={() => {
+                    setMenuAnchor(null);
+                    setStyleDialogOpen(true);
+                  }}
+                >
+                  <ListItemIcon>
+                    <WebAssetOutlinedIcon fontSize="small" />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary="Window style"
+                    secondary={
+                      appTheme.styles.find((option) => option.name === appTheme.style)
                         ?.label
                     }
                   />
@@ -151,17 +170,17 @@ export function AppShell() {
         <DialogTitle>Color scheme</DialogTitle>
         <DialogContent>
           <List disablePadding>
-            {appTheme.available.map((option) => (
+            {appTheme.schemes.map((option) => (
               <ListItem key={option.name} disablePadding>
                 <ListItemButton
-                  selected={option.name === appTheme.current}
+                  selected={option.name === appTheme.scheme}
                   onClick={() => {
-                    appTheme.setCurrent(option.name);
+                    appTheme.setScheme(option.name);
                     setThemeDialogOpen(false);
                   }}
                 >
                   <ListItemText primary={option.label} />
-                  {option.name === appTheme.current && <CheckIcon fontSize="small" />}
+                  {option.name === appTheme.scheme && <CheckIcon fontSize="small" />}
                 </ListItemButton>
               </ListItem>
             ))}
@@ -169,6 +188,35 @@ export function AppShell() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setThemeDialogOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog
+        open={styleDialogOpen}
+        onClose={() => setStyleDialogOpen(false)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Window style</DialogTitle>
+        <DialogContent>
+          <List disablePadding>
+            {appTheme.styles.map((option) => (
+              <ListItem key={option.name} disablePadding>
+                <ListItemButton
+                  selected={option.name === appTheme.style}
+                  onClick={() => {
+                    appTheme.setStyle(option.name);
+                    setStyleDialogOpen(false);
+                  }}
+                >
+                  <ListItemText primary={option.label} />
+                  {option.name === appTheme.style && <CheckIcon fontSize="small" />}
+                </ListItemButton>
+              </ListItem>
+            ))}
+          </List>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setStyleDialogOpen(false)}>Close</Button>
         </DialogActions>
       </Dialog>
       <Drawer
