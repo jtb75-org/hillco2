@@ -40,6 +40,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link as RouterLink, useNavigate, useParams } from "react-router-dom";
 
 import { api } from "../../api/client";
+import { AddCard } from "../../components/AddCard";
 import { LabeledField } from "../../components/LabeledField";
 import { PageHeader } from "../../components/PageHeader";
 import { RichTextEditor } from "../../components/RichTextEditor";
@@ -549,10 +550,6 @@ function GuardiansSection({
           <Box sx={{ display: "flex", justifyContent: "center", py: 2 }}>
             <CircularProgress size={20} />
           </Box>
-        ) : intakeGuardians.length === 0 ? (
-          <Typography variant="body2" color="text.disabled">
-            No guardians on this intake yet.
-          </Typography>
         ) : (
           <Stack direction="row" useFlexGap flexWrap="wrap" sx={{ gap: 2 }}>
             {intakeGuardians.map((g) => (
@@ -565,6 +562,11 @@ function GuardiansSection({
                 />
               </Box>
             ))}
+            {/* Ghost card — second route into the same add flow as the
+                header's Add guardian action. */}
+            <Box sx={{ flex: "1 1 300px", maxWidth: 360 }}>
+              <AddCard label="Add guardian" onClick={() => setAddOpen(true)} />
+            </Box>
           </Stack>
         )}
 
@@ -1105,10 +1107,6 @@ function StudentsSection({
           <Box sx={{ display: "flex", justifyContent: "center", py: 2 }}>
             <CircularProgress size={20} />
           </Box>
-        ) : intakeStudents.length === 0 ? (
-          <Typography variant="body2" color="text.disabled">
-            No students on this intake yet.
-          </Typography>
         ) : (
           <Stack direction="row" useFlexGap flexWrap="wrap" sx={{ gap: 2 }}>
             {intakeStudents.map((s) => (
@@ -1121,6 +1119,11 @@ function StudentsSection({
                 />
               </Box>
             ))}
+            {/* Ghost card — second route into the same add flow as the
+                header's Add student action. */}
+            <Box sx={{ flex: "1 1 300px", maxWidth: 360 }}>
+              <AddCard label="Add student" onClick={() => setAddOpen(true)} />
+            </Box>
           </Stack>
         )}
 
