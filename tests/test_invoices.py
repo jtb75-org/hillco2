@@ -144,6 +144,35 @@ async def test_cant_delete_time_entry_attached_to_invoice(authed_client, db_pool
     assert "invoice" in r.json()["detail"].lower()
 
 
+async def test_create_invoice_defaults_due_date_net_30(authed_client, db_pool, test_user):
+    """Service-contract terms are net-30: omitting due_date defaults it
+    to issue_date + 30 days rather than leaving it NULL (a NULL due
+    date could never flip the invoice to overdue)."""
+    _, engagement_id, time_entry_id = await _make_engagement(db_pool, test_user["id"])
+    r = await authed_client.post(
+        f"/api/engagements/{engagement_id}/invoices",
+        json={"time_entry_ids": [str(time_entry_id)], "issue_date": "2026-06-01"},
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["due_date"] == "2026-07-01"
+
+
+async def test_create_invoice_explicit_due_date_wins(authed_client, db_pool, test_user):
+    """A caller-supplied due_date is stored as-is — the net-30 default
+    only fills the gap."""
+    _, engagement_id, time_entry_id = await _make_engagement(db_pool, test_user["id"])
+    r = await authed_client.post(
+        f"/api/engagements/{engagement_id}/invoices",
+        json={
+            "time_entry_ids": [str(time_entry_id)],
+            "issue_date": "2026-06-01",
+            "due_date": "2026-06-15",
+        },
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["due_date"] == "2026-06-15"
+
+
 async def test_cant_create_invoice_with_no_lines(authed_client, db_pool, test_user):
     _, engagement_id, _ = await _make_engagement(db_pool, test_user["id"])
     r = await authed_client.post(

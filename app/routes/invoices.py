@@ -312,6 +312,11 @@ async def create_invoice(
         raise HTTPException(status_code=400, detail="Select at least one time entry or expense")
 
     issue_date = body.issue_date or date.today()
+    # Service-contract terms are net-30: when the caller doesn't pick a
+    # due date, default to issue + 30 days (the window hillco-portal
+    # used). Leaving it NULL would also mean the invoice could never
+    # flip to overdue — _is_overdue requires a concrete date.
+    due_date = body.due_date or issue_date + timedelta(days=30)
     notes = (body.notes or "").strip() or None
 
     invoice_number = await conn.fetchval("SELECT next_invoice_number()")
@@ -323,7 +328,7 @@ async def create_invoice(
         ) VALUES ($1, $2, 'draft', $3, $4, 0, $5, $5, $6, $7)
         RETURNING id
         """,
-        invoice_number, engagement_id, issue_date, body.due_date,
+        invoice_number, engagement_id, issue_date, due_date,
         body.tax, notes, user["id"],
     )
 
@@ -883,9 +888,3 @@ async def delete_invoice(
         invoice_id,
     )
     return None
-
-
-# Suppress the linter on the unused timedelta import below — kept so future
-# default-due-date logic on the SPA stays consistent with hillco-portal's
-# 30-day window.
-_ = timedelta

@@ -51,7 +51,12 @@ export function BillingCard({
   const createInvoice = useCreateInvoice(engagementId);
   const [selectedTimeIds, setSelectedTimeIds] = useState<Set<string>>(new Set());
   const [selectedExpenseIds, setSelectedExpenseIds] = useState<Set<string>>(new Set());
-  const [dueDate, setDueDate] = useState("");
+  // Contract terms are net-30, so pre-fill issue (today) + 30 days. The
+  // backend applies the same default when due_date is omitted; the
+  // pre-fill just makes it visible and editable before creating.
+  const [dueDate, setDueDate] = useState(() =>
+    dayjs().add(30, "day").format("YYYY-MM-DD"),
+  );
   const [notes, setNotes] = useState("");
 
   const timeRows = uninvoiced.data?.time_entries ?? [];
