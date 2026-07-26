@@ -3,8 +3,6 @@ import {
   Alert,
   Box,
   Button,
-  Card,
-  CardContent,
   Dialog,
   DialogActions,
   DialogContent,
@@ -22,6 +20,7 @@ import {
 } from "@mui/material";
 
 import { LabeledField } from "../../components/LabeledField";
+import { SectionPanel } from "../../components/SectionPanel";
 
 import type {
   EngagementTypeOption,
@@ -90,17 +89,11 @@ export function FitOutcomeCard({
   };
 
   return (
-    <Card variant="outlined">
-      <CardContent>
-        <Stack spacing={0.25} sx={{ mb: 2 }}>
-          <Typography variant="h6" sx={{ fontWeight: 600 }}>
-            Fit, outcome &amp; next steps
-          </Typography>
-          <Typography variant="caption" color="text.secondary">
-            The decision point at the end of intake.
-          </Typography>
-        </Stack>
-
+    <SectionPanel
+      title="Fit, outcome & next steps"
+      subtitle="The decision point at the end of intake."
+    >
+      <Box sx={{ p: 2.5 }}>
         <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
           Per-student candidacy
         </Typography>
@@ -194,7 +187,7 @@ export function FitOutcomeCard({
             </Grid>
           )}
         </Grid>
-      </CardContent>
+      </Box>
 
       <Dialog
         open={confirmOpen}
@@ -239,7 +232,7 @@ export function FitOutcomeCard({
           </Button>
         </DialogActions>
       </Dialog>
-    </Card>
+    </SectionPanel>
   );
 }
 

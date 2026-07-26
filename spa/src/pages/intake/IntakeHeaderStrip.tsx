@@ -1,8 +1,9 @@
-import { Box, Chip, MenuItem, Paper, Stack, TextField, Typography } from "@mui/material";
+import { Box, Chip, MenuItem, Stack, TextField, Typography } from "@mui/material";
 import { DatePicker } from "@mui/x-date-pickers";
 import dayjs from "dayjs";
 
 import { LabeledField } from "../../components/LabeledField";
+import { SectionPanel } from "../../components/SectionPanel";
 import { ghostFieldSx } from "../../components/ghostFieldSx";
 
 import type { Outcome, ReferralSource } from "./intakeTypes";
@@ -33,7 +34,8 @@ export function IntakeHeaderStrip({
       ? { label: "In progress", color: "primary" as const }
       : OUTCOME_STATUS_DISPLAY[outcome];
   return (
-    <Paper variant="outlined" sx={{ p: 2.5 }}>
+    <SectionPanel>
+      <Box sx={{ p: 2.5 }}>
       <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems="flex-start">
         <Box sx={{ flex: 1 }}>
           <LabeledField label="Intake date">
@@ -87,6 +89,7 @@ export function IntakeHeaderStrip({
           </LabeledField>
         </Box>
       </Stack>
-    </Paper>
+      </Box>
+    </SectionPanel>
   );
 }

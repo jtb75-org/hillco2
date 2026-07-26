@@ -10,11 +10,11 @@ import {
   Divider,
   IconButton,
   Link as MuiLink,
-  Paper,
   Stack,
   Table,
   TableBody,
   TableCell,
+  TableContainer,
   TableHead,
   TableRow,
   TextField,
@@ -34,6 +34,7 @@ import dayjs from "dayjs";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { DataTableContainer } from "../../components/DataTableContainer";
 import { PageHeader } from "../../components/PageHeader";
+import { SectionPanel } from "../../components/SectionPanel";
 import { useSnackbar } from "../../components/Snackbar";
 import { useAuth } from "../../auth";
 import { InvoiceStatusChip } from "./InvoiceStatusChip";
@@ -245,12 +246,10 @@ export function InvoiceDetail() {
               },
             }}
           >
-            <Paper variant="outlined" sx={{ p: 2.5, height: "100%" }}>
-              <Typography variant="subtitle1" sx={{ fontWeight: 650, mb: 2 }}>
-                Invoice details
-              </Typography>
+            <SectionPanel title="Invoice details" sx={{ height: "100%" }}>
               <Box
                 sx={{
+                  p: 2.5,
                   display: "grid",
                   gap: 2,
                   gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
@@ -263,12 +262,9 @@ export function InvoiceDetail() {
                 <DetailItem label="Paid" value={formatInvoiceDate(data.paid_date)} />
                 <DetailItem label="Engagement" value={data.engagement_id.slice(0, 8)} />
               </Box>
-            </Paper>
-            <Paper variant="outlined" sx={{ p: 2.5, height: "100%" }}>
-              <Typography variant="subtitle1" sx={{ fontWeight: 650, mb: 2 }}>
-                Totals
-              </Typography>
-              <Stack spacing={1}>
+            </SectionPanel>
+            <SectionPanel title="Totals" sx={{ height: "100%" }}>
+              <Stack spacing={1} sx={{ p: 2.5 }}>
                 <TotalRow label="Subtotal" value={formatInvoiceMoney(data.subtotal)} />
                 <TotalRow label="Tax" value={formatInvoiceMoney(data.tax)} />
                 <Divider />
@@ -284,7 +280,7 @@ export function InvoiceDetail() {
                   />
                 )}
               </Stack>
-            </Paper>
+            </SectionPanel>
           </Box>
 
           <DataTableContainer
@@ -358,18 +354,15 @@ export function InvoiceDetail() {
             </>
           </DataTableContainer>
 
-          <Paper variant="outlined" sx={{ p: 2.5 }}>
-            <Typography variant="subtitle1" sx={{ fontWeight: 650, mb: 1 }}>
-              Notes
-            </Typography>
+          <SectionPanel title="Notes">
             <Typography
               variant="body2"
               color={data.notes ? "text.primary" : "text.disabled"}
-              sx={{ whiteSpace: "pre-wrap" }}
+              sx={{ whiteSpace: "pre-wrap", p: 2.5 }}
             >
               {data.notes || "No notes."}
             </Typography>
-          </Paper>
+          </SectionPanel>
 
           <SentEmailsLog emails={data.emails ?? []} />
         </>
@@ -623,15 +616,13 @@ function SendInvoiceEmailDialog({
 
 function SentEmailsLog({ emails }: { emails: InvoiceEmailAudit[] }) {
   return (
-    <Stack spacing={1}>
-      <Typography variant="subtitle1" sx={{ fontWeight: 650 }}>
-        Sent emails
-      </Typography>
-      <DataTableContainer
-        empty={emails.length === 0}
-        emptyTitle="No sent emails"
-        emptyDescription="Invoice email delivery attempts will appear here."
-      >
+    <SectionPanel
+      title="Sent emails"
+      empty={emails.length === 0}
+      emptyTitle="No sent emails"
+      emptyDescription="Invoice email delivery attempts will appear here."
+    >
+      <TableContainer>
         <Table size="small">
           <TableHead>
             <TableRow>
@@ -665,8 +656,8 @@ function SentEmailsLog({ emails }: { emails: InvoiceEmailAudit[] }) {
             ))}
           </TableBody>
         </Table>
-      </DataTableContainer>
-    </Stack>
+      </TableContainer>
+    </SectionPanel>
   );
 }
 

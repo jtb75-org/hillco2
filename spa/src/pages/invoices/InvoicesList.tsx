@@ -4,7 +4,6 @@ import {
   Button,
   Card,
   CardContent,
-  Chip,
   Dialog,
   DialogActions,
   DialogContent,
@@ -43,6 +42,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { DataTableContainer } from "../../components/DataTableContainer";
 import { PageHeader } from "../../components/PageHeader";
+import { SectionPanel } from "../../components/SectionPanel";
 import { useSnackbar } from "../../components/Snackbar";
 import { StatCard } from "../../components/StatCard";
 import { InvoiceStatusChip } from "./InvoiceStatusChip";
@@ -574,25 +574,11 @@ function InvoiceKanbanView({
         const columnRows = grouped[column.value];
         return (
           <Grid key={column.value} item xs={12} md={6} xl={3}>
-            <Box
-              sx={{
-                border: 1,
-                borderColor: "divider",
-                bgcolor: "background.paper",
-                minHeight: 360,
-              }}
+            <SectionPanel
+              title={formatTabLabel(column.label, counts?.[column.value])}
+              count={columnRows.length}
+              sx={{ minHeight: 360 }}
             >
-              <Stack
-                direction="row"
-                alignItems="center"
-                justifyContent="space-between"
-                sx={{ px: 1.5, py: 1.25, borderBottom: 1, borderColor: "divider" }}
-              >
-                <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                  {formatTabLabel(column.label, counts?.[column.value])}
-                </Typography>
-                <Chip size="small" variant="outlined" label={columnRows.length} />
-              </Stack>
               <Stack spacing={1.25} sx={{ p: 1.25 }}>
                 {columnRows.length === 0 ? (
                   <Typography variant="body2" color="text.disabled" sx={{ p: 1 }}>
@@ -608,7 +594,7 @@ function InvoiceKanbanView({
                   ))
                 )}
               </Stack>
-            </Box>
+            </SectionPanel>
           </Grid>
         );
       })}

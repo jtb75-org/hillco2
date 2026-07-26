@@ -30,6 +30,7 @@ import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 import GroupsIcon from "@mui/icons-material/Groups";
 import HomeIcon from "@mui/icons-material/Home";
 import LogoutIcon from "@mui/icons-material/Logout";
+import FormatSizeIcon from "@mui/icons-material/FormatSize";
 import PaletteOutlinedIcon from "@mui/icons-material/PaletteOutlined";
 import ReceiptLongOutlinedIcon from "@mui/icons-material/ReceiptLongOutlined";
 import WebAssetOutlinedIcon from "@mui/icons-material/WebAssetOutlined";
@@ -37,6 +38,7 @@ import SchoolIcon from "@mui/icons-material/School";
 import { Link, Outlet, useLocation } from "react-router-dom";
 
 import { signOut, useAuth } from "../auth";
+import { BrandMark, BRAND_CYAN, BRAND_INDIGO } from "../components/BrandMark";
 import { useAppTheme } from "../themeProvider";
 
 const DRAWER_WIDTH = 240;
@@ -69,6 +71,7 @@ export function AppShell() {
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const [themeDialogOpen, setThemeDialogOpen] = useState(false);
   const [styleDialogOpen, setStyleDialogOpen] = useState(false);
+  const [textSizeDialogOpen, setTextSizeDialogOpen] = useState(false);
   return (
     <Box sx={{ display: "flex", minHeight: "100vh", bgcolor: "background.default" }}>
       <AppBar
@@ -84,9 +87,27 @@ export function AppShell() {
         elevation={0}
       >
         <Toolbar sx={{ gap: 2 }}>
-          <Typography variant="h6" sx={{ flexGrow: 1 }}>
-            HillCo Portal
-          </Typography>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1.25, flexGrow: 1 }}>
+            <BrandMark size={30} />
+            <Typography variant="h6" component="div">
+              <Box
+                component="span"
+                sx={{ fontFamily: 'Georgia, "Times New Roman", serif', color: BRAND_INDIGO }}
+              >
+                Hill
+              </Box>
+              <Box
+                component="span"
+                sx={{ fontFamily: 'Georgia, "Times New Roman", serif', color: BRAND_CYAN }}
+              >
+                Co
+              </Box>
+              <Box component="span" sx={{ color: "text.secondary", fontWeight: 500 }}>
+                {" "}
+                Portal
+              </Box>
+            </Typography>
+          </Box>
           {user && (
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
               <Typography variant="body2">{user.name}</Typography>
@@ -147,6 +168,24 @@ export function AppShell() {
                     secondary={
                       appTheme.styles.find((option) => option.name === appTheme.style)
                         ?.label
+                    }
+                  />
+                </MenuItem>
+                <MenuItem
+                  onClick={() => {
+                    setMenuAnchor(null);
+                    setTextSizeDialogOpen(true);
+                  }}
+                >
+                  <ListItemIcon>
+                    <FormatSizeIcon fontSize="small" />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary="Text size"
+                    secondary={
+                      appTheme.textSizes.find(
+                        (option) => option.name === appTheme.textSize,
+                      )?.label
                     }
                   />
                 </MenuItem>
@@ -217,6 +256,35 @@ export function AppShell() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setStyleDialogOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog
+        open={textSizeDialogOpen}
+        onClose={() => setTextSizeDialogOpen(false)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Text size</DialogTitle>
+        <DialogContent>
+          <List disablePadding>
+            {appTheme.textSizes.map((option) => (
+              <ListItem key={option.name} disablePadding>
+                <ListItemButton
+                  selected={option.name === appTheme.textSize}
+                  onClick={() => {
+                    appTheme.setTextSize(option.name);
+                    setTextSizeDialogOpen(false);
+                  }}
+                >
+                  <ListItemText primary={option.label} />
+                  {option.name === appTheme.textSize && <CheckIcon fontSize="small" />}
+                </ListItemButton>
+              </ListItem>
+            ))}
+          </List>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setTextSizeDialogOpen(false)}>Close</Button>
         </DialogActions>
       </Dialog>
       <Drawer

@@ -24,7 +24,6 @@ import {
   ListItemText,
   Menu,
   MenuItem,
-  Paper,
   Stack,
   TextField,
   Tooltip,
@@ -44,6 +43,7 @@ import { api } from "../../api/client";
 import { LabeledField } from "../../components/LabeledField";
 import { PageHeader } from "../../components/PageHeader";
 import { RichTextEditor } from "../../components/RichTextEditor";
+import { SectionPanel } from "../../components/SectionPanel";
 import { useSnackbar } from "../../components/Snackbar";
 import { ParentDrawer } from "../families/ParentDrawer";
 import type { ParentDrawerTarget } from "../families/ParentDrawer";
@@ -402,12 +402,9 @@ function IntakeNotesSection({
     setValue(initial);
   }, [initial]);
   return (
-    <Paper variant="outlined" sx={{ p: 2, display: "flex", flexDirection: "column" }}>
-      <Typography variant="overline" color="text.secondary" sx={{ display: "block", mb: 1 }}>
-        Intake notes
-      </Typography>
+    <SectionPanel title="Intake notes" titleVariant="overline">
       <Box
-        sx={{ display: "flex" }}
+        sx={{ display: "flex", p: 2 }}
         onBlur={(e) => {
           // Commit when focus leaves the editor entirely. relatedTarget
           // is null if focus moves outside this subtree.
@@ -423,7 +420,7 @@ function IntakeNotesSection({
           minRows={12}
         />
       </Box>
-    </Paper>
+    </SectionPanel>
   );
 }
 

@@ -260,6 +260,26 @@ export const windowStyleOptions: Array<{ name: WindowStyleName; label: string }>
   { name: "ledger", label: "Ledger" },
 ];
 
+// ---------------------------------------------------------------------------
+// Text size — the type-scale axis ("Text size" in the UI). Implemented via
+// the root font-size, so every rem-derived size (all MUI variants plus the
+// explicit rem values above) scales together; px-based spacing stays put.
+// ---------------------------------------------------------------------------
+
+export type TextSizeName = "smaller" | "default" | "larger";
+
+export const textSizeOptions: Array<{ name: TextSizeName; label: string }> = [
+  { name: "smaller", label: "Smaller" },
+  { name: "default", label: "Default" },
+  { name: "larger", label: "Larger" },
+];
+
+const TEXT_SIZE_ROOT_PX: Record<TextSizeName, number> = {
+  smaller: 15,
+  default: 16,
+  larger: 17.5,
+};
+
 export interface HillcoPanelTokens {
   /** Ledger renders the panel title outside/above the Paper. */
   outside: boolean;
@@ -288,7 +308,11 @@ declare module "@mui/material/styles" {
   }
 }
 
-export function buildTheme(schemeName: SchemeName, styleName: WindowStyleName): Theme {
+export function buildTheme(
+  schemeName: SchemeName,
+  styleName: WindowStyleName,
+  textSize: TextSizeName = "default",
+): Theme {
   const def: SchemeDef = schemeDefs[schemeName];
   const base = createTheme({
     palette: def.palette,
@@ -406,10 +430,92 @@ export function buildTheme(schemeName: SchemeName, styleName: WindowStyleName): 
       break;
   }
 
+  // Style-aware component overrides beyond SectionPanel: table heads
+  // (every DataTableContainer/table in the app) and Accordion section
+  // headers (the intake page's roster sections) follow the window style
+  // so no section header is left on the pale classic look.
+  const text = base.palette.text;
+  const styleComponents: Record<string, object> = {};
+  if (styleName === "sharp") {
+    styleComponents.MuiTableCell = {
+      styleOverrides: {
+        head: { backgroundColor: alpha(ink, 0.06), color: text.primary },
+      },
+    };
+    styleComponents.MuiAccordionSummary = {
+      styleOverrides: {
+        root: {
+          backgroundColor: alpha(ink, 0.05),
+          "& .MuiTypography-overline": { color: text.primary },
+        },
+      },
+    };
+  } else if (styleName === "ink") {
+    const barAction = def.inkAction?.bg ?? "#ffffff";
+    styleComponents.MuiTableCell = {
+      styleOverrides: {
+        head: { backgroundColor: ink, color: "rgba(255,255,255,0.92)" },
+      },
+    };
+    styleComponents.MuiAccordion = {
+      // Keep the dark summary bar inside the rounded outline.
+      styleOverrides: { root: { overflow: "hidden" } },
+    };
+    styleComponents.MuiAccordionSummary = {
+      styleOverrides: {
+        root: {
+          backgroundColor: ink,
+          "& .MuiTypography-root": { color: "rgba(255,255,255,0.9)" },
+          "& .MuiTypography-overline": { color: "#ffffff" },
+          "& .MuiTypography-overline > span": { color: "rgba(255,255,255,0.6)" },
+          "& .MuiAccordionSummary-expandIconWrapper": {
+            color: "rgba(255,255,255,0.8)",
+          },
+          // Inline add-actions (span[role=button]) sitting on the bar.
+          "& [role='button']": {
+            color: barAction,
+            "&:hover": { backgroundColor: "rgba(255,255,255,0.08)" },
+          },
+        },
+      },
+    };
+  } else if (styleName === "ledger") {
+    styleComponents.MuiTableCell = {
+      styleOverrides: {
+        head: {
+          backgroundColor: "transparent",
+          color: text.primary,
+          borderBottom: `2px solid ${ink}`,
+        },
+      },
+    };
+    styleComponents.MuiAccordionSummary = {
+      styleOverrides: {
+        root: {
+          "& .MuiTypography-overline": {
+            color: text.primary,
+            fontFamily: SERIF_HEADER_STACK,
+            fontSize: "0.95rem",
+            textTransform: "none",
+            letterSpacing: 0,
+          },
+        },
+      },
+    };
+  }
+
   return createTheme(base, {
     palette: {
       background: { default: background },
       divider,
+    },
+    components: {
+      ...styleComponents,
+      MuiCssBaseline: {
+        styleOverrides: {
+          html: { fontSize: TEXT_SIZE_ROOT_PX[textSize] },
+        },
+      },
     },
     hillco: {
       windowStyle: styleName,

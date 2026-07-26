@@ -34,6 +34,7 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../../api/client";
 import { DataTableContainer } from "../../components/DataTableContainer";
 import { PageHeader } from "../../components/PageHeader";
+import { SectionPanel } from "../../components/SectionPanel";
 import { useSnackbar } from "../../components/Snackbar";
 import { StatCard } from "../../components/StatCard";
 import { StatusChip } from "../../components/StatusChip";
@@ -476,26 +477,11 @@ function KanbanColumn({
   children: React.ReactNode;
 }) {
   return (
-    <Paper
-      variant="outlined"
-      sx={{
-        p: 1.5,
-        bgcolor: "background.default",
-        display: "flex",
-        flexDirection: "column",
-        gap: 1,
-      }}
-    >
-      <Stack direction="row" alignItems="baseline" spacing={1} sx={{ px: 0.5 }}>
-        <Typography variant="overline" sx={{ fontWeight: 700, letterSpacing: 0.5 }}>
-          {title}
-        </Typography>
-        <Typography variant="caption" color="text.disabled">
-          ({count})
-        </Typography>
+    <SectionPanel title={title} titleVariant="overline" count={count}>
+      <Stack spacing={1} sx={{ p: 1.5 }}>
+        {children}
       </Stack>
-      <Stack spacing={1}>{children}</Stack>
-    </Paper>
+    </SectionPanel>
   );
 }
 

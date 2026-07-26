@@ -1,8 +1,6 @@
 import { useEffect, useState } from "react";
 import {
   Box,
-  Card,
-  CardContent,
   Chip,
   Divider,
   FormControlLabel,
@@ -15,6 +13,7 @@ import {
 
 import { LabeledField } from "../../components/LabeledField";
 import { RichTextEditor } from "../../components/RichTextEditor";
+import { SectionPanel } from "../../components/SectionPanel";
 
 import type { IntakeDetail } from "./intakeTypes";
 
@@ -30,17 +29,11 @@ export function FamilyContextCard({
   onPatch: (body: Partial<IntakeDetail>) => void;
 }) {
   return (
-    <Card variant="outlined">
-      <CardContent>
-        <Stack spacing={0.25} sx={{ mb: 2 }}>
-          <Typography variant="h6" sx={{ fontWeight: 600 }}>
-            Family context
-          </Typography>
-          <Typography variant="caption" color="text.secondary">
-            What the family wants and what's in the way.
-          </Typography>
-        </Stack>
-
+    <SectionPanel
+      title="Family context"
+      subtitle="What the family wants and what's in the way."
+    >
+      <Box sx={{ p: 2.5 }}>
         <Grid container spacing={2}>
           <Grid item xs={12} md={6}>
             <LabeledField label="Desired outcome (in parents' words)">
@@ -113,8 +106,8 @@ export function FamilyContextCard({
             </LabeledField>
           </Grid>
         </Grid>
-      </CardContent>
-    </Card>
+      </Box>
+    </SectionPanel>
   );
 }
 

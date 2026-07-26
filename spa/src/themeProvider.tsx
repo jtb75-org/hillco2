@@ -10,8 +10,10 @@ import { ThemeProvider } from "@mui/material/styles";
 import {
   buildTheme,
   schemeOptions,
+  textSizeOptions,
   windowStyleOptions,
   type SchemeName,
+  type TextSizeName,
   type WindowStyleName,
 } from "./theme";
 
@@ -19,14 +21,18 @@ import {
 // existing users' color-scheme choice survives the upgrade.
 const SCHEME_STORAGE_KEY = "hillco2.theme";
 const STYLE_STORAGE_KEY = "hillco2.windowStyle";
+const TEXT_SIZE_STORAGE_KEY = "hillco2.textSize";
 
 interface AppThemeContextValue {
   scheme: SchemeName;
   style: WindowStyleName;
+  textSize: TextSizeName;
   schemes: typeof schemeOptions;
   styles: typeof windowStyleOptions;
+  textSizes: typeof textSizeOptions;
   setScheme: (name: SchemeName) => void;
   setStyle: (name: WindowStyleName) => void;
+  setTextSize: (name: TextSizeName) => void;
 }
 
 const AppThemeContext = createContext<AppThemeContextValue | null>(null);
@@ -48,6 +54,9 @@ export function AppThemeProvider({ children }: { children: ReactNode }) {
   const [style, setStyleState] = useState<WindowStyleName>(() =>
     readStored(STYLE_STORAGE_KEY, windowStyleOptions, "classic"),
   );
+  const [textSize, setTextSizeState] = useState<TextSizeName>(() =>
+    readStored(TEXT_SIZE_STORAGE_KEY, textSizeOptions, "default"),
+  );
 
   const value = useMemo<AppThemeContextValue>(() => {
     const setScheme = (name: SchemeName) => {
@@ -58,17 +67,27 @@ export function AppThemeProvider({ children }: { children: ReactNode }) {
       setStyleState(name);
       window.localStorage.setItem(STYLE_STORAGE_KEY, name);
     };
+    const setTextSize = (name: TextSizeName) => {
+      setTextSizeState(name);
+      window.localStorage.setItem(TEXT_SIZE_STORAGE_KEY, name);
+    };
     return {
       scheme,
       style,
+      textSize,
       schemes: schemeOptions,
       styles: windowStyleOptions,
+      textSizes: textSizeOptions,
       setScheme,
       setStyle,
+      setTextSize,
     };
-  }, [scheme, style]);
+  }, [scheme, style, textSize]);
 
-  const theme = useMemo(() => buildTheme(scheme, style), [scheme, style]);
+  const theme = useMemo(
+    () => buildTheme(scheme, style, textSize),
+    [scheme, style, textSize],
+  );
 
   return (
     <AppThemeContext.Provider value={value}>

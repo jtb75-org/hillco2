@@ -4,8 +4,6 @@ import {
   AccordionDetails,
   AccordionSummary,
   Box,
-  Card,
-  CardContent,
   Chip,
   Grid,
   Stack,
@@ -17,6 +15,7 @@ import dayjs from "dayjs";
 
 import { LabeledField } from "../../components/LabeledField";
 import { RichTextEditor } from "../../components/RichTextEditor";
+import { SectionPanel } from "../../components/SectionPanel";
 import { StudentEditor } from "../students/StudentEditor";
 
 import type { IntakeStudent } from "./intakeTypes";
@@ -36,17 +35,14 @@ export function StudentDiscoveryCard({
   onPatch: (body: Partial<IntakeStudent>) => void;
 }) {
   return (
-    <Card variant="outlined">
-      <CardContent>
+    <SectionPanel title="Student discovery" titleVariant="overline">
+      <Box sx={{ p: 2.5 }}>
         <Stack
           direction="row"
           spacing={2}
           alignItems="baseline"
           sx={{ mb: 1.5, flexWrap: "wrap" }}
         >
-          <Typography variant="overline" color="text.secondary">
-            Student discovery
-          </Typography>
           <Typography variant="h6" sx={{ fontWeight: 600 }}>
             {student.name}
           </Typography>
@@ -164,8 +160,8 @@ export function StudentDiscoveryCard({
             </Grid>
           )}
         </Grid>
-      </CardContent>
-    </Card>
+      </Box>
+    </SectionPanel>
   );
 }
 
