@@ -188,9 +188,10 @@ const schemeDefs = {
     },
     typography: baseTypography,
   },
-  // Laura's palette: yellow #FFDE59 + blue #2E56A8. Blue carries
-  // primary/ink; yellow is the accent — and the on-ink-bar action color,
-  // so ink-style bars read blue with yellow buttons.
+  // Laura's palette: yellow #FFDE59 + blue #2E56A8. Yellow carries
+  // primary (buttons/links, dark ink text — same pattern as the intake
+  // scheme); blue is secondary and the ink neutral, so ink-style bars
+  // still read blue with yellow buttons on them.
   laura: {
     label: "Laura",
     ink: "#24427f",
@@ -200,13 +201,14 @@ const schemeDefs = {
     palette: {
       mode: "light" as const,
       primary: {
-        main: "#2E56A8",
-        dark: "#21407e",
-      },
-      secondary: {
         main: "#FFDE59",
         dark: "#d9b32e",
         contrastText: "#1f2933",
+      },
+      secondary: {
+        main: "#2E56A8",
+        dark: "#21407e",
+        contrastText: "#ffffff",
       },
       background: {
         default: "#f6f8fb",
