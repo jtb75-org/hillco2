@@ -259,6 +259,7 @@ export function InvoicesList() {
               updateParams({
                 status: activeCard === "outstanding" ? "all" : "open",
                 focus: null,
+                due: null,
               })
             }
             sx={selectedSx("outstanding")}
@@ -270,7 +271,7 @@ export function InvoicesList() {
             value={formatInvoiceMoney(invoices.data?.totals.invoiced)}
             subtitle="Total invoice volume"
             icon={<ReceiptLongOutlinedIcon />}
-            onClick={() => updateParams({ status: "all", focus: null })}
+            onClick={() => updateParams({ status: "all", focus: null, due: null })}
             sx={selectedSx("invoiced")}
           />
         </Grid>
@@ -285,6 +286,7 @@ export function InvoicesList() {
               updateParams({
                 status: activeCard === "paid" ? "all" : "paid",
                 focus: null,
+                due: null,
               })
             }
             sx={selectedSx("paid")}
@@ -318,8 +320,11 @@ export function InvoicesList() {
               onChange={(_e, value: InvoiceListStatus) =>
                 // Status tabs exit focus=uninvoiced atomically — otherwise
                 // the Uninvoiced card stays highlighted and the summary
-                // table stays visible after the user picks a status.
-                updateParams({ status: value, focus: null })
+                // table stays visible after the user picks a status. They
+                // also drop due=overdue (the dashboard drill-down flag):
+                // it has no visible control here, so leaving it set would
+                // silently filter the newly picked status to nothing.
+                updateParams({ status: value, focus: null, due: null })
               }
               sx={{ borderBottom: 1, borderColor: "divider", flex: 1 }}
             >
