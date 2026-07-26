@@ -6,7 +6,9 @@ import {
   Stack,
   Typography,
   type CardProps,
+  type SxProps,
 } from "@mui/material";
+import { useTheme, type Theme } from "@mui/material/styles";
 import type { ReactNode } from "react";
 
 type Emphasis = "default" | "alert" | "muted";
@@ -41,40 +43,110 @@ export function StatCard({
   sx,
   ...cardProps
 }: StatCardProps) {
+  const { hillco } = useTheme();
+  const panel = hillco.panel;
+  // Non-classic window styles restyle the tile with a mini header strip
+  // (label + icon) matching the section-header treatment; classic keeps
+  // the original flat anatomy untouched.
+  const styled = panel.titleSx != null;
   const clickable = Boolean(onClick);
   const alert = emphasis === "alert";
+
+  const cardSx: SxProps<Theme> = {
+    height: "100%",
+    cursor: clickable ? "pointer" : undefined,
+    ...(alert && {
+      bgcolor: (theme: Theme) => alpha(theme.palette.error.main, 0.05),
+      borderColor: (theme: Theme) => alpha(theme.palette.error.main, 0.4),
+    }),
+    "&:hover": clickable
+      ? alert
+        ? {
+            borderColor: "error.main",
+            bgcolor: (theme: Theme) => alpha(theme.palette.error.main, 0.1),
+          }
+        : { borderColor: "primary.main", bgcolor: "action.hover" }
+      : undefined,
+    ...sx,
+  };
+
+  const interactive = {
+    onClick,
+    role: clickable ? ("button" as const) : undefined,
+    tabIndex: clickable ? 0 : undefined,
+    onKeyDown: (e: React.KeyboardEvent) => {
+      if (!onClick) return;
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        onClick();
+      }
+    },
+  };
+
+  if (styled) {
+    return (
+      <Card variant="outlined" {...interactive} {...cardProps} sx={cardSx}>
+        <Stack
+          direction="row"
+          alignItems="center"
+          spacing={1}
+          sx={{
+            px: 2,
+            py: 0.75,
+            bgcolor: panel.headerBg,
+            borderBottom: panel.outside ? 2 : 1,
+            borderColor: panel.headerBorder,
+          }}
+        >
+          <Typography
+            component="div"
+            sx={{
+              ...panel.titleSx,
+              // Tile labels are long single words in caps under ink —
+              // step down so they clear the icon.
+              fontSize: panel.onDark ? "0.7rem" : "0.8rem",
+              lineHeight: 1.6,
+              flex: 1,
+              minWidth: 0,
+            }}
+          >
+            {label}
+          </Typography>
+          {icon && (
+            <Box
+              sx={{
+                display: "flex",
+                flexShrink: 0,
+                color: panel.onDark
+                  ? "rgba(255,255,255,0.75)"
+                  : "text.secondary",
+                "& .MuiSvgIcon-root": { fontSize: 18 },
+              }}
+            >
+              {icon}
+            </Box>
+          )}
+        </Stack>
+        <Box sx={{ px: 2, pt: 1.25, pb: 1.5 }}>
+          <Typography variant="h4" sx={{ color: VALUE_COLOR[emphasis] }}>
+            {value}
+          </Typography>
+          {subtitle && (
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              sx={{ mt: 0.75, minHeight: 20 }}
+            >
+              {subtitle}
+            </Typography>
+          )}
+        </Box>
+      </Card>
+    );
+  }
+
   return (
-    <Card
-      variant="outlined"
-      onClick={onClick}
-      role={clickable ? "button" : undefined}
-      tabIndex={clickable ? 0 : undefined}
-      onKeyDown={(e) => {
-        if (!onClick) return;
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onClick();
-        }
-      }}
-      {...cardProps}
-      sx={{
-        height: "100%",
-        cursor: clickable ? "pointer" : undefined,
-        ...(alert && {
-          bgcolor: (theme) => alpha(theme.palette.error.main, 0.05),
-          borderColor: (theme) => alpha(theme.palette.error.main, 0.4),
-        }),
-        "&:hover": clickable
-          ? alert
-            ? {
-                borderColor: "error.main",
-                bgcolor: (theme) => alpha(theme.palette.error.main, 0.1),
-              }
-            : { borderColor: "primary.main", bgcolor: "action.hover" }
-          : undefined,
-        ...sx,
-      }}
-    >
+    <Card variant="outlined" {...interactive} {...cardProps} sx={cardSx}>
       <CardContent sx={{ p: 2, "&:last-child": { pb: 2 } }}>
         <Stack direction="row" alignItems="flex-start" spacing={1.5}>
           <Box sx={{ minWidth: 0, flex: 1 }}>

@@ -173,6 +173,9 @@ export function Dashboard() {
                 value={String(stats.active_engagements)}
                 subtitle="Open client work"
                 icon={<WorkOutlineOutlinedIcon />}
+                // Engagements list defaults to the Active filter, which
+                // is exactly what this card counts.
+                onClick={() => navigate("/engagements")}
               />
             </Grid>
             <Grid item xs={12} sm={6} md={4} lg={2}>
