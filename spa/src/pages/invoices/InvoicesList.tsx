@@ -113,6 +113,15 @@ export function InvoicesList() {
   const [qDraft, setQDraft] = useState(q);
   const [newInvoiceOpen, setNewInvoiceOpen] = useState(false);
 
+  // Safari renders an EMPTY <input type="date"> with today's date in
+  // normal ink, so an unset filter looks applied. Dim the text until a
+  // value is actually set, so the phantom date reads as a placeholder
+  // (Chrome's mm/dd/yyyy placeholder is already gray; this matches it).
+  const dateFilterSx = (value: string) => ({
+    width: { xs: "100%", sm: 160 } as const,
+    ...(value ? {} : { "& input": { color: "text.disabled" } }),
+  });
+
   useEffect(() => {
     setQDraft(q);
   }, [q]);
@@ -358,7 +367,7 @@ export function InvoicesList() {
               value={issuedFrom}
               onChange={(e) => updateParam("issued_from", e.target.value || null)}
               InputLabelProps={{ shrink: true }}
-              sx={{ width: { xs: "100%", sm: 160 } }}
+              sx={dateFilterSx(issuedFrom)}
             />
             <TextField
               label="Issued to"
@@ -367,7 +376,7 @@ export function InvoicesList() {
               value={issuedTo}
               onChange={(e) => updateParam("issued_to", e.target.value || null)}
               InputLabelProps={{ shrink: true }}
-              sx={{ width: { xs: "100%", sm: 160 } }}
+              sx={dateFilterSx(issuedTo)}
             />
           </Stack>
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
@@ -378,7 +387,7 @@ export function InvoicesList() {
               value={dueFrom}
               onChange={(e) => updateParam("due_from", e.target.value || null)}
               InputLabelProps={{ shrink: true }}
-              sx={{ width: { xs: "100%", sm: 160 } }}
+              sx={dateFilterSx(dueFrom)}
             />
             <TextField
               label="Due to"
@@ -387,7 +396,7 @@ export function InvoicesList() {
               value={dueTo}
               onChange={(e) => updateParam("due_to", e.target.value || null)}
               InputLabelProps={{ shrink: true }}
-              sx={{ width: { xs: "100%", sm: 160 } }}
+              sx={dateFilterSx(dueTo)}
             />
           </Stack>
         </Stack>
