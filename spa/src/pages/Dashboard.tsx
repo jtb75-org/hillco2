@@ -156,6 +156,7 @@ export function Dashboard() {
                 value={String(stats.my_open_followups)}
                 subtitle="Open & assigned to you"
                 icon={<AssignmentTurnedInOutlinedIcon />}
+                onClick={() => navigate("/followups")}
               />
             </Grid>
             <Grid item xs={12} sm={6} md={4} lg={2}>
@@ -165,6 +166,7 @@ export function Dashboard() {
                 subtitle="Past their due date"
                 icon={<AssignmentLateOutlinedIcon />}
                 emphasis={stats.my_overdue_followups > 0 ? "alert" : "muted"}
+                onClick={() => navigate("/followups?due=overdue")}
               />
             </Grid>
             <Grid item xs={12} sm={6} md={4} lg={2}>

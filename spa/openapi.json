@@ -1975,6 +1975,78 @@
         }
       }
     },
+    "/api/followups": {
+      "get": {
+        "tags": [
+          "followups"
+        ],
+        "summary": "List All Followups",
+        "description": "Cross-engagement followups list for the /followups page. Defaults\nmirror the dashboard's My Followups card (my open items);\noverdue=true narrows to open items past their due date \u2014 the same\ndefinition the dashboard's overdue count uses.",
+        "operationId": "list_all_followups_api_followups_get",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "open",
+                "done",
+                "cancelled",
+                "all"
+              ],
+              "type": "string",
+              "default": "open",
+              "title": "Status"
+            }
+          },
+          {
+            "name": "assignee",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "me",
+                "all"
+              ],
+              "type": "string",
+              "default": "me",
+              "title": "Assignee"
+            }
+          },
+          {
+            "name": "overdue",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Overdue"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/followups/{followup_id}": {
       "patch": {
         "tags": [
@@ -6102,7 +6174,7 @@
           "admin"
         ],
         "summary": "List Users",
-        "description": "All users (auth-provisioned people), sorted by active first then\nname. Anyone authenticated can read this for now.\n\nDeactivation soft-deletes the underlying people row, so by default\nthose rows are filtered out. Admins can pass `include_inactive=true`\nto see deactivated accounts (so they can re-activate them).",
+        "description": "All users (auth-provisioned people), sorted by active first then\nname. Admin-only: exposes emails, roles, and last-login times.\n\nDeactivation soft-deletes the underlying people row, so by default\nthose rows are filtered out. Admins can pass `include_inactive=true`\nto see deactivated accounts (so they can re-activate them).",
         "operationId": "list_users_api_admin_users_get",
         "parameters": [
           {

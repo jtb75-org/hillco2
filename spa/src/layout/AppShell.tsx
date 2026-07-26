@@ -35,6 +35,7 @@ import PaletteOutlinedIcon from "@mui/icons-material/PaletteOutlined";
 import ReceiptLongOutlinedIcon from "@mui/icons-material/ReceiptLongOutlined";
 import WebAssetOutlinedIcon from "@mui/icons-material/WebAssetOutlined";
 import SchoolIcon from "@mui/icons-material/School";
+import TaskAltOutlinedIcon from "@mui/icons-material/TaskAltOutlined";
 import { Link, Outlet, useLocation } from "react-router-dom";
 
 import { signOut, useAuth } from "../auth";
@@ -52,6 +53,7 @@ const NAV_ITEMS: ReadonlyArray<NavEntry> = [
   { kind: "item", to: "/dashboard", label: "Home", icon: <HomeIcon /> },
   { kind: "item", to: "/intakes", label: "Intakes", icon: <DescriptionOutlinedIcon /> },
   { kind: "item", to: "/engagements", label: "Engagements", icon: <AssignmentOutlinedIcon /> },
+  { kind: "item", to: "/followups", label: "Followups", icon: <TaskAltOutlinedIcon /> },
   { kind: "item", to: "/invoices", label: "Invoices", icon: <ReceiptLongOutlinedIcon /> },
   // Reference data — who and what we're working with.
   { kind: "separator" },

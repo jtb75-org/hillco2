@@ -98,6 +98,46 @@ async def list_followups(
     return [dict(r) for r in rows]
 
 
+@router.get("/followups")
+async def list_all_followups(
+    status: Literal["open", "done", "cancelled", "all"] = "open",
+    assignee: Literal["me", "all"] = "me",
+    overdue: bool = False,
+    user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    """Cross-engagement followups list for the /followups page. Defaults
+    mirror the dashboard's My Followups card (my open items);
+    overdue=true narrows to open items past their due date — the same
+    definition the dashboard's overdue count uses."""
+    assignee_id = user["id"] if assignee == "me" else None
+    rows = await conn.fetch(
+        """
+        SELECT f.id, f.engagement_id, f.title, f.body, f.due_date, f.status,
+               f.completed_at, f.assignee_id,
+               TRIM(BOTH ' ' FROM COALESCE(assignee.first_name,'') || CASE WHEN assignee.last_name IS NOT NULL AND assignee.last_name <> '' THEN ' ' || assignee.last_name ELSE '' END) AS assignee_name,
+               e.family_id, fam.household_name
+        FROM followups f
+        JOIN engagements e ON e.id = f.engagement_id AND e.deleted_at IS NULL
+        JOIN families fam ON fam.id = e.family_id
+        LEFT JOIN people assignee ON assignee.id = f.assignee_id
+        WHERE ($1 = 'all' OR f.status::text = $1)
+          AND ($2::uuid IS NULL OR f.assignee_id = $2)
+          AND (NOT $3::bool OR (f.status = 'open' AND f.due_date < CURRENT_DATE))
+        ORDER BY
+          CASE f.status
+            WHEN 'open' THEN 0
+            WHEN 'done' THEN 1
+            WHEN 'cancelled' THEN 2
+          END,
+          f.due_date ASC,
+          f.id DESC
+        """,
+        status, assignee_id, overdue,
+    )
+    return [dict(r) for r in rows]
+
+
 @router.post("/engagements/{engagement_id}/followups", status_code=201)
 async def add_followup(
     engagement_id: UUID,

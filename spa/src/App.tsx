@@ -13,6 +13,7 @@ import { FamiliesList } from "./pages/families/FamiliesList";
 import { FamilyDetail } from "./pages/families/FamilyDetail";
 import { EngagementDetail } from "./pages/engagements/EngagementDetail";
 import { EngagementsList } from "./pages/engagements/EngagementsList";
+import { FollowupsList } from "./pages/followups/FollowupsList";
 import { InvoiceDetail } from "./pages/invoices/InvoiceDetail";
 import { InvoicesList } from "./pages/invoices/InvoicesList";
 import { CatalogLayout } from "./pages/catalog/CatalogLayout";
@@ -102,6 +103,7 @@ export function App() {
             <Route path="/students/:id" element={<StudentDetail />} />
             <Route path="/engagements" element={<EngagementsList />} />
             <Route path="/engagements/:id" element={<EngagementDetail />} />
+            <Route path="/followups" element={<FollowupsList />} />
             <Route path="/invoices" element={<InvoicesList />} />
             <Route path="/invoices/:id" element={<InvoiceDetail />} />
             <Route path="/intakes" element={<IntakesList />} />
