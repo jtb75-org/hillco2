@@ -114,6 +114,19 @@ function commonComponents(tableHeadBg: string, tableHeadColor: string) {
 // their header bars and solid buttons from it so the two axes compose.
 // ---------------------------------------------------------------------------
 
+interface SchemeDef {
+  label: string;
+  /** Darkest structural neutral — ink window-style bars, ledger buttons. */
+  ink: string;
+  tableHeadBg: string;
+  tableHeadColor: string;
+  /** Override for buttons sitting ON the ink bar (ink window style).
+   *  Needed when the scheme's primary is too close to its ink. */
+  inkAction?: { bg: string; hoverBg: string; text: string };
+  palette: NonNullable<Parameters<typeof createTheme>[0]>["palette"];
+  typography: NonNullable<Parameters<typeof createTheme>[0]>["typography"];
+}
+
 const schemeDefs = {
   default: {
     label: "Default",
@@ -134,6 +147,44 @@ const schemeDefs = {
         paper: "#ffffff",
       },
       divider: "#e2e8f0",
+    },
+    typography: baseTypography,
+  },
+  // Brand colors sampled 2026-07-26 from the original HillCo business
+  // cards (indigo #302870–#403078, cyan #00a8d8, gold tagline). The
+  // serif headers the app already uses match the cards' serif identity.
+  hillco: {
+    label: "HillCo",
+    ink: "#312770",
+    tableHeadBg: "#f2f1f9",
+    tableHeadColor: "#4b4390",
+    // Card-back treatment: cyan on indigo. Indigo primary buttons would
+    // vanish on the ink bar, so bar actions go cyan with dark ink text.
+    inkAction: { bg: "#0aa8d8", hoverBg: "#0894c2", text: "#0b2531" },
+    palette: {
+      mode: "light" as const,
+      primary: {
+        main: "#3b3183",
+        dark: "#2b2364",
+      },
+      secondary: {
+        main: "#0aa8d8",
+        dark: "#0782ab",
+        contrastText: "#ffffff",
+      },
+      warning: {
+        main: "#c2a222",
+        dark: "#96790f",
+      },
+      background: {
+        default: "#f6f6fa",
+        paper: "#ffffff",
+      },
+      text: {
+        primary: "#2a2749",
+        secondary: "#5b5875",
+      },
+      divider: "#e3e2ee",
     },
     typography: baseTypography,
   },
@@ -186,7 +237,7 @@ const schemeDefs = {
       },
     },
   },
-};
+} satisfies Record<string, SchemeDef>;
 
 export type SchemeName = keyof typeof schemeDefs;
 
@@ -238,7 +289,7 @@ declare module "@mui/material/styles" {
 }
 
 export function buildTheme(schemeName: SchemeName, styleName: WindowStyleName): Theme {
-  const def = schemeDefs[schemeName];
+  const def: SchemeDef = schemeDefs[schemeName];
   const base = createTheme({
     palette: def.palette,
     shape: {
@@ -309,12 +360,22 @@ export function buildTheme(schemeName: SchemeName, styleName: WindowStyleName): 
           lineHeight: 1.6,
           color: "#ffffff",
         },
-        actionSx: {
-          px: 1.5,
-          bgcolor: primary.main,
-          color: primary.contrastText,
-          "&:hover": { bgcolor: primary.dark, color: primary.contrastText },
-        },
+        actionSx: def.inkAction
+          ? {
+              px: 1.5,
+              bgcolor: def.inkAction.bg,
+              color: def.inkAction.text,
+              "&:hover": {
+                bgcolor: def.inkAction.hoverBg,
+                color: def.inkAction.text,
+              },
+            }
+          : {
+              px: 1.5,
+              bgcolor: primary.main,
+              color: primary.contrastText,
+              "&:hover": { bgcolor: primary.dark, color: primary.contrastText },
+            },
       };
       break;
     case "ledger":
