@@ -4,7 +4,6 @@ import {
   Box,
   Button,
   Checkbox,
-  Divider,
   Drawer,
   FormControlLabel,
   IconButton,
@@ -22,6 +21,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 
 import { api } from "../../api/client";
 import type { components } from "../../api/schema";
+import { DrawerSection } from "../../components/DrawerSection";
 import { LabeledField } from "../../components/LabeledField";
 import { useResizableDrawerWidth } from "../../components/useResizableDrawerWidth";
 
@@ -515,11 +515,8 @@ export function ParentDrawer({
           </Stack>
 
           {/* Danger zone */}
-          <Divider sx={{ my: 3 }} />
-          <Box>
-            <Typography variant="overline" color="error.main">
-              Danger zone
-            </Typography>
+          <Box sx={{ mt: 3 }}>
+            <DrawerSection title="Danger zone" tone="danger">
             {!confirmingRemove ? (
               <Button
                 color="error"
@@ -551,6 +548,7 @@ export function ParentDrawer({
                 </Stack>
               </Stack>
             )}
+            </DrawerSection>
           </Box>
         </Box>
 

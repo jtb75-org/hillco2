@@ -45,7 +45,10 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { useTheme } from "@mui/material/styles";
+
 import { api } from "../../api/client";
+import { SectionPanel } from "../../components/SectionPanel";
 import { useSnackbar } from "../../components/Snackbar";
 
 // /api/catalog/* + /api/engagement-types return plain dicts. Hand-typed
@@ -483,11 +486,10 @@ function EngagementTypesPanel({ types }: { types: EngagementType[] }) {
   const archived = types.filter((t) => !!t.deleted_at);
 
   return (
-    <Paper variant="outlined" sx={{ p: 2 }}>
-      <Stack direction="row" alignItems="baseline" spacing={1} sx={{ mb: 1 }}>
-        <Typography variant="overline" color="text.secondary" sx={{ flex: 1 }}>
-          Engagement types
-        </Typography>
+    <SectionPanel
+      title="Engagement types"
+      titleVariant="overline"
+      actions={
         <Button
           size="small"
           variant="text"
@@ -496,7 +498,9 @@ function EngagementTypesPanel({ types }: { types: EngagementType[] }) {
         >
           Add type
         </Button>
-      </Stack>
+      }
+    >
+      <Box sx={{ p: 2 }}>
       {live.length === 0 ? (
         <Typography variant="body2" color="text.disabled">
           No engagement types yet.
@@ -572,7 +576,8 @@ function EngagementTypesPanel({ types }: { types: EngagementType[] }) {
           </Button>
         </DialogActions>
       </Dialog>
-    </Paper>
+      </Box>
+    </SectionPanel>
   );
 }
 
@@ -769,6 +774,7 @@ function PhaseCard({
   const [expanded, setExpanded] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const { hillco: { panel } } = useTheme();
 
   return (
     <Paper
@@ -781,34 +787,57 @@ function PhaseCard({
         opacity: isDragging ? 0.6 : 1,
       }}
     >
+      {/* Header uses the window-style panel tokens directly — the drag
+          handle + inline-editable title don't fit SectionPanel's anatomy,
+          but the strip should restyle exactly like every other section
+          header (sharp tint / ink bar / ledger rule). */}
       <Stack
         direction="row"
         alignItems="center"
         spacing={1}
-        sx={{ p: 1.25, borderBottom: 1, borderColor: "divider" }}
+        sx={{
+          p: 1.25,
+          bgcolor: panel.headerBg,
+          borderBottom: panel.outside ? 2 : 1,
+          borderColor: panel.headerBorder,
+          ...(panel.onDark && {
+            "& .MuiTypography-root": { color: "rgba(255,255,255,0.9)" },
+            "& .MuiIconButton-root": { color: "rgba(255,255,255,0.8)" },
+          }),
+        }}
       >
         <Box
           {...attributes}
           {...listeners}
-          sx={{ display: "flex", cursor: "grab", color: "text.disabled" }}
+          sx={{
+            display: "flex",
+            cursor: "grab",
+            color: panel.onDark ? "rgba(255,255,255,0.6)" : "text.disabled",
+          }}
           aria-label={`Drag ${phase.title}`}
         >
           <DragIndicatorIcon fontSize="small" />
         </Box>
         {editingTitle ? (
-          <InlineEdit
-            initial={phase.title}
-            onCommit={(v) => {
-              const t = v.trim();
-              if (t && t !== phase.title) onPatchPhase({ title: t });
-              setEditingTitle(false);
-            }}
-            onCancel={() => setEditingTitle(false)}
-          />
+          <Box sx={{ flex: 1, bgcolor: "background.paper", borderRadius: 1 }}>
+            <InlineEdit
+              initial={phase.title}
+              onCommit={(v) => {
+                const t = v.trim();
+                if (t && t !== phase.title) onPatchPhase({ title: t });
+                setEditingTitle(false);
+              }}
+              onCancel={() => setEditingTitle(false)}
+            />
+          </Box>
         ) : (
           <Typography
             variant="subtitle1"
-            sx={{ fontWeight: 600, flex: 1, cursor: "text" }}
+            sx={{
+              ...(panel.titleSx ?? { fontWeight: 600 }),
+              flex: 1,
+              cursor: "text",
+            }}
             onClick={() => setEditingTitle(true)}
           >
             {phase.title}

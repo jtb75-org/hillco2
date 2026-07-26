@@ -22,6 +22,10 @@ interface DataTableContainerProps {
   emptyDescription?: ReactNode;
   emptyAction?: ReactNode;
   footer?: ReactNode;
+  /** "plain" drops the outlined Paper — for tables nested inside an
+   *  already-bordered container (e.g. a SectionPanel body), where the
+   *  default variant would double the border. */
+  variant?: "outlined" | "plain";
 }
 
 export function DataTableContainer({
@@ -34,9 +38,10 @@ export function DataTableContainer({
   emptyDescription,
   emptyAction,
   footer,
+  variant = "outlined",
 }: DataTableContainerProps) {
-  return (
-    <Paper variant="outlined" sx={{ overflow: "hidden" }}>
+  const content = (
+    <>
       {loading ? (
         <TableContainer>
           <Table size="small">
@@ -63,6 +68,13 @@ export function DataTableContainer({
         <TableContainer>{children}</TableContainer>
       )}
       {footer && <Box sx={{ borderTop: 1, borderColor: "divider" }}>{footer}</Box>}
+    </>
+  );
+  return variant === "plain" ? (
+    <Box sx={{ overflow: "hidden" }}>{content}</Box>
+  ) : (
+    <Paper variant="outlined" sx={{ overflow: "hidden" }}>
+      {content}
     </Paper>
   );
 }

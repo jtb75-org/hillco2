@@ -24,6 +24,7 @@ import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { DrawerSection } from "../../components/DrawerSection";
 import { LabeledField } from "../../components/LabeledField";
 import { ghostFieldSx } from "../../components/ghostFieldSx";
 import { useSnackbar } from "../../components/Snackbar";
@@ -288,10 +289,7 @@ export function SchoolDrawer({
 
             <Divider />
 
-            <Box>
-              <Typography variant="overline" color="error.main" sx={{ display: "block", mb: 1 }}>
-                Danger zone
-              </Typography>
+            <DrawerSection title="Danger zone" tone="danger">
               <Button
                 color="error"
                 variant="outlined"
@@ -314,7 +312,7 @@ export function SchoolDrawer({
                   </MuiLink>
                 </Box>
               )}
-            </Box>
+            </DrawerSection>
           </Stack>
         ) : null}
       </Box>
@@ -395,15 +393,7 @@ function SubList({
   children: React.ReactNode;
 }) {
   return (
-    <Box>
-      <Stack direction="row" alignItems="baseline" spacing={1} sx={{ mb: 0.5 }}>
-        <Typography variant="overline" color="text.secondary">
-          {title}
-        </Typography>
-        <Typography variant="caption" color="text.disabled">
-          ({count})
-        </Typography>
-      </Stack>
+    <DrawerSection title={title} count={count}>
       {count === 0 ? (
         <Typography variant="body2" color="text.disabled" sx={{ fontStyle: "italic" }}>
           {empty}
@@ -411,6 +401,6 @@ function SubList({
       ) : (
         <Stack divider={<Divider flexItem />}>{children}</Stack>
       )}
-    </Box>
+    </DrawerSection>
   );
 }

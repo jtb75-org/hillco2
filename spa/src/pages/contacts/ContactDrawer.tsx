@@ -5,7 +5,6 @@ import {
   Button,
   Checkbox,
   CircularProgress,
-  Divider,
   Drawer,
   FormControlLabel,
   IconButton,
@@ -22,6 +21,7 @@ import { Link as RouterLink } from "react-router-dom";
 
 import { api } from "../../api/client";
 import type { components } from "../../api/schema";
+import { DrawerSection } from "../../components/DrawerSection";
 import { LabeledField } from "../../components/LabeledField";
 import { useSnackbar } from "../../components/Snackbar";
 import { StatusChip } from "../../components/StatusChip";
@@ -462,11 +462,7 @@ function DangerZone({
 }) {
   const [confirming, setConfirming] = useState(false);
   return (
-    <Box>
-      <Typography variant="overline" color="error.main" sx={{ display: "block", mb: 1 }}>
-        Danger zone
-      </Typography>
-      <Divider sx={{ mb: 1.5 }} />
+    <DrawerSection title="Danger zone" tone="danger">
       {!confirming ? (
         <Button
           color="error"
@@ -495,20 +491,12 @@ function DangerZone({
           </Stack>
         </Stack>
       )}
-    </Box>
+    </DrawerSection>
   );
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <Box>
-      <Typography variant="overline" color="text.secondary" sx={{ display: "block", mb: 1 }}>
-        {title}
-      </Typography>
-      <Divider sx={{ mb: 1.5 }} />
-      {children}
-    </Box>
-  );
+  return <DrawerSection title={title}>{children}</DrawerSection>;
 }
 
 /** Text input that holds local state until blur, then commits via

@@ -1,4 +1,4 @@
-import type { SxProps } from "@mui/material";
+import type { SystemStyleObject } from "@mui/system";
 import { alpha, createTheme, darken, type Theme } from "@mui/material/styles";
 
 const SERIF_HEADER_STACK = ['"Georgia"', '"Times New Roman"', "serif"].join(",");
@@ -288,9 +288,9 @@ export interface HillcoPanelTokens {
   headerBg: string;
   headerBorder: string;
   /** null → classic per-variant title behavior (overline/subtitle1). */
-  titleSx: SxProps<Theme> | null;
+  titleSx: SystemStyleObject<Theme> | null;
   /** Applied to text-variant buttons inside the panel header. */
-  actionSx: SxProps<Theme> | null;
+  actionSx: SystemStyleObject<Theme> | null;
 }
 
 export interface HillcoTokens {

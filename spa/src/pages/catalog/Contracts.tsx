@@ -11,7 +11,6 @@ import {
   FormControlLabel,
   IconButton,
   MenuItem,
-  Paper,
   Select,
   Stack,
   Switch,
@@ -29,6 +28,7 @@ import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { DataTableContainer } from "../../components/DataTableContainer";
 import { useSnackbar } from "../../components/Snackbar";
 import { StatusChip } from "../../components/StatusChip";
 
@@ -116,20 +116,15 @@ export function CatalogContracts() {
         syntax; the system extracts them automatically.
       </Typography>
 
-      {templates.isPending ? (
-        <Typography variant="body2" color="text.disabled">
-          Loading…
-        </Typography>
-      ) : rows.length === 0 ? (
-        <Paper variant="outlined" sx={{ p: 3, textAlign: "center" }}>
-          <Typography variant="body2" color="text.disabled">
-            No templates yet.
-          </Typography>
-        </Paper>
-      ) : (
-        <Paper variant="outlined">
-          <Table>
-            <TableHead>
+      <DataTableContainer
+        loading={templates.isPending}
+        loadingColumns={5}
+        empty={rows.length === 0}
+        emptyTitle="No templates yet"
+        emptyDescription="Contract templates you create will appear here."
+      >
+        <Table size="small">
+          <TableHead>
               <TableRow>
                 <TableCell>Name</TableCell>
                 <TableCell>Kind</TableCell>
@@ -202,9 +197,8 @@ export function CatalogContracts() {
                 </TableRow>
               ))}
             </TableBody>
-          </Table>
-        </Paper>
-      )}
+        </Table>
+      </DataTableContainer>
 
       <TemplateDialog
         editing={editing}

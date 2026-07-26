@@ -4,13 +4,13 @@ import {
   Box,
   Button,
   MenuItem,
-  Paper,
   Stack,
   TextField,
   Typography,
 } from "@mui/material";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { SectionPanel } from "../../components/SectionPanel";
 import { useSnackbar } from "../../components/Snackbar";
 
 interface OrgSettings {
@@ -104,11 +104,8 @@ export function CatalogFirmSettings() {
         win if set; firm settings are the fallback.
       </Alert>
 
-      <Paper variant="outlined" sx={{ p: 2.5 }}>
-        <Typography variant="overline" color="text.secondary" sx={{ display: "block", mb: 1.5 }}>
-          Firm identity
-        </Typography>
-        <Stack spacing={1.5}>
+      <SectionPanel title="Firm identity" titleVariant="overline">
+        <Stack spacing={1.5} sx={{ p: 2.5 }}>
           <TextField
             label="Firm name"
             size="small"
@@ -168,13 +165,10 @@ export function CatalogFirmSettings() {
             when the lead consultant's own address isn't set.
           </Typography>
         </Stack>
-      </Paper>
+      </SectionPanel>
 
-      <Paper variant="outlined" sx={{ p: 2.5 }}>
-        <Typography variant="overline" color="text.secondary" sx={{ display: "block", mb: 1.5 }}>
-          Contract defaults
-        </Typography>
-        <Stack spacing={1.5}>
+      <SectionPanel title="Contract defaults" titleVariant="overline">
+        <Stack spacing={1.5} sx={{ p: 2.5 }}>
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
             <TextField
               label="Governing state"
@@ -238,7 +232,7 @@ export function CatalogFirmSettings() {
             />
           </Stack>
         </Stack>
-      </Paper>
+      </SectionPanel>
 
       <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
         <Button

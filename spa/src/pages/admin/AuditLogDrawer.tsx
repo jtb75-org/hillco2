@@ -1,3 +1,4 @@
+import { DrawerSection } from "../../components/DrawerSection";
 import {
   Alert,
   Box,
@@ -169,10 +170,7 @@ function DiffBlock({ entry }: { entry: AuditLogDetail }) {
   const visible = changes.filter((c) => c.kind !== "unchanged");
   const unchangedCount = changes.length - visible.length;
   return (
-    <Box>
-      <Typography variant="overline" color="text.secondary" sx={{ display: "block", mb: 1 }}>
-        {entry.action === "UPDATE" ? "Changes" : "Fields"}
-      </Typography>
+    <DrawerSection title={entry.action === "UPDATE" ? "Changes" : "Fields"}>
       <Stack spacing={1.25}>
         {visible.map((c) => (
           <ChangeRow key={c.key} change={c} action={entry.action} />
@@ -183,7 +181,7 @@ function DiffBlock({ entry }: { entry: AuditLogDetail }) {
           {unchangedCount} unchanged field{unchangedCount === 1 ? "" : "s"} hidden.
         </Typography>
       )}
-    </Box>
+    </DrawerSection>
   );
 }
 

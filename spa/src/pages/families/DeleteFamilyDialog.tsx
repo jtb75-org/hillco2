@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { DrawerSection } from "../../components/DrawerSection";
 import {
   Alert,
   Box,
@@ -226,12 +227,9 @@ export function DeleteFamilyDialog({
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <Box>
-      <Typography variant="overline" color="text.secondary" sx={{ display: "block", mb: 0.5 }}>
-        {title}
-      </Typography>
+    <DrawerSection title={title}>
       <Stack>{children}</Stack>
-    </Box>
+    </DrawerSection>
   );
 }
 

@@ -7,7 +7,6 @@ import {
   Chip,
   Divider,
   Link as MuiLink,
-  Skeleton,
   Stack,
   Table,
   TableBody,
@@ -32,6 +31,7 @@ import {
   formatInvoiceDate,
   formatInvoiceMoney,
 } from "../invoices/invoiceFormatters";
+import { DataTableContainer } from "../../components/DataTableContainer";
 import { SectionPanel } from "../../components/SectionPanel";
 import { useSnackbar } from "../../components/Snackbar";
 
@@ -271,34 +271,15 @@ function ExistingInvoicesTable({
     total: string;
   }>;
 }) {
-  if (loading) {
-    return (
-      <Box sx={{ overflowX: "auto" }}>
-        <Table size="small">
-          <TableBody>
-            {Array.from({ length: 2 }).map((_, index) => (
-              <TableRow key={index}>
-                {Array.from({ length: 5 }).map((__, cellIndex) => (
-                  <TableCell key={cellIndex}>
-                    <Skeleton width="80%" />
-                  </TableCell>
-                ))}
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </Box>
-    );
-  }
-  if (rows.length === 0) {
-    return (
-      <Typography variant="body2" color="text.disabled">
-        No invoices yet for this engagement.
-      </Typography>
-    );
-  }
   return (
-    <Box sx={{ overflowX: "auto" }}>
+    <DataTableContainer
+      variant="plain"
+      loading={loading}
+      loadingColumns={5}
+      loadingRows={2}
+      empty={rows.length === 0}
+      emptyTitle="No invoices yet for this engagement."
+    >
       <Table size="small">
         <TableHead>
           <TableRow>
@@ -338,7 +319,7 @@ function ExistingInvoicesTable({
           ))}
         </TableBody>
       </Table>
-    </Box>
+    </DataTableContainer>
   );
 }
 
@@ -370,30 +351,16 @@ function SourceTable({
         <Typography variant="subtitle2">{title}</Typography>
         <Chip size="small" variant="outlined" label={rows.length} />
       </Stack>
-      {loading ? (
-        <Box sx={{ overflowX: "auto" }}>
-          <Table size="small">
-            <TableBody>
-              {Array.from({ length: 2 }).map((_, index) => (
-                <TableRow key={index}>
-                  {Array.from({ length: 4 }).map((__, cellIndex) => (
-                    <TableCell key={cellIndex}>
-                      <Skeleton width="80%" />
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </Box>
-      ) : rows.length === 0 ? (
-        <Typography variant="body2" color="text.disabled">
-          {emptyTitle}
-        </Typography>
-      ) : (
-        <Box sx={{ overflowX: "auto" }}>
-          <Table size="small">
-            <TableBody>
+      <DataTableContainer
+        variant="plain"
+        loading={loading}
+        loadingColumns={4}
+        loadingRows={2}
+        empty={rows.length === 0}
+        emptyTitle={emptyTitle}
+      >
+        <Table size="small">
+          <TableBody>
               {rows.map((row) => (
                 <TableRow
                   key={row.id}
@@ -425,10 +392,9 @@ function SourceTable({
                   </TableCell>
                 </TableRow>
               ))}
-            </TableBody>
-          </Table>
-        </Box>
-      )}
+          </TableBody>
+        </Table>
+      </DataTableContainer>
     </Box>
   );
 }
