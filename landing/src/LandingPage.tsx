@@ -9,19 +9,63 @@ import {
 } from "@mui/material";
 import CheckIcon from "@mui/icons-material/Check";
 
-import { BRAND_CYAN, BRAND_INDIGO, BrandMark } from "./BrandMark";
+import { BrandMark } from "./BrandMark";
 
-const PALETTE = {
-  indigo: BRAND_INDIGO,
-  indigoDeep: "#241E58",
-  indigoSoft: "#453B96",
-  cyan: BRAND_CYAN,
-  cyanHover: "#0092bb",
-  ink: "#1D1B33",
+/**
+ * The page's color story in one object. Every colored surface below reads
+ * from `T` — nothing hard-codes a hex — so retheming is edits in one place.
+ */
+type Scheme = {
+  bannerBg: string;
+  bannerCircleLight: string;
+  bannerCircleDark: string;
+  eyebrow: string;
+  ctaBg: string;
+  ctaHover: string;
+  ctaText: string;
+  headerBtnBg: string;
+  headerBtnHover: string;
+  headerBtnText: string;
+  markH: string;
+  markC: string;
+  wordHill: string;
+  wordCo: string;
+  accent: string;
+  /** Hairline above each "Areas of focus" column. */
+  rule: string;
+  contactBg: string;
+  ink: string;
+  body: string;
+  ground: string;
+  border: string;
+};
+
+/** Carolina: #4B9CD3 / #13294B / white. Navy is the field, Carolina blue
+ *  is the action and the highlight, white is the ground. The mid-page band
+ *  is barely tinted rather than pure white so the sections still separate. */
+const T: Scheme = {
+  bannerBg: "#13294B",
+  bannerCircleLight: "#1E3D6B",
+  bannerCircleDark: "#0D1B33",
+  eyebrow: "#4B9CD3",
+  ctaBg: "#4B9CD3",
+  ctaHover: "#3E88BC",
+  ctaText: "#13294B",
+  headerBtnBg: "#13294B",
+  headerBtnHover: "#0D1B33",
+  headerBtnText: "#FFFFFF",
+  markH: "#13294B",
+  markC: "#4B9CD3",
+  wordHill: "#13294B",
+  wordCo: "#4B9CD3",
+  accent: "#13294B",
+  rule: "#4B9CD3",
+  contactBg: "#13294B",
+  ink: "#172233",
   body: "#4A5568",
-  ground: "#F6F7FB",
-  border: "#E3E6EF",
-} as const;
+  ground: "#F4F7FA",
+  border: "#E2E9F0",
+};
 
 const SERIF = 'Georgia, "Times New Roman", serif';
 
@@ -32,7 +76,7 @@ const MAILTO = `mailto:${CONSULTANT_EMAIL}`;
 
 export function LandingPage() {
   return (
-    <Box sx={{ minHeight: "100vh", bgcolor: "white", color: PALETTE.ink }}>
+    <Box sx={{ minHeight: "100vh", bgcolor: "white", color: T.ink }}>
       <Header />
       <Banner />
       <Mission />
@@ -46,7 +90,7 @@ export function LandingPage() {
 
 function Header() {
   return (
-    <Box sx={{ borderBottom: 1, borderColor: PALETTE.border, bgcolor: "white" }}>
+    <Box sx={{ borderBottom: 1, borderColor: T.border, bgcolor: "white" }}>
       <Container
         maxWidth="lg"
         sx={{
@@ -57,14 +101,16 @@ function Header() {
           py: 2,
         }}
       >
-        <Stack direction="row" spacing={1.75} alignItems="center">
-          <BrandMark size={64} />
+        {/* Bottom-aligned so the wordmark's cap-height starts level with the
+            top of the monogram's dropped C, rather than floating centered. */}
+        <Stack direction="row" spacing={1.75} alignItems="flex-end">
+          <BrandMark size={64} hColor={T.markH} cColor={T.markC} />
           <Box>
             <Typography component="div" sx={{ fontSize: "1.6rem", lineHeight: 1.15 }}>
-              <Box component="span" sx={{ fontFamily: SERIF, fontWeight: 700, color: PALETTE.indigo }}>
+              <Box component="span" sx={{ fontFamily: SERIF, fontWeight: 700, color: T.wordHill }}>
                 Hill
               </Box>
-              <Box component="span" sx={{ fontFamily: SERIF, fontWeight: 700, color: PALETTE.cyan }}>
+              <Box component="span" sx={{ fontFamily: SERIF, fontWeight: 700, color: T.wordCo }}>
                 Co
               </Box>
             </Typography>
@@ -73,7 +119,7 @@ function Header() {
                 fontSize: "0.7rem",
                 letterSpacing: "0.09em",
                 textTransform: "uppercase",
-                color: PALETTE.body,
+                color: T.body,
               }}
             >
               Educational Consultant
@@ -85,15 +131,15 @@ function Header() {
           sx={{
             display: { xs: "none", sm: "inline-flex" },
             borderRadius: 999,
-            bgcolor: PALETTE.indigo,
-            color: "white",
+            bgcolor: T.headerBtnBg,
+            color: T.headerBtnText,
             px: 2.75,
             py: 1,
             fontWeight: 600,
             textTransform: "none",
             fontSize: "0.95rem",
             whiteSpace: "nowrap",
-            "&:hover": { bgcolor: PALETTE.indigoDeep },
+            "&:hover": { bgcolor: T.headerBtnHover },
           }}
         >
           Schedule a Consultation
@@ -114,7 +160,7 @@ function Banner() {
       sx={{
         position: "relative",
         overflow: "hidden",
-        bgcolor: PALETTE.indigo,
+        bgcolor: T.bannerBg,
         color: "white",
         py: { xs: 8, md: 12 },
       }}
@@ -128,7 +174,7 @@ function Banner() {
           width: 780,
           height: 780,
           borderRadius: "50%",
-          bgcolor: PALETTE.indigoSoft,
+          bgcolor: T.bannerCircleLight,
           opacity: 0.55,
         }}
       />
@@ -141,7 +187,7 @@ function Banner() {
           width: 720,
           height: 720,
           borderRadius: "50%",
-          bgcolor: PALETTE.indigoDeep,
+          bgcolor: T.bannerCircleDark,
           opacity: 0.75,
         }}
       />
@@ -152,7 +198,7 @@ function Banner() {
             fontWeight: 700,
             letterSpacing: "0.16em",
             textTransform: "uppercase",
-            color: PALETTE.cyan,
+            color: T.eyebrow,
             mb: 2.5,
           }}
         >
@@ -175,14 +221,14 @@ function Banner() {
           sx={{
             mt: 5,
             borderRadius: 999,
-            bgcolor: PALETTE.cyan,
-            color: PALETTE.indigo,
+            bgcolor: T.ctaBg,
+            color: T.ctaText,
             px: 4,
             py: 1.5,
             fontWeight: 700,
             fontSize: "1rem",
             textTransform: "none",
-            "&:hover": { bgcolor: PALETTE.cyanHover },
+            "&:hover": { bgcolor: T.ctaHover },
           }}
         >
           Schedule a Consultation
@@ -196,18 +242,12 @@ function Banner() {
 function Mission() {
   return (
     <Container maxWidth="md" sx={{ py: { xs: 7, md: 10 } }}>
-      <Typography
-        sx={{
-          fontSize: { xs: "1.25rem", md: "1.45rem" },
-          lineHeight: 1.65,
-          color: PALETTE.ink,
-        }}
-      >
+      <Typography sx={{ fontSize: { xs: "1.25rem", md: "1.45rem" }, lineHeight: 1.65, color: T.ink }}>
         HillCo meets families where they are — helping them look broadly at their learner and
         consider the placement possibilities that best fit their child&apos;s strengths, needs,
         goals, and future opportunities.
       </Typography>
-      <Typography sx={{ mt: 3, fontSize: "1.0625rem", lineHeight: 1.75, color: PALETTE.body }}>
+      <Typography sx={{ mt: 3, fontSize: "1.0625rem", lineHeight: 1.75, color: T.body }}>
         With over 25 years of experience in education, {CONSULTANT_NAME} supports families through
         school transitions, special needs assessments, placement evaluation, and admissions
         guidance — working alongside you throughout the process.
@@ -230,7 +270,7 @@ const ONGOING_SUPPORT = [
 
 function Details() {
   return (
-    <Box sx={{ bgcolor: PALETTE.ground, borderTop: 1, borderBottom: 1, borderColor: PALETTE.border }}>
+    <Box sx={{ bgcolor: T.ground, borderTop: 1, borderBottom: 1, borderColor: T.border }}>
       <Container
         maxWidth="lg"
         sx={{
@@ -266,7 +306,7 @@ function BulletBlock({ title, items }: { title: string; items: readonly string[]
                 width: 24,
                 height: 24,
                 borderRadius: "50%",
-                bgcolor: PALETTE.cyan,
+                bgcolor: T.accent,
                 color: "white",
                 display: "flex",
                 alignItems: "center",
@@ -275,7 +315,7 @@ function BulletBlock({ title, items }: { title: string; items: readonly string[]
             >
               <CheckIcon sx={{ fontSize: 16 }} />
             </Box>
-            <Typography sx={{ color: PALETTE.body, lineHeight: 1.65, fontSize: "1.0625rem" }}>
+            <Typography sx={{ color: T.body, lineHeight: 1.65, fontSize: "1.0625rem" }}>
               {item}
             </Typography>
           </Stack>
@@ -318,13 +358,11 @@ function Focus() {
         }}
       >
         {FOCUS_AREAS.map((area) => (
-          <Box key={area.title} sx={{ borderTop: 3, borderColor: PALETTE.cyan, pt: 2.5 }}>
-            <Typography sx={{ fontWeight: 700, fontSize: "1.125rem", color: PALETTE.indigo }}>
+          <Box key={area.title} sx={{ borderTop: 3, borderColor: T.rule, pt: 2.5 }}>
+            <Typography sx={{ fontWeight: 700, fontSize: "1.125rem", color: T.bannerBg }}>
               {area.title}
             </Typography>
-            <Typography sx={{ mt: 1.25, color: PALETTE.body, lineHeight: 1.7 }}>
-              {area.text}
-            </Typography>
+            <Typography sx={{ mt: 1.25, color: T.body, lineHeight: 1.7 }}>{area.text}</Typography>
           </Box>
         ))}
       </Box>
@@ -334,7 +372,7 @@ function Focus() {
 
 function Contact() {
   return (
-    <Box sx={{ bgcolor: PALETTE.indigo, color: "white", py: { xs: 7, md: 9 } }}>
+    <Box sx={{ bgcolor: T.contactBg, color: "white", py: { xs: 7, md: 9 } }}>
       <Container
         maxWidth="lg"
         sx={{
@@ -361,18 +399,18 @@ function Contact() {
             admissions support, and school placement options.
           </Typography>
         </Box>
-        <Paper elevation={0} sx={{ borderRadius: 3, p: 3, color: PALETTE.ink, minWidth: { md: 320 } }}>
+        <Paper elevation={0} sx={{ borderRadius: 3, p: 3, color: T.ink, minWidth: { md: 320 } }}>
           <Typography sx={{ fontWeight: 700 }}>{CONSULTANT_NAME}</Typography>
           <MuiLink
             href={`tel:${CONSULTANT_PHONE.replace(/\./g, "")}`}
-            sx={{ display: "block", mt: 1.25, color: PALETTE.body }}
+            sx={{ display: "block", mt: 1.25, color: T.body }}
             underline="hover"
           >
             {CONSULTANT_PHONE}
           </MuiLink>
           <MuiLink
             href={MAILTO}
-            sx={{ display: "block", mt: 0.5, color: PALETTE.body, wordBreak: "break-word" }}
+            sx={{ display: "block", mt: 0.5, color: T.body, wordBreak: "break-word" }}
             underline="hover"
           >
             {CONSULTANT_EMAIL}
@@ -383,12 +421,12 @@ function Contact() {
             sx={{
               mt: 2.5,
               borderRadius: 999,
-              bgcolor: PALETTE.cyan,
-              color: PALETTE.indigo,
+              bgcolor: T.ctaBg,
+              color: T.ctaText,
               py: 1.15,
               fontWeight: 700,
               textTransform: "none",
-              "&:hover": { bgcolor: PALETTE.cyanHover },
+              "&:hover": { bgcolor: T.ctaHover },
             }}
           >
             Schedule a Consultation
@@ -412,10 +450,10 @@ function Footer() {
           justifyContent: "space-between",
         }}
       >
-        <Typography variant="caption" sx={{ color: PALETTE.body }}>
+        <Typography variant="caption" sx={{ color: T.body }}>
           © {new Date().getFullYear()} HillCo Educational Consultant
         </Typography>
-        <MuiLink href="/auth/login" sx={{ color: PALETTE.body, fontSize: "0.875rem" }} underline="hover">
+        <MuiLink href="/auth/login" sx={{ color: T.body, fontSize: "0.875rem" }} underline="hover">
           Consultant login
         </MuiLink>
       </Container>

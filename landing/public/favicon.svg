@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <!-- Card-back treatment: cyan monogram on the brand indigo field. -->
-  <rect width="64" height="64" rx="12" fill="#302870"/>
-  <text x="6" y="40" font-family="Georgia, 'Times New Roman', serif" font-size="30" font-weight="700" fill="#00a8d8">H</text>
-  <text x="28" y="52" font-family="Georgia, 'Times New Roman', serif" font-size="30" font-weight="700" fill="#00a8d8">C</text>
+  <!-- Card-back treatment: Carolina blue monogram on the navy field. -->
+  <rect width="64" height="64" rx="12" fill="#13294B"/>
+  <text x="6" y="40" font-family="Georgia, 'Times New Roman', serif" font-size="30" font-weight="700" fill="#4B9CD3">H</text>
+  <text x="28" y="52" font-family="Georgia, 'Times New Roman', serif" font-size="30" font-weight="700" fill="#4B9CD3">C</text>
 </svg>
