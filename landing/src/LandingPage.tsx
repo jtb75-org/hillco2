@@ -7,36 +7,38 @@ import {
   Stack,
   Typography,
 } from "@mui/material";
-import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
-import CheckCircleIcon from "@mui/icons-material/CheckCircle";
-import HandshakeOutlinedIcon from "@mui/icons-material/HandshakeOutlined";
-import SchoolOutlinedIcon from "@mui/icons-material/SchoolOutlined";
-import GroupsOutlinedIcon from "@mui/icons-material/GroupsOutlined";
-import ApartmentOutlinedIcon from "@mui/icons-material/ApartmentOutlined";
+import CheckIcon from "@mui/icons-material/Check";
+
+import { BRAND_CYAN, BRAND_INDIGO, BrandMark } from "./BrandMark";
 
 const PALETTE = {
-  sand: "#F7F4EA",
-  ivory: "#FFFDF6",
-  navy: "#18233F",
-  navyHover: "#26365C",
-  gold: "#E5B91E",
-  goldHover: "#D8AD1D",
-  subtle: "#52606D",
-  border: "#D8D1BC",
-  cardBorder: "#EEE7D4",
+  indigo: BRAND_INDIGO,
+  indigoDeep: "#241E58",
+  indigoSoft: "#453B96",
+  cyan: BRAND_CYAN,
+  cyanHover: "#0092bb",
+  ink: "#1D1B33",
+  body: "#4A5568",
+  ground: "#F6F7FB",
+  border: "#E3E6EF",
 } as const;
+
+const SERIF = 'Georgia, "Times New Roman", serif';
 
 const CONSULTANT_NAME = "Mary Hilliard Cognata";
 const CONSULTANT_PHONE = "314.606.5537";
 const CONSULTANT_EMAIL = "hillcoeducationalconsultant@gmail.com";
+const MAILTO = `mailto:${CONSULTANT_EMAIL}`;
 
 export function LandingPage() {
   return (
-    <Box sx={{ minHeight: "100vh", bgcolor: PALETTE.sand, color: PALETTE.navy }}>
+    <Box sx={{ minHeight: "100vh", bgcolor: "white", color: PALETTE.ink }}>
       <Header />
-      <Hero />
-      <Services />
-      <Cta />
+      <Banner />
+      <Mission />
+      <Details />
+      <Focus />
+      <Contact />
       <Footer />
     </Box>
   );
@@ -44,287 +46,362 @@ export function LandingPage() {
 
 function Header() {
   return (
-    <Container maxWidth="lg" sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", py: 3 }}>
-      <Stack direction="row" spacing={1.5} alignItems="center">
-        <Box
-          sx={{
-            width: 48,
-            height: 48,
-            borderRadius: 2,
-            bgcolor: PALETTE.gold,
-            color: PALETTE.navy,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontWeight: 700,
-            fontSize: "1.125rem",
-            boxShadow: 1,
-          }}
-        >
-          HC
-        </Box>
-        <Box>
-          <Typography variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.1 }}>
-            Hillco Educational Consultant
-          </Typography>
-          <Typography variant="caption" sx={{ color: PALETTE.subtle }}>
-            {CONSULTANT_NAME}
-          </Typography>
-        </Box>
-      </Stack>
-      <Button
-        href={`mailto:${CONSULTANT_EMAIL}`}
+    <Box sx={{ borderBottom: 1, borderColor: PALETTE.border, bgcolor: "white" }}>
+      <Container
+        maxWidth="lg"
         sx={{
-          borderRadius: 999,
-          bgcolor: PALETTE.navy,
-          color: "white",
-          px: 2.5,
-          "&:hover": { bgcolor: PALETTE.navyHover },
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 2,
+          py: 2,
         }}
       >
-        Schedule a Consultation
-      </Button>
-    </Container>
-  );
-}
-
-function Hero() {
-  return (
-    <Container
-      maxWidth="lg"
-      sx={{
-        display: "grid",
-        gap: 5,
-        py: { xs: 7, md: 10 },
-        alignItems: "center",
-        gridTemplateColumns: { xs: "1fr", md: "1.1fr 0.9fr" },
-      }}
-    >
-      <Box>
-        <Box
-          sx={{
-            display: "inline-flex",
-            mb: 2.5,
-            px: 2,
-            py: 1,
-            borderRadius: 999,
-            bgcolor: "white",
-            color: PALETTE.subtle,
-            fontSize: "0.875rem",
-            fontWeight: 500,
-            boxShadow: 1,
-          }}
-        >
-          Serving families and schools with experience and compassion
-        </Box>
-        <Typography
-          variant="h2"
-          sx={{
-            fontWeight: 700,
-            lineHeight: 1.1,
-            letterSpacing: "-0.02em",
-            fontSize: { xs: "2.5rem", md: "3.75rem" },
-            maxWidth: 720,
-          }}
-        >
-          Helping families find the right educational environment for their child.
-        </Typography>
-        <Typography variant="body1" sx={{ mt: 3, color: PALETTE.subtle, lineHeight: 1.6, maxWidth: 620, fontSize: "1.125rem" }}>
-          With over 25 years of experience in education, Hillco supports families through school transitions, special needs assessments, placement evaluation, and admissions guidance.
-        </Typography>
-        <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} sx={{ mt: 4 }}>
-          <Button
-            href={`mailto:${CONSULTANT_EMAIL}`}
-            endIcon={<ArrowForwardIcon />}
-            sx={{
-              borderRadius: 999,
-              bgcolor: PALETTE.gold,
-              color: PALETTE.navy,
-              px: 3,
-              py: 1.5,
-              fontWeight: 600,
-              "&:hover": { bgcolor: PALETTE.goldHover },
-            }}
-          >
-            Start the Conversation
-          </Button>
-          <Button
-            href="#services"
-            variant="outlined"
-            sx={{
-              borderRadius: 999,
-              borderColor: PALETTE.border,
-              color: PALETTE.navy,
-              bgcolor: "white",
-              px: 3,
-              py: 1.5,
-              fontWeight: 600,
-              "&:hover": { bgcolor: PALETTE.ivory, borderColor: PALETTE.border },
-            }}
-          >
-            Explore Services
-          </Button>
-        </Stack>
-      </Box>
-
-      <Paper
-        elevation={6}
-        sx={{ borderRadius: 6, p: 4, bgcolor: "white", border: 0 }}
-      >
-        <Box sx={{ borderRadius: 4, bgcolor: PALETTE.navy, color: "white", p: 4 }}>
-          <HandshakeOutlinedIcon sx={{ color: PALETTE.gold, fontSize: 40, mb: 2 }} />
-          <Typography variant="h5" sx={{ fontWeight: 700 }}>
-            Thoughtful guidance for important decisions.
-          </Typography>
-          <Typography sx={{ mt: 2, color: "rgba(255,255,255,0.8)", lineHeight: 1.65 }}>
-            Support for families evaluating school placements that fit a learner&apos;s strengths,
-            needs, goals, and future opportunities.
-          </Typography>
-        </Box>
-        <Stack spacing={1.5} sx={{ mt: 3 }}>
-          {[
-            "School transition support",
-            "Special needs placement guidance",
-            "Admissions process coaching",
-          ].map((item) => (
-            <Stack
-              key={item}
-              direction="row"
-              spacing={1.5}
-              alignItems="center"
-              sx={{ p: 2, borderRadius: 3, bgcolor: PALETTE.sand }}
+        <Stack direction="row" spacing={1.25} alignItems="center">
+          <BrandMark size={34} />
+          <Box>
+            <Typography component="div" sx={{ fontSize: "1.2rem", lineHeight: 1.15 }}>
+              <Box component="span" sx={{ fontFamily: SERIF, fontWeight: 700, color: PALETTE.indigo }}>
+                Hill
+              </Box>
+              <Box component="span" sx={{ fontFamily: SERIF, fontWeight: 700, color: PALETTE.cyan }}>
+                Co
+              </Box>
+            </Typography>
+            <Typography
+              sx={{
+                fontSize: "0.7rem",
+                letterSpacing: "0.09em",
+                textTransform: "uppercase",
+                color: PALETTE.body,
+              }}
             >
-              <CheckCircleIcon sx={{ color: PALETTE.gold }} />
-              <Typography sx={{ fontWeight: 500 }}>{item}</Typography>
-            </Stack>
-          ))}
+              Educational Consultant
+            </Typography>
+          </Box>
         </Stack>
-      </Paper>
-    </Container>
-  );
-}
-
-function Services() {
-  return (
-    <Box id="services" sx={{ bgcolor: "white", py: 8 }}>
-      <Container maxWidth="lg">
-        <Box sx={{ maxWidth: 720 }}>
-          <Typography variant="h3" sx={{ fontWeight: 700, fontSize: { xs: "1.875rem", md: "2.25rem" }, letterSpacing: "-0.01em" }}>
-            Services may include
-          </Typography>
-          <Typography variant="body1" sx={{ mt: 2, color: PALETTE.subtle, lineHeight: 1.65, fontSize: "1.125rem" }}>
-            Hillco meets families where they are, helping them look broadly at their learner and consider
-            placement possibilities that best fit their child&apos;s unique needs.
-          </Typography>
-        </Box>
-        <Box
+        <Button
+          href={MAILTO}
           sx={{
-            mt: 5,
-            display: "grid",
-            gap: 2.5,
-            gridTemplateColumns: { xs: "1fr", md: "repeat(3, 1fr)" },
+            display: { xs: "none", sm: "inline-flex" },
+            borderRadius: 999,
+            bgcolor: PALETTE.indigo,
+            color: "white",
+            px: 2.75,
+            py: 1,
+            fontWeight: 600,
+            textTransform: "none",
+            fontSize: "0.95rem",
+            whiteSpace: "nowrap",
+            "&:hover": { bgcolor: PALETTE.indigoDeep },
           }}
         >
-          <ServiceCard
-            icon={<SchoolOutlinedIcon />}
-            title="Placement Evaluation"
-            text="Reviewing learner needs, educational history, assessments, and school options to identify appropriate environments."
-          />
-          <ServiceCard
-            icon={<GroupsOutlinedIcon />}
-            title="Family Guidance"
-            text="Supporting family goals and dreams while helping parents navigate complex educational decisions."
-          />
-          <ServiceCard
-            icon={<ApartmentOutlinedIcon />}
-            title="School Collaboration"
-            text="Working with schools to help build strong, inclusive educational environments and connected communities."
-          />
-        </Box>
+          Schedule a Consultation
+        </Button>
       </Container>
     </Box>
   );
 }
 
-function ServiceCard({ icon, title, text }: { icon: React.ReactElement; title: string; text: string }) {
+/**
+ * Full-bleed brand banner: eyebrow, serif statement, single accent CTA.
+ * The tonal circles are the card-stock texture from the business cards —
+ * large, soft, mostly cropped by the banner's overflow.
+ */
+function Banner() {
   return (
-    <Paper
-      variant="outlined"
+    <Box
       sx={{
-        borderRadius: 5,
-        borderColor: PALETTE.cardBorder,
-        bgcolor: PALETTE.ivory,
-        p: 3.5,
+        position: "relative",
+        overflow: "hidden",
+        bgcolor: PALETTE.indigo,
+        color: "white",
+        py: { xs: 8, md: 12 },
       }}
     >
       <Box
+        aria-hidden
         sx={{
-          mb: 2.5,
-          width: 48,
-          height: 48,
-          borderRadius: 2,
-          bgcolor: `${PALETTE.gold}33`,
-          color: PALETTE.navy,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
+          position: "absolute",
+          top: "-38%",
+          right: "-8%",
+          width: 780,
+          height: 780,
+          borderRadius: "50%",
+          bgcolor: PALETTE.indigoSoft,
+          opacity: 0.55,
         }}
-      >
-        <Box sx={{ "& > svg": { fontSize: 28 } }}>{icon}</Box>
-      </Box>
-      <Typography variant="h6" sx={{ fontWeight: 700 }}>
-        {title}
-      </Typography>
-      <Typography sx={{ mt: 1.5, color: PALETTE.subtle, lineHeight: 1.65 }}>
-        {text}
-      </Typography>
-    </Paper>
+      />
+      <Box
+        aria-hidden
+        sx={{
+          position: "absolute",
+          bottom: "-58%",
+          left: "-14%",
+          width: 720,
+          height: 720,
+          borderRadius: "50%",
+          bgcolor: PALETTE.indigoDeep,
+          opacity: 0.75,
+        }}
+      />
+      <Container maxWidth="md" sx={{ position: "relative", textAlign: "center" }}>
+        <Typography
+          sx={{
+            fontSize: "0.8rem",
+            fontWeight: 700,
+            letterSpacing: "0.16em",
+            textTransform: "uppercase",
+            color: PALETTE.cyan,
+            mb: 2.5,
+          }}
+        >
+          Educational Consulting &amp; School Placement
+        </Typography>
+        <Typography
+          component="h1"
+          sx={{
+            fontFamily: SERIF,
+            fontWeight: 400,
+            lineHeight: 1.13,
+            letterSpacing: "-0.01em",
+            fontSize: { xs: "2.25rem", sm: "3rem", md: "3.6rem" },
+          }}
+        >
+          Helping families find the right educational environment for their child.
+        </Typography>
+        <Button
+          href={MAILTO}
+          sx={{
+            mt: 5,
+            borderRadius: 999,
+            bgcolor: PALETTE.cyan,
+            color: PALETTE.indigo,
+            px: 4,
+            py: 1.5,
+            fontWeight: 700,
+            fontSize: "1rem",
+            textTransform: "none",
+            "&:hover": { bgcolor: PALETTE.cyanHover },
+          }}
+        >
+          Schedule a Consultation
+        </Button>
+      </Container>
+    </Box>
   );
 }
 
-function Cta() {
+/** The mission statement — one plain-spoken paragraph, nothing competing with it. */
+function Mission() {
   return (
-    <Container maxWidth="lg" sx={{ py: 8 }}>
-      <Box
+    <Container maxWidth="md" sx={{ py: { xs: 7, md: 10 } }}>
+      <Typography
         sx={{
-          display: "grid",
-          gap: 4,
-          gridTemplateColumns: { xs: "1fr", md: "1fr auto" },
-          alignItems: "center",
-          borderRadius: 6,
-          bgcolor: PALETTE.navy,
-          color: "white",
-          p: { xs: 4, md: 6 },
+          fontSize: { xs: "1.25rem", md: "1.45rem" },
+          lineHeight: 1.65,
+          color: PALETTE.ink,
         }}
       >
-        <Box>
-          <Typography variant="h4" sx={{ fontWeight: 700, letterSpacing: "-0.01em", fontSize: { xs: "1.875rem", md: "2.25rem" } }}>
-            Ready to discuss your student&apos;s next step?
-          </Typography>
-          <Typography sx={{ mt: 2, color: "rgba(255,255,255,0.75)", lineHeight: 1.65, maxWidth: 620 }}>
-            Contact {CONSULTANT_NAME} to begin a thoughtful conversation about educational fit,
-            admissions support, and school placement options.
-          </Typography>
-        </Box>
-        <Paper sx={{ borderRadius: 4, p: 3, color: PALETTE.navy, boxShadow: 3 }}>
-          <Typography sx={{ fontWeight: 700 }}>{CONSULTANT_NAME}</Typography>
-          <Typography sx={{ mt: 1, color: PALETTE.subtle }}>{CONSULTANT_PHONE}</Typography>
-          <MuiLink
-            href={`mailto:${CONSULTANT_EMAIL}`}
-            sx={{ display: "block", mt: 0.5, color: PALETTE.subtle }}
-            underline="hover"
-          >
-            {CONSULTANT_EMAIL}
-          </MuiLink>
-        </Paper>
+        HillCo meets families where they are — helping them look broadly at their learner and
+        consider the placement possibilities that best fit their child&apos;s strengths, needs,
+        goals, and future opportunities.
+      </Typography>
+      <Typography sx={{ mt: 3, fontSize: "1.0625rem", lineHeight: 1.75, color: PALETTE.body }}>
+        With over 25 years of experience in education, {CONSULTANT_NAME} supports families through
+        school transitions, special needs assessments, placement evaluation, and admissions
+        guidance — working alongside you throughout the process.
+      </Typography>
+    </Container>
+  );
+}
+
+const CONSULTATION_INCLUDES = [
+  "A review of your learner's needs, educational history, and prior assessments",
+  "A look at the school options realistically available to your family",
+  "Guidance toward environments suited to how your child actually learns",
+];
+
+const ONGOING_SUPPORT = [
+  "School transition support",
+  "Special needs placement guidance",
+  "Admissions process coaching",
+];
+
+function Details() {
+  return (
+    <Box sx={{ bgcolor: PALETTE.ground, borderTop: 1, borderBottom: 1, borderColor: PALETTE.border }}>
+      <Container
+        maxWidth="lg"
+        sx={{
+          py: { xs: 7, md: 9 },
+          display: "grid",
+          gap: { xs: 5, md: 8 },
+          gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" },
+        }}
+      >
+        <BulletBlock title="What a consultation includes" items={CONSULTATION_INCLUDES} />
+        <BulletBlock title="Ongoing support may include" items={ONGOING_SUPPORT} />
+      </Container>
+    </Box>
+  );
+}
+
+function BulletBlock({ title, items }: { title: string; items: readonly string[] }) {
+  return (
+    <Box>
+      <Typography
+        component="h2"
+        sx={{ fontFamily: SERIF, fontWeight: 700, fontSize: { xs: "1.5rem", md: "1.75rem" } }}
+      >
+        {title}
+      </Typography>
+      <Stack spacing={2} sx={{ mt: 3 }}>
+        {items.map((item) => (
+          <Stack key={item} direction="row" spacing={1.75} alignItems="flex-start">
+            <Box
+              sx={{
+                mt: "2px",
+                flexShrink: 0,
+                width: 24,
+                height: 24,
+                borderRadius: "50%",
+                bgcolor: PALETTE.cyan,
+                color: "white",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <CheckIcon sx={{ fontSize: 16 }} />
+            </Box>
+            <Typography sx={{ color: PALETTE.body, lineHeight: 1.65, fontSize: "1.0625rem" }}>
+              {item}
+            </Typography>
+          </Stack>
+        ))}
+      </Stack>
+    </Box>
+  );
+}
+
+const FOCUS_AREAS = [
+  {
+    title: "Placement Evaluation",
+    text: "Reviewing learner needs, educational history, assessments, and school options to identify appropriate environments.",
+  },
+  {
+    title: "Family Guidance",
+    text: "Supporting family goals and dreams while helping parents navigate complex educational decisions.",
+  },
+  {
+    title: "School Collaboration",
+    text: "Working with schools to help build strong, inclusive educational environments and connected communities.",
+  },
+] as const;
+
+function Focus() {
+  return (
+    <Container maxWidth="lg" sx={{ py: { xs: 7, md: 10 } }}>
+      <Typography
+        component="h2"
+        sx={{ fontFamily: SERIF, fontWeight: 700, fontSize: { xs: "1.75rem", md: "2.125rem" } }}
+      >
+        Areas of focus
+      </Typography>
+      <Box
+        sx={{
+          mt: 4,
+          display: "grid",
+          gap: { xs: 4, md: 5 },
+          gridTemplateColumns: { xs: "1fr", md: "repeat(3, 1fr)" },
+        }}
+      >
+        {FOCUS_AREAS.map((area) => (
+          <Box key={area.title} sx={{ borderTop: 3, borderColor: PALETTE.cyan, pt: 2.5 }}>
+            <Typography sx={{ fontWeight: 700, fontSize: "1.125rem", color: PALETTE.indigo }}>
+              {area.title}
+            </Typography>
+            <Typography sx={{ mt: 1.25, color: PALETTE.body, lineHeight: 1.7 }}>
+              {area.text}
+            </Typography>
+          </Box>
+        ))}
       </Box>
     </Container>
   );
 }
 
+function Contact() {
+  return (
+    <Box sx={{ bgcolor: PALETTE.indigo, color: "white", py: { xs: 7, md: 9 } }}>
+      <Container
+        maxWidth="lg"
+        sx={{
+          display: "grid",
+          gap: 4,
+          gridTemplateColumns: { xs: "1fr", md: "1fr auto" },
+          alignItems: "center",
+        }}
+      >
+        <Box>
+          <Typography
+            component="h2"
+            sx={{
+              fontFamily: SERIF,
+              fontWeight: 400,
+              fontSize: { xs: "1.75rem", md: "2.25rem" },
+              lineHeight: 1.2,
+            }}
+          >
+            Ready to discuss your student&apos;s next step?
+          </Typography>
+          <Typography sx={{ mt: 2, color: "rgba(255,255,255,0.78)", lineHeight: 1.7, maxWidth: 620 }}>
+            Contact {CONSULTANT_NAME} to begin a thoughtful conversation about educational fit,
+            admissions support, and school placement options.
+          </Typography>
+        </Box>
+        <Paper elevation={0} sx={{ borderRadius: 3, p: 3, color: PALETTE.ink, minWidth: { md: 320 } }}>
+          <Typography sx={{ fontWeight: 700 }}>{CONSULTANT_NAME}</Typography>
+          <MuiLink
+            href={`tel:${CONSULTANT_PHONE.replace(/\./g, "")}`}
+            sx={{ display: "block", mt: 1.25, color: PALETTE.body }}
+            underline="hover"
+          >
+            {CONSULTANT_PHONE}
+          </MuiLink>
+          <MuiLink
+            href={MAILTO}
+            sx={{ display: "block", mt: 0.5, color: PALETTE.body, wordBreak: "break-word" }}
+            underline="hover"
+          >
+            {CONSULTANT_EMAIL}
+          </MuiLink>
+          <Button
+            href={MAILTO}
+            fullWidth
+            sx={{
+              mt: 2.5,
+              borderRadius: 999,
+              bgcolor: PALETTE.cyan,
+              color: PALETTE.indigo,
+              py: 1.15,
+              fontWeight: 700,
+              textTransform: "none",
+              "&:hover": { bgcolor: PALETTE.cyanHover },
+            }}
+          >
+            Schedule a Consultation
+          </Button>
+        </Paper>
+      </Container>
+    </Box>
+  );
+}
+
 function Footer() {
   return (
-    <Box sx={{ borderTop: 1, borderColor: PALETTE.border, py: 3, mt: 4 }}>
+    <Box sx={{ py: 3, bgcolor: "white" }}>
       <Container
         maxWidth="lg"
         sx={{
@@ -335,14 +412,10 @@ function Footer() {
           justifyContent: "space-between",
         }}
       >
-        <Typography variant="caption" sx={{ color: PALETTE.subtle }}>
-          © {new Date().getFullYear()} Hillco Educational Consultant
+        <Typography variant="caption" sx={{ color: PALETTE.body }}>
+          © {new Date().getFullYear()} HillCo Educational Consultant
         </Typography>
-        <MuiLink
-          href="/auth/login"
-          sx={{ color: PALETTE.subtle, fontSize: "0.875rem" }}
-          underline="hover"
-        >
+        <MuiLink href="/auth/login" sx={{ color: PALETTE.body, fontSize: "0.875rem" }} underline="hover">
           Consultant login
         </MuiLink>
       </Container>
