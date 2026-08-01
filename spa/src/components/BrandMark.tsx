@@ -1,8 +1,10 @@
 // Interlocked HC monogram redrawn from the HillCo business cards.
 // Brand colors are fixed — it's the logo, so it does not re-theme
-// with the color scheme (indigo H, cyan C, per the card front).
-export const BRAND_INDIGO = "#302870";
-export const BRAND_CYAN = "#00a8d8";
+// with the color scheme (navy H, Carolina blue C). Kept in step with
+// landing/src/BrandMark.tsx so the public site and the portal show
+// the same mark; the two are separate Vite builds, hence the copy.
+export const BRAND_NAVY = "#13294B";
+export const BRAND_CAROLINA = "#4B9CD3";
 
 const SERIF = 'Georgia, "Times New Roman", serif';
 
@@ -21,7 +23,7 @@ export function BrandMark({ size = 28 }: { size?: number }) {
         fontFamily={SERIF}
         fontSize="22"
         fontWeight="700"
-        fill={BRAND_INDIGO}
+        fill={BRAND_NAVY}
       >
         H
       </text>
@@ -31,7 +33,7 @@ export function BrandMark({ size = 28 }: { size?: number }) {
         fontFamily={SERIF}
         fontSize="22"
         fontWeight="700"
-        fill={BRAND_CYAN}
+        fill={BRAND_CAROLINA}
       >
         C
       </text>

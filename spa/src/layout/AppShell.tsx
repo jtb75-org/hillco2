@@ -39,7 +39,7 @@ import TaskAltOutlinedIcon from "@mui/icons-material/TaskAltOutlined";
 import { Link, Outlet, useLocation } from "react-router-dom";
 
 import { signOut, useAuth } from "../auth";
-import { BrandMark, BRAND_CYAN, BRAND_INDIGO } from "../components/BrandMark";
+import { BrandMark, BRAND_CAROLINA, BRAND_NAVY } from "../components/BrandMark";
 import { useAppTheme } from "../themeProvider";
 
 const DRAWER_WIDTH = 240;
@@ -94,13 +94,13 @@ export function AppShell() {
             <Typography variant="h6" component="div">
               <Box
                 component="span"
-                sx={{ fontFamily: 'Georgia, "Times New Roman", serif', color: BRAND_INDIGO }}
+                sx={{ fontFamily: 'Georgia, "Times New Roman", serif', color: BRAND_NAVY }}
               >
                 Hill
               </Box>
               <Box
                 component="span"
-                sx={{ fontFamily: 'Georgia, "Times New Roman", serif', color: BRAND_CYAN }}
+                sx={{ fontFamily: 'Georgia, "Times New Roman", serif', color: BRAND_CAROLINA }}
               >
                 Co
               </Box>
