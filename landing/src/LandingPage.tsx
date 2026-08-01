@@ -57,10 +57,10 @@ function Header() {
           py: 2,
         }}
       >
-        <Stack direction="row" spacing={1.25} alignItems="center">
-          <BrandMark size={34} />
+        <Stack direction="row" spacing={1.75} alignItems="center">
+          <BrandMark size={64} />
           <Box>
-            <Typography component="div" sx={{ fontSize: "1.2rem", lineHeight: 1.15 }}>
+            <Typography component="div" sx={{ fontSize: "1.6rem", lineHeight: 1.15 }}>
               <Box component="span" sx={{ fontFamily: SERIF, fontWeight: 700, color: PALETTE.indigo }}>
                 Hill
               </Box>
