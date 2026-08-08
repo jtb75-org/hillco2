@@ -16,8 +16,8 @@ from .routes import agreements as agreements_routes
 from .routes import auth as auth_routes
 from .routes import calendar as calendar_routes
 from .routes import catalog as catalog_routes
-from .routes import contacts as contacts_routes
 from .routes import contact_leads as contact_leads_routes
+from .routes import contacts as contacts_routes
 from .routes import contract_templates as contract_templates_routes
 from .routes import dashboard as dashboard_routes
 from .routes import documents as documents_routes
