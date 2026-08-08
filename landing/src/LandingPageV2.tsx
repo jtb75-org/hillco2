@@ -50,6 +50,49 @@ const SUPPORT_ITEMS = [
   "IEP meetings",
 ] as const;
 
+const SERVICE_IDEAS = [
+  {
+    title: "Education Assessment",
+    items: [
+      "Complimentary 30 minute consultation",
+      "Parent and student interview",
+      "Comprehensive record review",
+      "Development of a learner profile",
+      "Personalized school search",
+      "School tours and program comparison",
+      "Findings and recommendations meeting",
+      "Next steps planning",
+    ],
+  },
+  {
+    title: "Application Support",
+    items: [
+      "School visit prep and follow-up",
+      "Application timeline and checklist",
+      "Instruction for essays and personal statements",
+      "Review of application materials",
+      "Parent and student interview coaching",
+      "Support through admissions decisions, including acceptance, waitlist, and rejection outcomes",
+      "Support evaluating offers and determining next steps",
+      "Support through enrollment and transition",
+    ],
+  },
+  {
+    title: "Comprehensive School Placement",
+    items: ["Start to finish"],
+  },
+] as const;
+
+const FAQ_QUESTIONS = [
+  "What is an educational consultant and why do I need one?",
+  "Who do you serve?",
+  "What are the costs of your services?",
+  "What is a learner profile?",
+  "My child has already been evaluated by a specialist, will they need another?",
+  "Do you provide recommendations for specialists?",
+  "Do you attend IEP meetings?",
+] as const;
+
 export function LandingPageV2() {
   return (
     <Box sx={{ minHeight: "100vh", bgcolor: "white", color: NAVY }}>
@@ -73,16 +116,26 @@ export function LandingPageV2() {
         <LeftRail />
         <MainColumn />
       </Container>
-      <Box sx={{ py: 3, textAlign: "center" }}>
+      <Stack
+        direction={{ xs: "column", sm: "row" }}
+        spacing={{ xs: 1, sm: 3 }}
+        sx={{ py: 3, alignItems: "center", justifyContent: "center" }}
+      >
         <MuiLink href="/version1" underline="hover" sx={{ color: NAVY, fontWeight: 700 }}>
           View original landing page
         </MuiLink>
-      </Box>
+        <MuiLink href="/auth/login" underline="hover" sx={{ color: NAVY, fontWeight: 700 }}>
+          Consultant login
+        </MuiLink>
+      </Stack>
     </Box>
   );
 }
 
 function Masthead() {
+  const [servicesOpen, setServicesOpen] = useState(false);
+  const [faqsOpen, setFaqsOpen] = useState(false);
+
   return (
     <Box
       sx={{
@@ -134,10 +187,17 @@ function Masthead() {
           justifyContent: "flex-end",
         }}
       >
-        {["Services", "FAQS", "Giving"].map((label) => (
+        {["Services", "FAQS", "Testimonials"].map((label) => (
           <Button
             key={label}
-            href={`#${label.toLowerCase()}`}
+            href={label === "Testimonials" ? "#testimonials" : undefined}
+            onClick={
+              label === "Services"
+                ? () => setServicesOpen(true)
+                : label === "FAQS"
+                  ? () => setFaqsOpen(true)
+                  : undefined
+            }
             size="small"
             sx={{
               width: { xs: 82, md: 104 },
@@ -162,6 +222,8 @@ function Masthead() {
           </Button>
         ))}
       </Stack>
+      <ServicesDialog open={servicesOpen} onClose={() => setServicesOpen(false)} />
+      <FaqsDialog open={faqsOpen} onClose={() => setFaqsOpen(false)} />
       <Circle size={{ xs: 108, md: 124 }} top={{ xs: 150, md: 208 }} left={{ xs: 36, md: 110 }} />
       <Circle size={{ xs: 112, md: 152 }} top={{ xs: -46, md: -36 }} right={{ xs: -26, md: 42 }} />
       <Stack
@@ -203,6 +265,97 @@ function Masthead() {
         </Typography>
       </Stack>
     </Box>
+  );
+}
+
+function FaqsDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle sx={{ color: NAVY, fontWeight: 900 }}>FAQS</DialogTitle>
+      <DialogContent sx={{ pt: 1, pb: 3 }}>
+        <Stack spacing={2.25}>
+          {FAQ_QUESTIONS.map((question, index) => (
+            <Box
+              key={question}
+              sx={{
+                display: "grid",
+                gridTemplateColumns: "auto 1fr",
+                gap: 1.5,
+                alignItems: "baseline",
+                borderBottom: 1,
+                borderColor: "divider",
+                pb: 2,
+              }}
+            >
+              <Typography sx={{ color: ROYAL, fontWeight: 900 }}>{index + 1}.</Typography>
+              <Typography sx={{ color: NAVY, fontWeight: 800, lineHeight: 1.35 }}>
+                {question}
+              </Typography>
+            </Box>
+          ))}
+        </Stack>
+      </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2.5 }}>
+        <Button onClick={onClose} sx={{ color: NAVY, fontWeight: 800 }}>
+          Close
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+function ServicesDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle sx={{ color: NAVY, fontWeight: 900 }}>Services</DialogTitle>
+      <DialogContent sx={{ pt: 1, pb: 3 }}>
+        <Stack spacing={3}>
+          {SERVICE_IDEAS.map((service) => (
+            <Box
+              key={service.title}
+              sx={{
+                borderTop: 3,
+                borderColor: ROYAL,
+                pt: 2,
+              }}
+            >
+              <Typography
+                component="h3"
+                sx={{
+                  color: NAVY,
+                  fontSize: { xs: "1.25rem", md: "1.45rem" },
+                  fontWeight: 900,
+                  lineHeight: 1.15,
+                }}
+              >
+                {service.title}
+              </Typography>
+              <Box
+                component="ul"
+                sx={{
+                  mt: 1.5,
+                  mb: 0,
+                  pl: 2.5,
+                  color: "#255ba3",
+                  "& li": { mb: 0.75, lineHeight: 1.4 },
+                }}
+              >
+                {service.items.map((item) => (
+                  <Typography component="li" key={item}>
+                    {item}
+                  </Typography>
+                ))}
+              </Box>
+            </Box>
+          ))}
+        </Stack>
+      </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2.5 }}>
+        <Button onClick={onClose} sx={{ color: NAVY, fontWeight: 800 }}>
+          Close
+        </Button>
+      </DialogActions>
+    </Dialog>
   );
 }
 
@@ -438,7 +591,7 @@ function MainColumn() {
         <Stack spacing={4.5} sx={{ mt: 4 }}>
           <StepSection title="Have Questions?">
             <Typography sx={{ fontWeight: 800 }}>
-              Get started with a free 30 minute consultation.
+              Get started with a 30 minute consultation.
             </Typography>
             <Typography sx={{ mt: 0.5 }}>
               Tell us about your child, your goals, and the challenges you are facing. We will
@@ -489,15 +642,46 @@ function MainColumn() {
 
 function LeadDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [submitted, setSubmitted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const handleClose = () => {
     setSubmitted(false);
+    setIsSubmitting(false);
+    setSubmitError(null);
     onClose();
   };
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setSubmitted(true);
+    setSubmitError(null);
+    setIsSubmitting(true);
+
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+    const payload = {
+      name: String(formData.get("name") ?? ""),
+      email: String(formData.get("email") ?? ""),
+      phone: String(formData.get("phone") ?? ""),
+      message: String(formData.get("message") ?? ""),
+    };
+
+    try {
+      const response = await fetch("/api/contact-lead", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        throw new Error(`Contact lead endpoint returned ${response.status}`);
+      }
+      form.reset();
+      setSubmitted(true);
+    } catch {
+      setSubmitError("Unable to send right now. Please try again or email directly.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -507,7 +691,7 @@ function LeadDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
         <>
           <DialogContent>
             <Typography sx={{ color: "#255ba3", lineHeight: 1.5 }}>
-              Thanks. Your information has been captured in this preview flow.
+              Thanks. Your information has been sent.
             </Typography>
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 2.5 }}>
@@ -553,14 +737,24 @@ function LeadDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
                 fullWidth
                 sx={DIALOG_FIELD_SX}
               />
+              {submitError && (
+                <Typography role="alert" sx={{ color: "error.main", fontSize: "0.9rem" }}>
+                  {submitError}
+                </Typography>
+              )}
             </Stack>
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 2.5 }}>
-            <Button onClick={handleClose} sx={{ color: NAVY, fontWeight: 800 }}>
+            <Button
+              onClick={handleClose}
+              disabled={isSubmitting}
+              sx={{ color: NAVY, fontWeight: 800 }}
+            >
               Cancel
             </Button>
             <Button
               type="submit"
+              disabled={isSubmitting}
               sx={{
                 borderRadius: 999,
                 bgcolor: NAVY,
@@ -569,9 +763,10 @@ function LeadDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
                 fontWeight: 800,
                 textTransform: "none",
                 "&:hover": { bgcolor: DEEP_NAVY },
+                "&.Mui-disabled": { bgcolor: "#8ca8cf", color: "white" },
               }}
             >
-              Submit
+              {isSubmitting ? "Sending..." : "Submit"}
             </Button>
           </DialogActions>
         </Box>

@@ -17,6 +17,7 @@ from .routes import auth as auth_routes
 from .routes import calendar as calendar_routes
 from .routes import catalog as catalog_routes
 from .routes import contacts as contacts_routes
+from .routes import contact_leads as contact_leads_routes
 from .routes import contract_templates as contract_templates_routes
 from .routes import dashboard as dashboard_routes
 from .routes import documents as documents_routes
@@ -181,6 +182,7 @@ app.include_router(families_routes.router)
 app.include_router(students_routes.router)
 app.include_router(schools_routes.router)
 app.include_router(contacts_routes.router)
+app.include_router(contact_leads_routes.router)
 app.include_router(engagements_routes.router)
 app.include_router(notes_routes.router)
 app.include_router(followups_routes.router)
