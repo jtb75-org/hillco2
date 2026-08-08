@@ -7,7 +7,6 @@ import {
   Stack,
   Typography,
 } from "@mui/material";
-import CheckIcon from "@mui/icons-material/Check";
 
 import { BrandMark } from "./BrandMark";
 
@@ -73,14 +72,15 @@ const CONSULTANT_NAME = "Mary Hilliard Cognata";
 const CONSULTANT_PHONE = "314.606.5537";
 const CONSULTANT_EMAIL = "hillcoeducationalconsultant@gmail.com";
 const MAILTO = `mailto:${CONSULTANT_EMAIL}`;
+// One label for all three buttons — they are the same call to action.
+const CTA_LABEL = "Get in touch";
 
 export function LandingPage() {
   return (
     <Box sx={{ minHeight: "100vh", bgcolor: "white", color: T.ink }}>
       <Header />
       <Banner />
-      <Mission />
-      <Details />
+      <Approach />
       <Focus />
       <Contact />
       <Footer />
@@ -142,7 +142,7 @@ function Header() {
             "&:hover": { bgcolor: T.headerBtnHover },
           }}
         >
-          Schedule a Consultation
+          {CTA_LABEL}
         </Button>
       </Container>
     </Box>
@@ -194,15 +194,15 @@ function Banner() {
       <Container maxWidth="md" sx={{ position: "relative", textAlign: "center" }}>
         <Typography
           sx={{
-            fontSize: "0.8rem",
+            fontSize: { xs: "0.85rem", md: "1.1rem" },
             fontWeight: 700,
-            letterSpacing: "0.16em",
+            letterSpacing: "0.14em",
             textTransform: "uppercase",
             color: T.eyebrow,
             mb: 2.5,
           }}
         >
-          Educational Consulting &amp; School Placement
+          Educational Consulting &amp; School Placement Services
         </Typography>
         <Typography
           component="h1"
@@ -214,7 +214,7 @@ function Banner() {
             fontSize: { xs: "2.25rem", sm: "3rem", md: "3.6rem" },
           }}
         >
-          Helping families find the right educational environment for their child.
+          Guiding families with unique learners through all facets of school transitions.
         </Typography>
         <Button
           href={MAILTO}
@@ -231,96 +231,62 @@ function Banner() {
             "&:hover": { bgcolor: T.ctaHover },
           }}
         >
-          Schedule a Consultation
+          {CTA_LABEL}
         </Button>
       </Container>
     </Box>
   );
 }
 
-/** The mission statement — one plain-spoken paragraph, nothing competing with it. */
-function Mission() {
-  return (
-    <Container maxWidth="md" sx={{ py: { xs: 7, md: 10 } }}>
-      <Typography sx={{ fontSize: { xs: "1.25rem", md: "1.45rem" }, lineHeight: 1.65, color: T.ink }}>
-        HillCo meets families where they are — helping them look broadly at their learner and
-        consider the placement possibilities that best fit their child&apos;s strengths, needs,
-        goals, and future opportunities.
-      </Typography>
-      <Typography sx={{ mt: 3, fontSize: "1.0625rem", lineHeight: 1.75, color: T.body }}>
-        With over 25 years of experience in education, {CONSULTANT_NAME} supports families through
-        school transitions, special needs assessments, placement evaluation, and admissions
-        guidance — working alongside you throughout the process.
-      </Typography>
-    </Container>
-  );
-}
+// Bite-sized chunks: a short empathy lead, then title + short-paragraph
+// sections carrying the old mission/consultation/support content in prose.
+const APPROACH = [
+  {
+    title: "The learner profile",
+    text: "At the center of my work is a whole-child learner profile — a portrait of how your student learns, built through an educator's eyes rather than a test score. It looks at academic, cognitive, and social-emotional strengths together, focusing on what your child does well, not only where they struggle.",
+  },
+  {
+    title: "The consultation",
+    text: "We meet you and your child, review educational history and prior assessments, and observe at school when it helps. Then I deliver the profile with a shortlist of appropriate placements, and we meet to talk through the findings and next steps.",
+  },
+  {
+    title: "Through the transition",
+    text: "Once you've chosen a direction, the support continues — campus visits, interview preparation and coaching, application and submission help, and strategies for settling into the new school.",
+  },
+] as const;
 
-const CONSULTATION_INCLUDES = [
-  "A review of your learner's needs, educational history, and prior assessments",
-  "A look at the school options realistically available to your family",
-  "Guidance toward environments suited to how your child actually learns",
-];
-
-const ONGOING_SUPPORT = [
-  "School transition support",
-  "Special needs placement guidance",
-  "Admissions process coaching",
-];
-
-function Details() {
+function Approach() {
   return (
     <Box sx={{ bgcolor: T.ground, borderTop: 1, borderBottom: 1, borderColor: T.border }}>
-      <Container
-        maxWidth="lg"
-        sx={{
-          py: { xs: 7, md: 9 },
-          display: "grid",
-          gap: { xs: 5, md: 8 },
-          gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" },
-        }}
-      >
-        <BulletBlock title="What a consultation includes" items={CONSULTATION_INCLUDES} />
-        <BulletBlock title="Ongoing support may include" items={ONGOING_SUPPORT} />
-      </Container>
-    </Box>
-  );
-}
-
-function BulletBlock({ title, items }: { title: string; items: readonly string[] }) {
-  return (
-    <Box>
-      <Typography
-        component="h2"
-        sx={{ fontFamily: SERIF, fontWeight: 700, fontSize: { xs: "1.5rem", md: "1.75rem" } }}
-      >
-        {title}
-      </Typography>
-      <Stack spacing={2} sx={{ mt: 3 }}>
-        {items.map((item) => (
-          <Stack key={item} direction="row" spacing={1.75} alignItems="flex-start">
-            <Box
-              sx={{
-                mt: "2px",
-                flexShrink: 0,
-                width: 24,
-                height: 24,
-                borderRadius: "50%",
-                bgcolor: T.accent,
-                color: "white",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <CheckIcon sx={{ fontSize: 16 }} />
+      <Container maxWidth="md" sx={{ py: { xs: 7, md: 10 } }}>
+        <Typography
+          sx={{
+            fontSize: { xs: "1.2rem", md: "1.35rem" },
+            lineHeight: 1.6,
+            color: T.ink,
+            mb: { xs: 5, md: 7 },
+          }}
+        >
+          Navigating the differences among schools, programs, and learning environments can feel
+          overwhelming. I meet families where they are — here&apos;s how the work unfolds.
+        </Typography>
+        <Stack spacing={{ xs: 5, md: 6 }}>
+          {APPROACH.map((c) => (
+            <Box key={c.title}>
+              <Box sx={{ width: 40, height: 3, bgcolor: T.rule, mb: 2 }} />
+              <Typography
+                component="h2"
+                sx={{ fontFamily: SERIF, fontWeight: 700, fontSize: { xs: "1.5rem", md: "1.75rem" } }}
+              >
+                {c.title}
+              </Typography>
+              <Typography sx={{ mt: 1.5, color: T.body, lineHeight: 1.75, fontSize: "1.0625rem" }}>
+                {c.text}
+              </Typography>
             </Box>
-            <Typography sx={{ color: T.body, lineHeight: 1.65, fontSize: "1.0625rem" }}>
-              {item}
-            </Typography>
-          </Stack>
-        ))}
-      </Stack>
+          ))}
+        </Stack>
+      </Container>
     </Box>
   );
 }
@@ -395,7 +361,7 @@ function Contact() {
             Ready to discuss your student&apos;s next step?
           </Typography>
           <Typography sx={{ mt: 2, color: "rgba(255,255,255,0.78)", lineHeight: 1.7, maxWidth: 620 }}>
-            Contact {CONSULTANT_NAME} to begin a thoughtful conversation about educational fit,
+            Get in touch to begin a thoughtful conversation about educational fit,
             admissions support, and school placement options.
           </Typography>
         </Box>
@@ -429,7 +395,7 @@ function Contact() {
               "&:hover": { bgcolor: T.ctaHover },
             }}
           >
-            Schedule a Consultation
+            {CTA_LABEL}
           </Button>
         </Paper>
       </Container>

@@ -2,6 +2,7 @@ import { Alert, Snackbar } from "@mui/material";
 import { useState } from "react";
 
 import { LandingPage } from "./LandingPage";
+import { LandingPageV2 } from "./LandingPageV2";
 
 // Friendly copy for the `?login_error=...` codes the backend auth callback
 // emits when something goes wrong server-side. Mirrors the SPA's AuthGate
@@ -20,11 +21,12 @@ const LOGIN_ERROR_COPY: Record<string, string> = {
 export function App() {
   const params = new URLSearchParams(window.location.search);
   const errorCode = params.get("login_error");
+  const showVersion1 = window.location.pathname === "/version1" || params.get("version") === "1";
   const [errorOpen, setErrorOpen] = useState(!!errorCode);
 
   return (
     <>
-      <LandingPage />
+      {showVersion1 ? <LandingPage /> : <LandingPageV2 />}
       <Snackbar
         open={errorOpen}
         autoHideDuration={8000}
