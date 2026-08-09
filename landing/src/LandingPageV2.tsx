@@ -1042,7 +1042,7 @@ function IntroPanel() {
         </Typography>
         <Typography sx={{ mt: 4, fontFamily: SERIF, fontWeight: 800, lineHeight: 1.35 }}>
           Whether your child has a diagnosed learning difference or simply needs a new environment,
-          my approach is centered on the whole child.
+          my approach is centered on the wellbeing of the whole child.
         </Typography>
         <Typography sx={{ mt: 3, fontFamily: SERIF, fontWeight: 800, lineHeight: 1.35 }}>
           Together we will examine your learner's cognitive profile, social emotional needs,
