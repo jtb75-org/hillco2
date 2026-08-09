@@ -52,36 +52,125 @@ const SUPPORT_ITEMS = [
   "IEP meetings",
 ] as const;
 
-const SERVICE_IDEAS = [
+const SERVICE_PACKAGES = [
+  { key: "assessment", label: "Education Assessment" },
+  { key: "application", label: "Application Support" },
+  { key: "placement", label: "Comprehensive Placement" },
+  { key: "alaCarte", label: "À la carte" },
+] as const;
+
+const SERVICE_MATRIX = [
   {
-    title: "Education Assessment",
-    items: [
-      "Complimentary 30 minute consultation",
-      "Parent and student interview",
-      "Comprehensive record review",
-      "Development of a learner profile",
-      "Personalized school search",
-      "School tours and program comparison",
-      "Findings and recommendations meeting",
-      "Next steps planning",
-    ],
+    service: "Complimentary 30 minute consultation",
+    assessment: true,
+    application: true,
+    placement: true,
+    alaCarte: true,
   },
   {
-    title: "Application Support",
-    items: [
-      "School visit prep and follow-up",
-      "Application timeline and checklist",
-      "Instruction for essays and personal statements",
-      "Review of application materials",
-      "Parent and student interview coaching",
-      "Support through admissions decisions, including acceptance, waitlist, and rejection outcomes",
-      "Support evaluating offers and determining next steps",
-      "Support through enrollment and transition",
-    ],
+    service: "Parent and student interview",
+    assessment: true,
+    application: false,
+    placement: true,
+    alaCarte: true,
   },
   {
-    title: "Comprehensive School Placement",
-    items: ["Start to finish"],
+    service: "Comprehensive record review",
+    assessment: true,
+    application: false,
+    placement: true,
+    alaCarte: true,
+  },
+  {
+    service: "Learner profile development",
+    assessment: true,
+    application: false,
+    placement: true,
+    alaCarte: true,
+  },
+  {
+    service: "Personalized school search",
+    assessment: true,
+    application: false,
+    placement: true,
+    alaCarte: true,
+  },
+  {
+    service: "School tours and program comparison",
+    assessment: true,
+    application: false,
+    placement: true,
+    alaCarte: true,
+  },
+  {
+    service: "Findings and recommendations meeting",
+    assessment: true,
+    application: false,
+    placement: true,
+    alaCarte: true,
+  },
+  {
+    service: "Next steps planning",
+    assessment: true,
+    application: false,
+    placement: true,
+    alaCarte: true,
+  },
+  {
+    service: "School visit prep and follow-up",
+    assessment: false,
+    application: true,
+    placement: true,
+    alaCarte: true,
+  },
+  {
+    service: "Application timeline and checklist",
+    assessment: false,
+    application: true,
+    placement: true,
+    alaCarte: true,
+  },
+  {
+    service: "Essay and personal statement support",
+    assessment: false,
+    application: true,
+    placement: true,
+    alaCarte: true,
+  },
+  {
+    service: "Application material review",
+    assessment: false,
+    application: true,
+    placement: true,
+    alaCarte: true,
+  },
+  {
+    service: "Parent and student interview coaching",
+    assessment: false,
+    application: true,
+    placement: true,
+    alaCarte: true,
+  },
+  {
+    service: "Admissions decision support",
+    assessment: false,
+    application: true,
+    placement: true,
+    alaCarte: true,
+  },
+  {
+    service: "Offer evaluation and next steps",
+    assessment: false,
+    application: true,
+    placement: true,
+    alaCarte: true,
+  },
+  {
+    service: "Enrollment and transition support",
+    assessment: false,
+    application: true,
+    placement: true,
+    alaCarte: true,
   },
 ] as const;
 
@@ -376,49 +465,82 @@ function FaqsDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
 
 function ServicesDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+    <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
       <DialogTitle sx={{ color: NAVY, fontWeight: 900 }}>Services</DialogTitle>
       <DialogContent sx={{ pt: 1, pb: 3 }}>
-        <Stack spacing={3}>
-          {SERVICE_IDEAS.map((service) => (
-            <Box
-              key={service.title}
-              sx={{
-                borderTop: 3,
-                borderColor: ROYAL,
-                pt: 2,
-              }}
-            >
-              <Typography
-                component="h3"
-                sx={{
-                  color: NAVY,
-                  fontSize: { xs: "1.25rem", md: "1.45rem" },
-                  fontWeight: 900,
-                  lineHeight: 1.15,
-                }}
-              >
-                {service.title}
-              </Typography>
-              <Box
-                component="ul"
-                sx={{
-                  mt: 1.5,
-                  mb: 0,
-                  pl: 2.5,
-                  color: "#255ba3",
-                  "& li": { mb: 0.75, lineHeight: 1.4 },
-                }}
-              >
-                {service.items.map((item) => (
-                  <Typography component="li" key={item}>
-                    {item}
-                  </Typography>
+        <Box sx={{ overflowX: "auto" }}>
+          <Box
+            component="table"
+            sx={{
+              width: "100%",
+              minWidth: 760,
+              borderCollapse: "separate",
+              borderSpacing: 0,
+              color: NAVY,
+              "& th, & td": {
+                borderBottom: 1,
+                borderColor: "divider",
+                px: 1.5,
+                py: 1.35,
+              },
+              "& th": {
+                bgcolor: PANEL,
+                fontWeight: 900,
+                lineHeight: 1.15,
+                textAlign: "center",
+                position: "sticky",
+                top: 0,
+                zIndex: 1,
+              },
+              "& th:first-of-type": {
+                textAlign: "left",
+                borderTopLeftRadius: 8,
+              },
+              "& th:last-of-type": {
+                borderTopRightRadius: 8,
+              },
+              "& td": {
+                color: "#255ba3",
+              },
+            }}
+          >
+            <thead>
+              <tr>
+                <Box component="th" sx={{ width: "34%" }}>
+                  Service
+                </Box>
+                {SERVICE_PACKAGES.map((pkg) => (
+                  <Box component="th" key={pkg.key}>
+                    {pkg.label}
+                  </Box>
                 ))}
-              </Box>
-            </Box>
-          ))}
-        </Stack>
+              </tr>
+            </thead>
+            <tbody>
+              {SERVICE_MATRIX.map((row) => (
+                <tr key={row.service}>
+                  <Box component="td" sx={{ fontWeight: 800 }}>
+                    {row.service}
+                  </Box>
+                  {SERVICE_PACKAGES.map((pkg) => (
+                    <Box
+                      component="td"
+                      key={pkg.key}
+                      sx={{
+                        textAlign: "center",
+                        fontWeight: 900,
+                        color: row[pkg.key] ? NAVY : "text.disabled",
+                      }}
+                      aria-label={row[pkg.key] ? "Included" : "Not included"}
+                    >
+                      {row[pkg.key] ? "✓" : ""}
+                    </Box>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </Box>
+        </Box>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2.5 }}>
         <Button onClick={onClose} sx={{ color: NAVY, fontWeight: 800 }}>
