@@ -13,6 +13,8 @@ import {
 } from "@mui/material";
 import EmailRoundedIcon from "@mui/icons-material/EmailRounded";
 import HomeRoundedIcon from "@mui/icons-material/HomeRounded";
+import LockRoundedIcon from "@mui/icons-material/LockRounded";
+import PersonRoundedIcon from "@mui/icons-material/PersonRounded";
 import PhoneRoundedIcon from "@mui/icons-material/PhoneRounded";
 import { useState, type FormEvent, type ReactNode } from "react";
 
@@ -93,6 +95,18 @@ const FAQ_QUESTIONS = [
   "Do you attend IEP meetings?",
 ] as const;
 
+const TESTIMONIALS = [
+  {
+    body: [
+      "We wholeheartedly recommend Mary to any family seeking a knowledgeable, caring, and well-connected educational consultant. Her dedication, expertise, and child-centered approach make her an invaluable resource for navigating the school placement process.",
+      "Mary is deeply committed to understanding the whole child, recognizing that the best educational placement considers not only academic needs but also each child's social, emotional, and developmental strengths.",
+      "We feel very fortunate to have worked with Mary and are confident our daughter is now on the path to thrive in school.",
+    ],
+    signature: "Laurie & Kevin Dixon",
+    location: "Chesterfield, MO",
+  },
+] as const;
+
 export function LandingPageV2() {
   return (
     <Box sx={{ minHeight: "100vh", bgcolor: "white", color: NAVY }}>
@@ -116,18 +130,6 @@ export function LandingPageV2() {
         <LeftRail />
         <MainColumn />
       </Container>
-      <Stack
-        direction={{ xs: "column", sm: "row" }}
-        spacing={{ xs: 1, sm: 3 }}
-        sx={{ py: 3, alignItems: "center", justifyContent: "center" }}
-      >
-        <MuiLink href="/version1" underline="hover" sx={{ color: NAVY, fontWeight: 700 }}>
-          View original landing page
-        </MuiLink>
-        <MuiLink href="/auth/login" underline="hover" sx={{ color: NAVY, fontWeight: 700 }}>
-          Consultant login
-        </MuiLink>
-      </Stack>
     </Box>
   );
 }
@@ -135,6 +137,7 @@ export function LandingPageV2() {
 function Masthead() {
   const [servicesOpen, setServicesOpen] = useState(false);
   const [faqsOpen, setFaqsOpen] = useState(false);
+  const [testimonialsOpen, setTestimonialsOpen] = useState(false);
 
   return (
     <Box
@@ -190,13 +193,12 @@ function Masthead() {
         {["Services", "FAQS", "Testimonials"].map((label) => (
           <Button
             key={label}
-            href={label === "Testimonials" ? "#testimonials" : undefined}
             onClick={
               label === "Services"
                 ? () => setServicesOpen(true)
                 : label === "FAQS"
                   ? () => setFaqsOpen(true)
-                  : undefined
+                  : () => setTestimonialsOpen(true)
             }
             size="small"
             sx={{
@@ -221,9 +223,35 @@ function Masthead() {
             {label}
           </Button>
         ))}
+        <Button
+          href="/auth/login"
+          size="small"
+          aria-label="Consultant login"
+          sx={{
+            minWidth: 0,
+            width: { xs: 38, md: 44 },
+            height: { xs: 34, md: 38 },
+            borderRadius: 999,
+            bgcolor: PANEL,
+            border: "2px solid rgba(255,255,255,0.72)",
+            color: NAVY,
+            boxShadow: "0 10px 22px rgba(0,0,0,0.18)",
+            "&:hover": {
+              bgcolor: "#e4e4e4",
+              borderColor: "white",
+              boxShadow: "0 12px 26px rgba(0,0,0,0.22)",
+            },
+          }}
+        >
+          <LockRoundedIcon sx={{ fontSize: { xs: 17, md: 19 } }} />
+        </Button>
       </Stack>
       <ServicesDialog open={servicesOpen} onClose={() => setServicesOpen(false)} />
       <FaqsDialog open={faqsOpen} onClose={() => setFaqsOpen(false)} />
+      <TestimonialsDialog
+        open={testimonialsOpen}
+        onClose={() => setTestimonialsOpen(false)}
+      />
       <Circle size={{ xs: 108, md: 124 }} top={{ xs: 150, md: 208 }} left={{ xs: 36, md: 110 }} />
       <Circle size={{ xs: 112, md: 152 }} top={{ xs: -46, md: -36 }} right={{ xs: -26, md: 42 }} />
       <Stack
@@ -265,6 +293,48 @@ function Masthead() {
         </Typography>
       </Stack>
     </Box>
+  );
+}
+
+function TestimonialsDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle sx={{ color: NAVY, fontWeight: 900 }}>Testimonials</DialogTitle>
+      <DialogContent sx={{ pt: 1, pb: 3 }}>
+        <Stack spacing={3}>
+          {TESTIMONIALS.map((testimonial) => (
+            <Box
+              key={testimonial.signature}
+              sx={{
+                borderLeft: 4,
+                borderColor: ROYAL,
+                pl: { xs: 2, md: 3 },
+              }}
+            >
+              {testimonial.body.map((paragraph) => (
+                <Typography
+                  key={paragraph}
+                  sx={{ color: "#255ba3", lineHeight: 1.6, mb: 2 }}
+                >
+                  {paragraph}
+                </Typography>
+              ))}
+              <Typography sx={{ color: NAVY, fontWeight: 900 }}>
+                {testimonial.signature}
+              </Typography>
+              <Typography sx={{ color: "#255ba3", fontWeight: 700 }}>
+                {testimonial.location}
+              </Typography>
+            </Box>
+          ))}
+        </Stack>
+      </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2.5 }}>
+        <Button onClick={onClose} sx={{ color: NAVY, fontWeight: 800 }}>
+          Close
+        </Button>
+      </DialogActions>
+    </Dialog>
   );
 }
 
@@ -388,6 +458,8 @@ function Circle({
 }
 
 function LeftRail() {
+  const [aboutOpen, setAboutOpen] = useState(false);
+
   return (
     <Box
       sx={{
@@ -433,24 +505,22 @@ function LeftRail() {
             component="h2"
             sx={{
               fontSize: "1.42rem",
+              lineHeight: 1.25,
               fontWeight: 900,
               textTransform: "uppercase",
+              letterSpacing: 0,
             }}
           >
-            About Me
+            School Services
           </Typography>
-          <Typography sx={{ mt: 1.5, fontWeight: 900, lineHeight: 1.25 }}>
-            {CONSULTANT_NAME}
-          </Typography>
-          <Typography sx={{ mt: 2, fontWeight: 800, lineHeight: 1.25 }}>
-            Bachelor of Education in Elementary Education
-          </Typography>
-          <Typography sx={{ mt: 0.25, fontWeight: 800, lineHeight: 1.25 }}>
-            Borcelle University
-          </Typography>
-          <Typography sx={{ mt: 6, fontSize: "1.15rem", color: "#245a9f" }}>
-            Graduated: May 2016
-          </Typography>
+          <Box component="ul" sx={{ mt: 2, pl: 2.25, m: 0, fontWeight: 800, lineHeight: 1.32 }}>
+            <Typography component="li" sx={{ fontSize: "1.02rem" }}>
+              Leadership Development
+            </Typography>
+            <Typography component="li" sx={{ fontSize: "1.02rem" }}>
+              Teacher Coaching
+            </Typography>
+          </Box>
         </Box>
 
         <Box>
@@ -465,6 +535,9 @@ function LeftRail() {
           >
             Contact
           </Typography>
+          <ContactLine icon={<PersonRoundedIcon />}>
+            {CONSULTANT_NAME}, M.Ed.
+          </ContactLine>
           <ContactLine icon={<PhoneRoundedIcon />} href={`tel:${CONSULTANT_PHONE.replace(/\./g, "")}`}>
             {CONSULTANT_PHONE}
           </ContactLine>
@@ -474,9 +547,49 @@ function LeftRail() {
           <ContactLine icon={<HomeRoundedIcon />}>
             St. Louis, Missouri
           </ContactLine>
+          <Button
+            onClick={() => setAboutOpen(true)}
+            sx={{
+              mt: 3,
+              borderRadius: 999,
+              bgcolor: NAVY,
+              color: "white",
+              px: 2.75,
+              py: 1,
+              fontWeight: 800,
+              textTransform: "none",
+              "&:hover": { bgcolor: DEEP_NAVY },
+            }}
+          >
+            About me
+          </Button>
         </Box>
       </Stack>
+      <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />
     </Box>
+  );
+}
+
+function AboutDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle sx={{ color: NAVY, fontWeight: 900 }}>About Mary</DialogTitle>
+      <DialogContent sx={{ pt: 1 }}>
+        <Typography sx={{ color: NAVY, fontWeight: 900, fontSize: "1.15rem" }}>
+          {CONSULTANT_NAME}, M.Ed.
+        </Typography>
+        <Typography sx={{ mt: 2, color: "#255ba3", lineHeight: 1.55 }}>
+          Mary brings experience as an educator and parent to her work with families navigating
+          school transitions. She helps families understand each student's learning profile,
+          compare educational settings, and plan thoughtful next steps.
+        </Typography>
+      </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2.5 }}>
+        <Button onClick={onClose} sx={{ color: NAVY, fontWeight: 800 }}>
+          Close
+        </Button>
+      </DialogActions>
+    </Dialog>
   );
 }
 
