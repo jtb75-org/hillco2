@@ -107,9 +107,10 @@ const STAT_CARDS: Array<{
 ];
 
 function loadInitialView(): ViewMode {
-  if (typeof window === "undefined") return "list";
+  // Kanban (column) is the default; only an explicit stored "list" opts out.
+  if (typeof window === "undefined") return "kanban";
   const v = window.localStorage.getItem(VIEW_STORAGE_KEY);
-  return v === "kanban" ? "kanban" : "list";
+  return v === "list" ? "list" : "kanban";
 }
 
 export function IntakesList() {
@@ -199,41 +200,49 @@ export function IntakesList() {
         }
       />
 
-      <Grid container spacing={2}>
-        {STAT_CARDS.map((card) => (
-          <Grid key={card.key} item xs={6} sm={3}>
-            {isPending ? (
-              <Skeleton variant="rounded" height={128} />
-            ) : (
-              <StatCard
-                label={card.label}
-                value={counts[card.key].toLocaleString()}
-                subtitle={card.subtitle}
-                icon={card.icon}
-                // Clicking the active card toggles back to "all" so the
-                // strip doubles as a clear-filter affordance.
-                onClick={() =>
-                  setBucket((prev) => (prev === card.key ? "all" : card.key))
-                }
-                sx={
-                  bucket === card.key
-                    ? { borderColor: "primary.main", borderWidth: 1.5 }
-                    : undefined
-                }
-              />
-            )}
-          </Grid>
-        ))}
-      </Grid>
-
       <Box sx={{ display: "flex", justifyContent: "flex-start" }}>
         <ViewPill view={view} onChange={setView} />
       </Box>
 
       {view === "list" ? (
-        <ListView rows={filtered} loading={isPending} onNew={() => setPickOpen(true)} />
+        <>
+          {/* Table view keeps the rollup stat strip (doubles as a filter);
+              kanban drops it since each column header shows its own count. */}
+          <Grid container spacing={2}>
+            {STAT_CARDS.map((card) => (
+              <Grid key={card.key} item xs={6} sm={3}>
+                {isPending ? (
+                  <Skeleton variant="rounded" height={128} />
+                ) : (
+                  <StatCard
+                    label={card.label}
+                    value={counts[card.key].toLocaleString()}
+                    subtitle={card.subtitle}
+                    icon={card.icon}
+                    // Clicking the active card toggles back to "all" so the
+                    // strip doubles as a clear-filter affordance.
+                    onClick={() =>
+                      setBucket((prev) => (prev === card.key ? "all" : card.key))
+                    }
+                    sx={
+                      bucket === card.key
+                        ? { borderColor: "primary.main", borderWidth: 1.5 }
+                        : undefined
+                    }
+                  />
+                )}
+              </Grid>
+            ))}
+          </Grid>
+
+          <ListView
+            rows={filtered}
+            loading={isPending}
+            onNew={() => setPickOpen(true)}
+          />
+        </>
       ) : (
-        <KanbanView rows={filtered} loading={isPending} onNew={() => setPickOpen(true)} />
+        <KanbanView rows={rows} loading={isPending} onNew={() => setPickOpen(true)} />
       )}
 
       <PickOrCreateFamilyDialog

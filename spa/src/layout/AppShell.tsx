@@ -37,6 +37,7 @@ import WebAssetOutlinedIcon from "@mui/icons-material/WebAssetOutlined";
 import SchoolIcon from "@mui/icons-material/School";
 import TaskAltOutlinedIcon from "@mui/icons-material/TaskAltOutlined";
 import { Link, Outlet, useLocation } from "react-router-dom";
+import { alpha } from "@mui/material/styles";
 
 import { signOut, useAuth } from "../auth";
 import { BrandMark, BRAND_CAROLINA, BRAND_NAVY } from "../components/BrandMark";
@@ -83,8 +84,9 @@ export function AppShell() {
           zIndex: (t) => t.zIndex.drawer + 1,
           bgcolor: "background.paper",
           color: "text.primary",
-          borderBottom: 1,
-          borderColor: "divider",
+          // Accent rule ties the top bar to the scheme (Carolina blue).
+          borderBottom: 2,
+          borderColor: "secondary.main",
         }}
         elevation={0}
       >
@@ -294,7 +296,15 @@ export function AppShell() {
         sx={{
           width: DRAWER_WIDTH,
           flexShrink: 0,
-          [`& .MuiDrawer-paper`]: { width: DRAWER_WIDTH, boxSizing: "border-box" },
+          [`& .MuiDrawer-paper`]: {
+            width: DRAWER_WIDTH,
+            boxSizing: "border-box",
+            // Share the sky-blue page ground so the blue reads across the
+            // whole layout; the border keeps the rail legible against content.
+            bgcolor: "background.default",
+            borderRight: 1,
+            borderColor: "divider",
+          },
         }}
       >
         <Toolbar />
@@ -323,18 +333,18 @@ export function AppShell() {
                       borderRadius: 1,
                       minHeight: 42,
                       "&.Mui-selected": {
-                        bgcolor: "action.selected",
+                        bgcolor: (t) => alpha(t.palette.secondary.main, 0.16),
                         color: "primary.dark",
                       },
                       "&.Mui-selected:hover": {
-                        bgcolor: "action.selected",
+                        bgcolor: (t) => alpha(t.palette.secondary.main, 0.24),
                       },
                     }}
                   >
                     <ListItemIcon
                       sx={{
                         minWidth: 36,
-                        color: selected ? "primary.dark" : "text.secondary",
+                        color: selected ? "secondary.dark" : "text.secondary",
                       }}
                     >
                       {entry.icon}

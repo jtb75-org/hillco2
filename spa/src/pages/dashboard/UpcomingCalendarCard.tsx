@@ -101,8 +101,7 @@ export function UpcomingCalendarCard() {
 
   return (
     <SectionPanel
-      title="Upcoming"
-      subtitle="Google Calendar"
+      title="Upcoming (Google Calendar)"
       count={isPending || error ? undefined : events.length}
       empty={!isPending && !error && events.length === 0}
       emptyTitle="No events in the next 7 days"

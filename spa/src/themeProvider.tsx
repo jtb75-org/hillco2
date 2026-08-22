@@ -49,10 +49,10 @@ function readStored<T extends string>(
 
 export function AppThemeProvider({ children }: { children: ReactNode }) {
   const [scheme, setSchemeState] = useState<SchemeName>(() =>
-    readStored(SCHEME_STORAGE_KEY, schemeOptions, "default"),
+    readStored(SCHEME_STORAGE_KEY, schemeOptions, "carolina"),
   );
   const [style, setStyleState] = useState<WindowStyleName>(() =>
-    readStored(STYLE_STORAGE_KEY, windowStyleOptions, "classic"),
+    readStored(STYLE_STORAGE_KEY, windowStyleOptions, "sharp"),
   );
   const [textSize, setTextSizeState] = useState<TextSizeName>(() =>
     readStored(TEXT_SIZE_STORAGE_KEY, textSizeOptions, "default"),

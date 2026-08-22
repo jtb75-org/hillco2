@@ -150,6 +150,46 @@ const schemeDefs = {
     },
     typography: baseTypography,
   },
+  // Carolina — the public site's palette (navy #13294B + Carolina blue
+  // #4B9CD3 on white), mirrored into the portal so the landing page and
+  // the app read as one brand. Navy carries primary/structure; Carolina
+  // blue is the accent (secondary + the landing's CTA pill). Ground/
+  // border/text values are the landing's `T` tokens.
+  carolina: {
+    label: "Carolina",
+    // Royal blue drives the header bars (tables, panels, stat cards) via
+    // the window style; primary/structure stays navy (see palette below).
+    ink: "#2175b8",
+    tableHeadBg: "#eef4fb",
+    tableHeadColor: "#294a77",
+    // Navy primary buttons would vanish on the navy ink bar, so ink-style
+    // bar actions go Carolina blue with navy text — the landing CTA pill.
+    inkAction: { bg: "#4B9CD3", hoverBg: "#3E88BC", text: "#13294B" },
+    palette: {
+      mode: "light" as const,
+      primary: {
+        main: "#13294B",
+        dark: "#0D1B33",
+      },
+      secondary: {
+        main: "#4B9CD3",
+        dark: "#3E88BC",
+        contrastText: "#13294B",
+      },
+      background: {
+        // Carolina sky blue as the predominant page ground; white paper
+        // keeps cards/tables crisp and lifted off the blue.
+        default: "#d3e7f7",
+        paper: "#ffffff",
+      },
+      text: {
+        primary: "#172233",
+        secondary: "#4a5568",
+      },
+      divider: "#c3d9ea",
+    },
+    typography: baseTypography,
+  },
   // Brand colors sampled 2026-07-26 from the original HillCo business
   // cards (indigo #302870–#403078, cyan #00a8d8, gold tagline). The
   // serif headers the app already uses match the cards' serif identity.
@@ -371,28 +411,27 @@ export function buildTheme(
       };
       break;
     case "sharp":
-      // Same layout language, contrast turned up: tinted header strip,
-      // dark sentence-case titles, tonal buttons, deeper page ground.
+      // Solid ink (navy in Carolina) header bars with white titles across
+      // panels, cards, and tables — the public site's royal-blue header
+      // treatment — kept in sentence case (vs ink's uppercase) with a
+      // deeper page ground.
       background = darken(background, 0.045);
       divider = darken(divider, 0.12);
       panel = {
         outside: false,
-        onDark: false,
-        headerBg: alpha(ink, 0.05),
-        headerBorder: divider,
+        onDark: true,
+        headerBg: ink,
+        headerBorder: ink,
         titleSx: {
           fontSize: "0.85rem",
           fontWeight: 700,
           lineHeight: 1.5,
-          color: "text.primary",
+          color: "#ffffff",
         },
         actionSx: {
           px: 1.5,
-          bgcolor: alpha(primary.main, 0.1),
-          color: primary.dark,
-          border: "1px solid",
-          borderColor: alpha(primary.main, 0.4),
-          "&:hover": { bgcolor: alpha(primary.main, 0.18) },
+          color: "#ffffff",
+          "&:hover": { bgcolor: "rgba(255,255,255,0.14)" },
         },
       };
       break;
@@ -469,14 +508,25 @@ export function buildTheme(
   if (styleName === "sharp") {
     styleComponents.MuiTableCell = {
       styleOverrides: {
-        head: { backgroundColor: alpha(ink, 0.06), color: text.primary },
+        // Solid ink header bar with white lettering — the scheme's darkest
+        // blue (navy, in Carolina) for a strong, scannable column header.
+        head: { backgroundColor: ink, color: "rgba(255,255,255,0.92)" },
       },
+    };
+    styleComponents.MuiAccordion = {
+      // Keep the dark summary bar inside the rounded outline.
+      styleOverrides: { root: { overflow: "hidden" } },
     };
     styleComponents.MuiAccordionSummary = {
       styleOverrides: {
         root: {
-          backgroundColor: alpha(ink, 0.05),
-          "& .MuiTypography-overline": { color: text.primary },
+          backgroundColor: ink,
+          "& .MuiTypography-root": { color: "rgba(255,255,255,0.9)" },
+          "& .MuiTypography-overline": { color: "#ffffff" },
+          "& .MuiTypography-overline > span": { color: "rgba(255,255,255,0.6)" },
+          "& .MuiAccordionSummary-expandIconWrapper": {
+            color: "rgba(255,255,255,0.8)",
+          },
         },
       },
     };
