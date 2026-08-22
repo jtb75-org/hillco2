@@ -56,7 +56,7 @@ const SERVICE_PACKAGES = [
   { key: "assessment", label: "Education Assessment" },
   { key: "application", label: "Application Support" },
   { key: "placement", label: "Comprehensive Placement" },
-  { key: "alaCarte", label: "À la carte" },
+  { key: "alaCarte", label: "Tailored Services (hourly)" },
 ] as const;
 
 const SERVICE_MATRIX = [
@@ -174,15 +174,62 @@ const SERVICE_MATRIX = [
   },
 ] as const;
 
-const FAQ_QUESTIONS = [
-  "What is an educational consultant and why do I need one?",
-  "Who do you serve?",
-  "What are the costs of your services?",
-  "What is a learner profile?",
-  "My child has already been evaluated by a specialist, will they need another?",
-  "Do you provide recommendations for specialists?",
-  "Do you attend IEP meetings?",
-] as const;
+// Answers filled in as Mary provides them; `answer` is optional so a
+// not-yet-answered question still renders cleanly (question only).
+const FAQS: ReadonlyArray<{
+  question: string;
+  answer?: string;
+  // Optional bullets shown under the answer; text before the first
+  // ": " is rendered as a bold label.
+  list?: string[];
+}> = [
+  {
+    question: "What is an educational consultant and why do I need one?",
+    answer:
+      "An educational consultant is a professional who helps families make informed decisions about a student's education. They look at the whole picture—not just grades or test scores—including the student's learning style, strengths, challenges, personality, goals, school environment, and family priorities. An educational consultant is a trusted guide who helps families understand their options and make confident, well-informed educational decisions.",
+  },
+  {
+    question: "Whom do you serve?",
+    answer:
+      "I work with families who have children of every age and developmental stage from kindergarten through high school. While my work is primarily with families with unique learners, I also support families of traditional learners who are seeking non-traditional educational opportunities for their child.",
+  },
+  {
+    question: "What are the costs of your services?",
+    answer:
+      "Families can choose from several packages or hourly fees depending on their specific support needs. More information can be found under the services tab on the main page of this website.",
+  },
+  {
+    question: "What is a learner profile?",
+    answer:
+      "A learner profile is an outline of a student's educational and social-emotional strengths, challenges, learning styles and unique needs and goals. This information helps families and the educational consultant to consider programs that will both challenge and support a student with unique needs. It may include but is not limited to:",
+    list: [
+      "Personal information: Name, age, grade, and background.",
+      "Strengths: Subjects or skills in which the learner excels (e.g., problem-solving, creativity, reading).",
+      "Areas for growth: Skills or subjects where the learner needs additional support.",
+      "Learning preferences: How the learner learns best (e.g., visual, hands-on, group work, independent study).",
+      "Social-emotional strengths and areas needing support to be successful",
+      "Interests and hobbies: Activities or topics that motivate and engage the learner.",
+      "Goals: Short-term and long-term academic or personal objectives.",
+      "Support strategies: Teaching approaches, accommodations, or resources that help the learner succeed.",
+    ],
+  },
+  {
+    question:
+      "My child has already been evaluated by a specialist, will they need another?",
+    answer:
+      "The need for further testing or evaluation is determined by many individual factors that the educational consultant considers when reading a student's records. If further testing or an updated evaluation is recommended, the consultant can provide resources for both if requested.",
+  },
+  {
+    question: "Do you provide recommendations for specialists?",
+    answer:
+      "Yes, I can provide recommendations for school psychologists, psychologists, psychiatrists, therapists, pediatricians and other medical and mental health providers.",
+  },
+  {
+    question: "Do you attend IEP meetings?",
+    answer:
+      "Yes, once a child is enrolled in school I can attend IEP and other planning or SSD evaluation meetings to help ensure a child has all of the resources needed to be successful in a new educational environment.",
+  },
+];
 
 const TESTIMONIALS = [
   {
@@ -367,7 +414,7 @@ function Masthead() {
         >
           <Box component="span">HILL</Box>
           <Box component="span" sx={{ color: WORDMARK_CO }}>
-            CO.
+            CO
           </Box>
         </Typography>
         <Typography
@@ -433,7 +480,7 @@ function FaqsDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
       <DialogTitle sx={{ color: NAVY, fontWeight: 900 }}>FAQS</DialogTitle>
       <DialogContent sx={{ pt: 1, pb: 3 }}>
         <Stack spacing={2.25}>
-          {FAQ_QUESTIONS.map((question, index) => (
+          {FAQS.map(({ question, answer, list }, index) => (
             <Box
               key={question}
               sx={{
@@ -447,9 +494,44 @@ function FaqsDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
               }}
             >
               <Typography sx={{ color: ROYAL, fontWeight: 900 }}>{index + 1}.</Typography>
-              <Typography sx={{ color: NAVY, fontWeight: 800, lineHeight: 1.35 }}>
-                {question}
-              </Typography>
+              <Box sx={{ minWidth: 0 }}>
+                <Typography sx={{ color: NAVY, fontWeight: 800, lineHeight: 1.35 }}>
+                  {question}
+                </Typography>
+                {answer && (
+                  <Typography
+                    sx={{ mt: 1, color: NAVY, fontWeight: 500, lineHeight: 1.55 }}
+                  >
+                    {answer}
+                  </Typography>
+                )}
+                {list && (
+                  <Box
+                    component="ul"
+                    sx={{ mt: 1, mb: 0, pl: 2.5, color: NAVY }}
+                  >
+                    {list.map((item) => {
+                      const idx = item.indexOf(": ");
+                      const label = idx > -1 ? item.slice(0, idx) : null;
+                      const text = idx > -1 ? item.slice(idx + 2) : item;
+                      return (
+                        <Typography
+                          component="li"
+                          key={item}
+                          sx={{ fontWeight: 500, lineHeight: 1.5, mb: 0.5 }}
+                        >
+                          {label && (
+                            <Box component="span" sx={{ fontWeight: 800 }}>
+                              {label}:{" "}
+                            </Box>
+                          )}
+                          {text}
+                        </Typography>
+                      );
+                    })}
+                  </Box>
+                )}
+              </Box>
             </Box>
           ))}
         </Stack>
@@ -640,7 +722,8 @@ function LeftRail() {
               Leadership Development
             </Typography>
             <Typography component="li" sx={{ fontSize: "1.02rem" }}>
-              Teacher Coaching
+              Teacher Coaching for new teachers and veteran staff that need
+              support
             </Typography>
           </Box>
         </Box>
@@ -829,7 +912,7 @@ function MainColumn() {
               Get started with a 30 minute consultation.
             </Typography>
             <Typography sx={{ mt: 0.5 }}>
-              Tell us about your child, your goals, and the challenges you are facing. We will
+              Tell me about your child, your goals, and the challenges you are facing. I will
               discuss your concerns, answer questions, and explore how I can support your family.
             </Typography>
             <Button
@@ -1047,7 +1130,7 @@ function IntroPanel() {
         <Typography sx={{ mt: 3, fontFamily: SERIF, fontWeight: 800, lineHeight: 1.35 }}>
           Together we will examine your learner's cognitive profile, social emotional needs,
           learning preferences, executive functioning skills, interests, and long-term goals to
-          consider programs and placements that best fit their needs.
+          consider programs and placements that best fit your learner's needs.
         </Typography>
       </Box>
       <Box
