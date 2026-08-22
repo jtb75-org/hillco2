@@ -267,63 +267,65 @@ export function InvoicesList() {
         onCreateInvoice={handleCreateInvoice}
       />
 
-      <Grid container spacing={2}>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatCard
-            label="Outstanding"
-            value={formatInvoiceMoney(invoices.data?.totals.outstanding)}
-            subtitle="Unpaid invoice balance"
-            icon={<PaidOutlinedIcon />}
-            onClick={() =>
-              updateParams({
-                status: activeCard === "outstanding" ? "all" : "open",
-                focus: null,
-                due: null,
-              })
-            }
-            sx={selectedSx("outstanding")}
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatCard
-            label="Invoiced"
-            value={formatInvoiceMoney(invoices.data?.totals.invoiced)}
-            subtitle="Total invoice volume"
-            icon={<ReceiptLongOutlinedIcon />}
-            onClick={() => updateParams({ status: "all", focus: null, due: null })}
-            sx={selectedSx("invoiced")}
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatCard
-            label="Paid"
-            value={formatInvoiceMoney(invoices.data?.totals.paid)}
-            subtitle="Collected payments"
-            icon={<TaskAltOutlinedIcon />}
-            emphasis="muted"
-            onClick={() =>
-              updateParams({
-                status: activeCard === "paid" ? "all" : "paid",
-                focus: null,
-                due: null,
-              })
-            }
-            sx={selectedSx("paid")}
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatCard
-            label="Uninvoiced"
-            value={formatInvoiceMoney(invoices.data?.totals.uninvoiced)}
-            subtitle="Logged work, not yet billed"
-            icon={<HourglassEmptyOutlinedIcon />}
-            onClick={() =>
-              updateParam("focus", focusUninvoiced ? null : "uninvoiced")
-            }
-            sx={selectedSx("uninvoiced")}
-          />
-        </Grid>
-      </Grid>
+      <Box
+        sx={{
+          display: "grid",
+          gap: 2,
+          gridTemplateColumns: {
+            xs: "1fr",
+            sm: "repeat(2, 1fr)",
+            md: "repeat(4, 1fr)",
+          },
+        }}
+      >
+        <StatCard
+          label="Outstanding"
+          value={formatInvoiceMoney(invoices.data?.totals.outstanding)}
+          subtitle="Unpaid invoice balance"
+          icon={<PaidOutlinedIcon />}
+          onClick={() =>
+            updateParams({
+              status: activeCard === "outstanding" ? "all" : "open",
+              focus: null,
+              due: null,
+            })
+          }
+          sx={selectedSx("outstanding")}
+        />
+        <StatCard
+          label="Invoiced"
+          value={formatInvoiceMoney(invoices.data?.totals.invoiced)}
+          subtitle="Total invoice volume"
+          icon={<ReceiptLongOutlinedIcon />}
+          onClick={() => updateParams({ status: "all", focus: null, due: null })}
+          sx={selectedSx("invoiced")}
+        />
+        <StatCard
+          label="Paid"
+          value={formatInvoiceMoney(invoices.data?.totals.paid)}
+          subtitle="Collected payments"
+          icon={<TaskAltOutlinedIcon />}
+          emphasis="muted"
+          onClick={() =>
+            updateParams({
+              status: activeCard === "paid" ? "all" : "paid",
+              focus: null,
+              due: null,
+            })
+          }
+          sx={selectedSx("paid")}
+        />
+        <StatCard
+          label="Uninvoiced"
+          value={formatInvoiceMoney(invoices.data?.totals.uninvoiced)}
+          subtitle="Logged work, not yet billed"
+          icon={<HourglassEmptyOutlinedIcon />}
+          onClick={() =>
+            updateParam("focus", focusUninvoiced ? null : "uninvoiced")
+          }
+          sx={selectedSx("uninvoiced")}
+        />
+      </Box>
 
       <Stack spacing={1.5}>
         <Stack

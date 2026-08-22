@@ -6,7 +6,6 @@ import {
   Card,
   CardActionArea,
   CardContent,
-  Grid,
   Paper,
   Skeleton,
   Stack,
@@ -74,33 +73,56 @@ const BUCKET_MATCH: Record<Exclude<Bucket, "all">, (r: IntakeRow) => boolean> = 
     r.outcome != null && r.outcome !== "converting" && r.outcome !== "nurture",
 };
 
+// Display label + hover description for each phase. Single source of
+// truth so the stat strip and the kanban columns always agree.
+const PHASE_META: Record<
+  Exclude<Bucket, "all">,
+  { label: string; description: string }
+> = {
+  in_progress: {
+    label: "New",
+    description:
+      "Intake underway — no outcome recorded yet, or marked to convert but not yet converted.",
+  },
+  nurturing: {
+    label: "Deferred",
+    description:
+      "Not moving forward right now — set aside to follow up with later.",
+  },
+  converted: {
+    label: "Converted",
+    description:
+      "Converted to a client — one or more engagements have been created.",
+  },
+  closed: {
+    label: "Closed",
+    description:
+      "Closed out — the family declined, didn't respond, or was a duplicate.",
+  },
+};
+
 const STAT_CARDS: Array<{
-  key: Bucket;
-  label: string;
+  key: Exclude<Bucket, "all">;
   subtitle: string;
   icon: JSX.Element;
 }> = [
   {
     key: "in_progress",
-    label: "In Progress",
     subtitle: "Awaiting next step",
     icon: <HourglassEmptyOutlinedIcon />,
   },
   {
     key: "nurturing",
-    label: "Nurturing",
     subtitle: "Follow up later",
     icon: <SpaOutlinedIcon />,
   },
   {
     key: "converted",
-    label: "Converted",
     subtitle: "Engagement spawned",
     icon: <TaskAltOutlinedIcon />,
   },
   {
     key: "closed",
-    label: "Closed",
     subtitle: "Declined / no response",
     icon: <ArchiveOutlinedIcon />,
   },
@@ -208,32 +230,44 @@ export function IntakesList() {
         <>
           {/* Table view keeps the rollup stat strip (doubles as a filter);
               kanban drops it since each column header shows its own count. */}
-          <Grid container spacing={2}>
-            {STAT_CARDS.map((card) => (
-              <Grid key={card.key} item xs={6} sm={3}>
-                {isPending ? (
-                  <Skeleton variant="rounded" height={128} />
-                ) : (
-                  <StatCard
-                    label={card.label}
-                    value={counts[card.key].toLocaleString()}
-                    subtitle={card.subtitle}
-                    icon={card.icon}
-                    // Clicking the active card toggles back to "all" so the
-                    // strip doubles as a clear-filter affordance.
-                    onClick={() =>
-                      setBucket((prev) => (prev === card.key ? "all" : card.key))
-                    }
-                    sx={
-                      bucket === card.key
-                        ? { borderColor: "primary.main", borderWidth: 1.5 }
-                        : undefined
-                    }
-                  />
-                )}
-              </Grid>
-            ))}
-          </Grid>
+          <Box
+            sx={{
+              display: "grid",
+              gap: 2,
+              gridTemplateColumns: { xs: "repeat(2, 1fr)", sm: "repeat(4, 1fr)" },
+            }}
+          >
+            {STAT_CARDS.map((card) =>
+              isPending ? (
+                <Skeleton key={card.key} variant="rounded" height={128} />
+              ) : (
+                <Tooltip
+                  key={card.key}
+                  title={PHASE_META[card.key].description}
+                  arrow
+                >
+                  <Box sx={{ height: "100%" }}>
+                    <StatCard
+                      label={PHASE_META[card.key].label}
+                      value={counts[card.key].toLocaleString()}
+                      subtitle={card.subtitle}
+                      icon={card.icon}
+                      // Clicking the active card toggles back to "all" so the
+                      // strip doubles as a clear-filter affordance.
+                      onClick={() =>
+                        setBucket((prev) => (prev === card.key ? "all" : card.key))
+                      }
+                      sx={
+                        bucket === card.key
+                          ? { borderColor: "primary.main", borderWidth: 1.5 }
+                          : undefined
+                      }
+                    />
+                  </Box>
+                </Tooltip>
+              ),
+            )}
+          </Box>
 
           <ListView
             rows={filtered}
@@ -381,7 +415,6 @@ function ListView({
 
 interface KanbanColumnDef {
   key: Exclude<Bucket, "all">;
-  title: string;
   match: (row: IntakeRow) => boolean;
 }
 
@@ -405,10 +438,10 @@ interface KanbanColumnDef {
 // Match fns delegate to BUCKET_MATCH so the stat strip and the kanban
 // columns can't drift apart.
 const KANBAN_COLUMNS: KanbanColumnDef[] = [
-  { key: "in_progress", title: "In Progress", match: BUCKET_MATCH.in_progress },
-  { key: "nurturing", title: "Nurturing", match: BUCKET_MATCH.nurturing },
-  { key: "converted", title: "Converted", match: BUCKET_MATCH.converted },
-  { key: "closed", title: "Closed", match: BUCKET_MATCH.closed },
+  { key: "in_progress", match: BUCKET_MATCH.in_progress },
+  { key: "nurturing", match: BUCKET_MATCH.nurturing },
+  { key: "converted", match: BUCKET_MATCH.converted },
+  { key: "closed", match: BUCKET_MATCH.closed },
 ];
 
 function KanbanView({
@@ -457,7 +490,12 @@ function KanbanView({
       {KANBAN_COLUMNS.map((col) => {
         const colRows = rows.filter(col.match);
         return (
-          <KanbanColumn key={col.key} title={col.title} count={colRows.length}>
+          <KanbanColumn
+            key={col.key}
+            title={PHASE_META[col.key].label}
+            description={PHASE_META[col.key].description}
+            count={colRows.length}
+          >
             {colRows.length === 0 ? (
               <Typography
                 variant="caption"
@@ -478,15 +516,34 @@ function KanbanView({
 
 function KanbanColumn({
   title,
+  description,
   count,
   children,
 }: {
   title: string;
+  description: string;
   count: number;
   children: React.ReactNode;
 }) {
   return (
-    <SectionPanel title={title} titleVariant="overline" count={count}>
+    <SectionPanel
+      title={
+        <Tooltip title={description} arrow>
+          <Box
+            component="span"
+            sx={{
+              cursor: "help",
+              textDecoration: "underline dotted",
+              textUnderlineOffset: 3,
+            }}
+          >
+            {title}
+          </Box>
+        </Tooltip>
+      }
+      titleVariant="overline"
+      count={count}
+    >
       <Stack spacing={1} sx={{ p: 1.5 }}>
         {children}
       </Stack>

@@ -8,7 +8,6 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  Grid,
   InputAdornment,
   MenuItem,
   Skeleton,
@@ -163,28 +162,33 @@ export function EngagementsList() {
         }
       />
 
-      <Grid container spacing={2}>
-        {STAT_CARDS.map((card) => (
-          <Grid key={card.key} item xs={6} sm={3}>
-            {isPending ? (
-              <Skeleton variant="rounded" height={128} />
-            ) : (
-              <StatCard
-                label={card.label}
-                value={counts[card.key].toLocaleString()}
-                subtitle={card.subtitle}
-                icon={card.icon}
-                onClick={() => setStatus(card.key)}
-                sx={
-                  status === card.key
-                    ? { borderColor: "primary.main", borderWidth: 1.5 }
-                    : undefined
-                }
-              />
-            )}
-          </Grid>
-        ))}
-      </Grid>
+      <Box
+        sx={{
+          display: "grid",
+          gap: 2,
+          gridTemplateColumns: { xs: "repeat(2, 1fr)", sm: "repeat(4, 1fr)" },
+        }}
+      >
+        {STAT_CARDS.map((card) =>
+          isPending ? (
+            <Skeleton key={card.key} variant="rounded" height={128} />
+          ) : (
+            <StatCard
+              key={card.key}
+              label={card.label}
+              value={counts[card.key].toLocaleString()}
+              subtitle={card.subtitle}
+              icon={card.icon}
+              onClick={() => setStatus(card.key)}
+              sx={
+                status === card.key
+                  ? { borderColor: "primary.main", borderWidth: 1.5 }
+                  : undefined
+              }
+            />
+          ),
+        )}
+      </Box>
 
       <DataToolbar>
         <TextField
