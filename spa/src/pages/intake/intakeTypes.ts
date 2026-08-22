@@ -66,7 +66,7 @@ export const OUTCOME_STATUS_DISPLAY: Record<
   }
 > = {
   converting: { label: "Converting", color: "success" },
-  nurture: { label: "Nurture", color: "warning" },
+  nurture: { label: "Deferred", color: "warning" },
   declined_by_family: { label: "Declined (family)", color: "default" },
   declined_by_hillco: { label: "Declined (HillCo)", color: "default" },
   no_response: { label: "No response", color: "default" },

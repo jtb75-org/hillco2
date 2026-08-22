@@ -706,7 +706,7 @@ test.describe.serial("intake conversion lifecycle", () => {
     await page.getByRole("button", { name: "Kanban" }).click();
     await expect(page.getByText(familyName)).toBeVisible();
     await expect(
-      page.locator("div").filter({ hasText: /^In Progress/ }).filter({ hasText: familyName }).first(),
+      page.locator("div").filter({ hasText: /^New/ }).filter({ hasText: familyName }).first(),
     ).toBeVisible();
   });
 });

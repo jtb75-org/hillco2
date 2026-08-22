@@ -604,7 +604,7 @@ function OutcomeChip({
   convertedAt: string | null;
 }) {
   if (!outcome) {
-    return <StatusChip size="small" label="In progress" tone="info" variant="soft" />;
+    return <StatusChip size="small" label="New" tone="info" variant="soft" />;
   }
   // Override the 'Converting' label once the convert flow has actually
   // spawned engagements — at that point the work is done, not in flight.
