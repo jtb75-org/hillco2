@@ -12,8 +12,8 @@ import { OUTCOME_STATUS_DISPLAY, REFERRAL_SOURCE_LABEL } from "./intakeTypes";
 /**
  * Top strip of the new intake page: editable intake date, referral
  * source picker, and the status chip derived from outcome. The chip
- * label flips from "In progress" (no outcome set) to whatever outcome
- * the consultant picked in the Fit card. There's no standalone
+ * label flips from "New" (no outcome set) to whatever outcome the
+ * consultant picked in the Fit card. There's no standalone
  * "Mark complete" affordance — outcome IS the closure state.
  */
 export function IntakeHeaderStrip({
@@ -31,7 +31,7 @@ export function IntakeHeaderStrip({
 }) {
   const status =
     outcome == null
-      ? { label: "In progress", color: "primary" as const }
+      ? { label: "New", color: "primary" as const }
       : OUTCOME_STATUS_DISPLAY[outcome];
   return (
     <SectionPanel>

@@ -23,16 +23,19 @@ async function createIntakeFromNewFamily(page: Page, familyName: string) {
   // the strict locator resolves to >1. The header button is always first
   // in DOM order.
   await page.getByRole("button", { name: "New intake" }).first().click();
-  await page.getByRole("dialog", { name: "Start intake" }).getByLabel("Family").fill(familyName);
-  await page.getByRole("option", { name: `+ Add "${familyName}" as a new family` }).click();
-
-  const addFamily = page.getByRole("dialog", { name: "Add family" });
-  await expect(addFamily.getByPlaceholder('e.g. "Smith Family"')).toHaveValue(familyName);
-  await addFamily.getByRole("button", { name: "Add" }).click();
-
   const startIntake = page.getByRole("dialog", { name: "Start intake" });
-  await expect(startIntake.getByLabel("Family")).toHaveValue(familyName);
-  await startIntake.getByRole("button", { name: "Continue" }).click();
+  await startIntake.getByPlaceholder(/Filter by household/).fill(familyName);
+  await startIntake.getByText(`Create "${familyName}" as a new family`).click();
+
+  // Create-new runs the New Family stepper (prefilled with the typed
+  // name). Skip the optional guardian/child steps; Done drops straight
+  // into the intake for the new family.
+  const wiz = page.getByRole("dialog", { name: "New family" });
+  await expect(wiz.getByPlaceholder('e.g. "Rivera Family"')).toHaveValue(familyName);
+  await wiz.getByRole("button", { name: "Create & continue" }).click();
+  await wiz.getByRole("button", { name: "Skip" }).click(); // guardians
+  await wiz.getByRole("button", { name: "Skip" }).click(); // children
+  await wiz.getByRole("button", { name: "Done" }).click();
   await expect(page).toHaveURL(/\/app\/intakes\/[0-9a-f-]+$/);
 }
 

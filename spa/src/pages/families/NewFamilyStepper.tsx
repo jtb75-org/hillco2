@@ -68,16 +68,28 @@ export function NewFamilyStepper({
   open,
   onClose,
   onCreated,
+  onDone,
+  initialHouseholdName,
+  navigateOnDone = true,
 }: {
   open: boolean;
   onClose: () => void;
-  /** Fired after the family is created so the caller can refetch its list. */
+  /** Fired when the family row is created (step 1) so the caller can
+   *  refetch its list. */
   onCreated: (familyId: string) => void;
+  /** Fired on "Done" when navigateOnDone is false — lets an embedding
+   *  flow (e.g. the intake launcher) take over instead of routing away. */
+  onDone?: (familyId: string) => void;
+  /** Prefill the household name (intake "+ Add <name>" path). */
+  initialHouseholdName?: string;
+  /** Default routes to the new family's page on Done; set false to hand
+   *  control back to the caller via onDone. */
+  navigateOnDone?: boolean;
 }) {
   const navigate = useNavigate();
   const [active, setActive] = useState(0);
   const [familyId, setFamilyId] = useState<string | null>(null);
-  const [householdName, setHouseholdName] = useState("");
+  const [householdName, setHouseholdName] = useState(initialHouseholdName ?? "");
   const [notes, setNotes] = useState("");
   const [guardians, setGuardians] = useState<AddedMember[]>([]);
   const [students, setStudents] = useState<AddedMember[]>([]);
@@ -120,7 +132,9 @@ export function NewFamilyStepper({
     const id = familyId;
     reset();
     onClose();
-    if (id) navigate(`/families/${id}`);
+    if (!id) return;
+    if (navigateOnDone) navigate(`/families/${id}`);
+    else onDone?.(id);
   };
 
   const canLeaveFamilyStep = Boolean(familyId) || householdName.trim().length > 0;

@@ -1,48 +1,40 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  Autocomplete,
   Box,
   Button,
+  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
+  Divider,
+  List,
+  ListItem,
+  ListItemButton,
+  ListItemIcon,
+  ListItemText,
+  Paper,
   Stack,
   TextField,
   Typography,
-  createFilterOptions,
 } from "@mui/material";
+import AddIcon from "@mui/icons-material/Add";
+import SearchIcon from "@mui/icons-material/Search";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "../../api/client";
-import { AddFamilyDialog } from "../families/AddFamilyDialog";
+import { NewFamilyStepper } from "../families/NewFamilyStepper";
 
-/** Two-stage modal: pick an existing family OR add a new one, then
- *  hand the chosen family id back via onContinue. Used to gate the
- *  intake flow — every intake needs a family before the detail page
- *  can open. */
+/** Two-stage modal: see every family and pick one (filter as you type),
+ *  OR create a new one via the New Family stepper — then hand the chosen
+ *  family id back via onContinue. Used to gate the intake flow: every
+ *  intake needs a family before the detail page can open. */
 export interface FamilyPickerOption {
   id: string;
   household_name: string;
   primary_parent_name: string | null;
   student_names?: string[] | null;
 }
-
-type FamilyEntry =
-  | { kind: "family"; family: FamilyPickerOption }
-  | { kind: "add"; label: string };
-
-const filterFamilies = createFilterOptions<FamilyEntry>({
-  stringify: (entry) => {
-    if (entry.kind === "add") return entry.label;
-    const f = entry.family;
-    return [
-      f.household_name,
-      f.primary_parent_name ?? "",
-      ...(f.student_names ?? []),
-    ].join(" ");
-  },
-});
 
 export function PickOrCreateFamilyDialog({
   open,
@@ -58,12 +50,12 @@ export function PickOrCreateFamilyDialog({
   onContinue: (familyId: string) => void;
 }) {
   const qc = useQueryClient();
+  const [query, setQuery] = useState("");
   const [picked, setPicked] = useState<FamilyPickerOption | null>(null);
-  const [input, setInput] = useState("");
   const [addOpen, setAddOpen] = useState(false);
   const [prefillName, setPrefillName] = useState("");
-  // After creating inline, auto-select once the refetched list
-  // contains the new row.
+  // After creating inline, auto-select once the refetched list contains
+  // the new row (covers a mid-stepper cancel).
   const [pendingSelectId, setPendingSelectId] = useState<string | null>(null);
 
   const families = useQuery<FamilyPickerOption[], Error>({
@@ -83,110 +75,124 @@ export function PickOrCreateFamilyDialog({
     const match = families.data.find((f) => f.id === pendingSelectId);
     if (match) {
       setPicked(match);
-      setInput(match.household_name);
       setPendingSelectId(null);
     }
   }, [pendingSelectId, families.data]);
 
-  // Reset state each time the dialog opens.
+  // Reset each time the dialog opens.
   useEffect(() => {
     if (open) {
+      setQuery("");
       setPicked(null);
-      setInput("");
       setAddOpen(false);
       setPrefillName("");
       setPendingSelectId(null);
     }
   }, [open]);
 
-  const options: FamilyEntry[] = (families.data ?? []).map((f) => ({
-    kind: "family",
-    family: f,
-  }));
+  const all = families.data ?? [];
+  const q = query.trim().toLowerCase();
+  const filtered = useMemo(() => {
+    if (!q) return all;
+    return all.filter((f) => {
+      const hay = [
+        f.household_name,
+        f.primary_parent_name ?? "",
+        ...(f.student_names ?? []),
+      ]
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }, [all, q]);
 
   return (
     <>
       <Dialog open={open && !addOpen} onClose={onClose} maxWidth="sm" fullWidth>
         <DialogTitle>{title}</DialogTitle>
         <DialogContent>
-          <Stack spacing={1.5} sx={{ mt: 1 }}>
-            <Autocomplete<FamilyEntry, false, false, false>
+          <Stack spacing={1} sx={{ mt: 0.5 }}>
+            <TextField
+              autoFocus
               size="small"
-              options={options}
-              loading={families.isPending}
-              value={picked ? { kind: "family", family: picked } : null}
-              inputValue={input}
-              onInputChange={(_e, v, reason) => {
-                if (reason !== "reset") setInput(v);
+              fullWidth
+              placeholder="Filter by household, parent, or student…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <SearchIcon
+                    fontSize="small"
+                    sx={{ color: "text.disabled", mr: 1 }}
+                  />
+                ),
+                endAdornment: families.isPending ? (
+                  <CircularProgress size={16} />
+                ) : null,
               }}
-              onChange={(_e, entry) => {
-                if (!entry) {
-                  setPicked(null);
-                  return;
-                }
-                if (entry.kind === "family") {
-                  setPicked(entry.family);
-                  setInput(entry.family.household_name);
-                  return;
-                }
-                setPrefillName(entry.label);
-                setAddOpen(true);
-              }}
-              getOptionLabel={(entry) =>
-                entry.kind === "family" ? entry.family.household_name : entry.label
-              }
-              isOptionEqualToValue={(a, b) =>
-                a.kind === "family" &&
-                b.kind === "family" &&
-                a.family.id === b.family.id
-              }
-              filterOptions={(opts, state) => {
-                const filtered = filterFamilies(opts, state);
-                const q = state.inputValue.trim();
-                if (q) filtered.push({ kind: "add", label: q });
-                return filtered;
-              }}
-              renderOption={(props, entry) => {
-                if (entry.kind === "add") {
-                  return (
-                    <li {...props} key="__add__">
-                      <Typography variant="body2" color="primary">
-                        + Add "{entry.label}" as a new family
-                      </Typography>
-                    </li>
-                  );
-                }
-                const f = entry.family;
-                return (
-                  <li {...props} key={f.id}>
-                    <Stack spacing={0.25} sx={{ py: 0.25 }}>
-                      <Box component="span" sx={{ fontWeight: 500 }}>
-                        {f.household_name}
-                      </Box>
-                      <Box
-                        component="span"
-                        sx={{ color: "text.secondary", fontSize: 12 }}
-                      >
-                        {f.primary_parent_name
-                          ? `Primary: ${f.primary_parent_name}`
-                          : "No primary parent"}
-                        {(f.student_names?.length ?? 0) > 0 &&
-                          ` · ${f.student_names!.join(", ")}`}
-                      </Box>
-                    </Stack>
-                  </li>
-                );
-              }}
-              renderInput={(params) => (
-                <TextField
-                  {...params}
-                  label="Family"
-                  required
-                  placeholder="Type a household, parent, or student name"
-                  autoFocus
-                />
-              )}
             />
+            {/* Fixed height so the dialog doesn't resize as the filter
+                narrows the list. */}
+            <Paper variant="outlined" sx={{ height: 320, overflowY: "auto" }}>
+              <List dense disablePadding>
+                <ListItemButton
+                  onClick={() => {
+                    setPrefillName(query.trim());
+                    setAddOpen(true);
+                  }}
+                >
+                  <ListItemIcon sx={{ minWidth: 32, color: "primary.main" }}>
+                    <AddIcon fontSize="small" />
+                  </ListItemIcon>
+                  <ListItemText
+                    primaryTypographyProps={{
+                      color: "primary.main",
+                      fontWeight: 600,
+                    }}
+                    primary={
+                      q ? `Create "${query.trim()}" as a new family` : "Create new family"
+                    }
+                  />
+                </ListItemButton>
+                <Divider />
+                {filtered.length === 0 ? (
+                  <ListItem>
+                    <ListItemText
+                      secondary={
+                        families.isPending
+                          ? "Loading…"
+                          : all.length === 0
+                            ? "No families yet — create one above."
+                            : "No matches — create above, or clear the filter."
+                      }
+                    />
+                  </ListItem>
+                ) : (
+                  filtered.map((f) => (
+                    <ListItemButton
+                      key={f.id}
+                      selected={picked?.id === f.id}
+                      onClick={() => setPicked(f)}
+                    >
+                      <ListItemText
+                        primary={f.household_name}
+                        secondary={familySubtitle(f)}
+                        secondaryTypographyProps={{ variant: "caption" }}
+                      />
+                    </ListItemButton>
+                  ))
+                )}
+              </List>
+            </Paper>
+            {all.length > 0 && (
+              <Box sx={{ px: 0.5 }}>
+                <Typography variant="caption" color="text.secondary">
+                  {q
+                    ? `${filtered.length} of ${all.length} shown`
+                    : `${all.length} famil${all.length === 1 ? "y" : "ies"} — pick one, or filter above`}
+                </Typography>
+              </Box>
+            )}
           </Stack>
         </DialogContent>
         <DialogActions>
@@ -201,25 +207,39 @@ export function PickOrCreateFamilyDialog({
         </DialogActions>
       </Dialog>
 
-      <AddFamilyDialog
+      <NewFamilyStepper
         key={addOpen ? `add-${prefillName}` : "add-closed"}
         open={addOpen}
-        onClose={() => setAddOpen(false)}
         initialHouseholdName={prefillName}
-        navigateOnSuccess={false}
+        navigateOnDone={false}
+        onClose={() => setAddOpen(false)}
         onCreated={(id) => {
-          const created = {
+          // Family row exists after step 1 of the wizard — capture it so a
+          // mid-wizard cancel still leaves it selected in the picker.
+          setPicked({
             id,
             household_name: prefillName,
             primary_parent_name: null,
             student_names: [],
-          };
-          setPicked(created);
-          setInput(prefillName);
+          });
           setPendingSelectId(id);
           qc.invalidateQueries({ queryKey: ["families", "intake-picker"] });
+        }}
+        onDone={(id) => {
+          // Finished the wizard (family + guardians + children) — drop
+          // straight into the intake for it; the detail page's roster then
+          // lets you pick which of those members are on this intake.
+          onContinue(id);
         }}
       />
     </>
   );
+}
+
+function familySubtitle(f: FamilyPickerOption): string {
+  const bits: string[] = [
+    f.primary_parent_name ? `Primary: ${f.primary_parent_name}` : "No primary parent",
+  ];
+  if ((f.student_names?.length ?? 0) > 0) bits.push(f.student_names!.join(", "));
+  return bits.join(" · ");
 }
