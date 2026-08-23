@@ -38,7 +38,7 @@ import { PageHeader } from "../../components/PageHeader";
 import { useSnackbar } from "../../components/Snackbar";
 import { StatusChip } from "../../components/StatusChip";
 
-import { AddFamilyDialog } from "./AddFamilyDialog";
+import { NewFamilyStepper } from "./NewFamilyStepper";
 import { DeleteFamilyDialog } from "./DeleteFamilyDialog";
 
 // /api/families returns a plain dict in the route — its OpenAPI schema
@@ -328,7 +328,7 @@ export function FamiliesList() {
         </Table>
       </DataTableContainer>
 
-      <AddFamilyDialog
+      <NewFamilyStepper
         open={addOpen}
         onClose={() => setAddOpen(false)}
         onCreated={() => refetch()}

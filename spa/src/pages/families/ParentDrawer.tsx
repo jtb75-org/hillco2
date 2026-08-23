@@ -185,9 +185,19 @@ export function ParentDrawer({
   const emailLooksValid = !emailTrimmed || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrimmed);
   const zipLooksValid = !zipTrimmed || /^\d{5}(-\d{4})?$/.test(zipTrimmed);
 
-  const canBeBilling = parent
-    ? !!parent.email && (!!parent.mailing_address || !!parent.billing_address)
-    : false;
+  // Enablement tracks the LIVE form, not the last-saved snapshot, so a
+  // just-typed email + address lets you flip Billing on the spot — no
+  // save-and-reopen round-trip.
+  // Backend rule: a billing contact needs email + street + ZIP (mailing
+  // or an explicit billing override). Mirror it here off the live form so
+  // the toggle enables exactly when a save would succeed.
+  const hasBillableAddress =
+    (!!street1.trim() && !!postalCode.trim()) ||
+    (useBillingOverride &&
+      !!billingStreet1.trim() &&
+      !!billingPostalCode.trim());
+  const canBeBilling =
+    !!emailTrimmed && emailLooksValid && zipLooksValid && hasBillableAddress;
   const isBilling = !!parent?.is_billing_contact;
   const isPrimary = !!parent?.is_primary_contact;
 
@@ -199,10 +209,10 @@ export function ParentDrawer({
     !zipLooksValid ||
     (isBilling && !emailTrimmed);
 
-  const handleSave = () => {
-    // Form fields are pre-filled from /api/people/{id} now, so the
-    // submitted values reflect the operator's intent regardless of
-    // whether they edited anything. Blank → null for nullable columns.
+  // Form fields are pre-filled from /api/people/{id}, so the submitted
+  // values reflect the operator's intent regardless of whether they
+  // edited anything. Blank → null for nullable columns.
+  const buildBody = (): ParentUpdate => {
     const body: ParentUpdate = {
       first_name: firstName.trim(),
       last_name: lastName.trim(),
@@ -232,8 +242,10 @@ export function ParentDrawer({
       body.billing_state = null;
       body.billing_postal_code = null;
     }
-    patch.mutate(body);
+    return body;
   };
+
+  const handleSave = () => patch.mutate(buildBody());
 
   return (
     <Drawer
@@ -286,7 +298,7 @@ export function ParentDrawer({
           <Tooltip
             title={
               !isBilling && !canBeBilling
-                ? "Add an email and mailing address first."
+                ? "Add an email, street, and ZIP first."
                 : ""
             }
             placement="bottom"
@@ -298,7 +310,14 @@ export function ParentDrawer({
                   checked={isBilling}
                   disabled={patch.isPending || (!isBilling && !canBeBilling)}
                   onChange={(e) =>
-                    patch.mutate({ is_billing_contact: e.target.checked })
+                    // Persist any unsaved form edits (email/address)
+                    // together with the flag so the billing address is
+                    // never behind the flag.
+                    patch.mutate(
+                      e.target.checked
+                        ? { ...buildBody(), is_billing_contact: true }
+                        : { is_billing_contact: false },
+                    )
                   }
                 />
               }

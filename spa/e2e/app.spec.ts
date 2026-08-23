@@ -639,6 +639,56 @@ test("catalog contract templates can be created, edited, and deleted", async ({
   await expect(page.getByRole("row", { name: /E2E test contract/ })).toHaveCount(0);
 });
 
+test("new family stepper builds a family with guardian (primary+billing) and child", async ({
+  page,
+  baseURL,
+}) => {
+  await login(page, baseURL);
+  await page.goto("/app/families");
+
+  await page.getByRole("button", { name: "Add family" }).first().click();
+  const wiz = page.getByRole("dialog", { name: "New family" });
+  await expect(wiz).toBeVisible();
+
+  // Step 1 — Family
+  await wiz.getByPlaceholder('e.g. "Rivera Family"').fill("E2E Stepper Household");
+  await wiz.getByRole("button", { name: "Create & continue" }).click();
+
+  // Step 2 — Guardian: create new, mark primary + billing (needs email+street+ZIP)
+  await wiz.getByPlaceholder(/Filter contacts by name or email/).fill("Jordan Blake");
+  await wiz.getByText('Create "Jordan Blake"').click();
+  await wiz.getByText("Set as primary contact").click();
+  await wiz.getByText(/Add contact \/ billing details/).click();
+  await wiz.locator('input[type="email"]').first().fill("jordan@example.test");
+  await wiz.getByPlaceholder("123 Main St").fill("10 Oak St");
+  await wiz.getByPlaceholder("62701").fill("63101");
+  await wiz.getByText("Set as billing contact").click();
+  await wiz.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(wiz.getByText(/Jordan Blake.*primary.*billing/)).toBeVisible();
+  await wiz.getByRole("button", { name: "Next" }).click();
+
+  // Step 3 — Child (name + grade)
+  await wiz.getByPlaceholder(/Filter students by name/).fill("Riley Blake");
+  await wiz.getByText('Create "Riley Blake"').click();
+  await wiz.getByPlaceholder(/8th/).fill("6th");
+  await wiz.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(wiz.getByText("Riley Blake")).toBeVisible();
+  await wiz.getByRole("button", { name: "Next" }).click();
+
+  // Step 4 — Review, then finish
+  await expect(wiz.getByText("E2E Stepper Household")).toBeVisible();
+  await expect(wiz.getByText(/Jordan Blake.*primary.*billing/)).toBeVisible();
+  await expect(wiz.getByText("Riley Blake")).toBeVisible();
+  await wiz.getByRole("button", { name: "Done" }).click();
+
+  // Lands on the new family's detail page with both members present, and
+  // the billing designation carried through from the stepper.
+  await expect(page).toHaveURL(/\/app\/families\/[0-9a-f-]+$/);
+  await expect(page.getByText("Jordan Blake")).toBeVisible();
+  await expect(page.getByText("Riley Blake")).toBeVisible();
+  await expect(page.getByText(/billing/i).first()).toBeVisible();
+});
+
 test.describe.serial("intake conversion lifecycle", () => {
   let familyName = "";
   let desiredOutcome = "";

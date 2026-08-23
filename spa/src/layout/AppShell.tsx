@@ -50,15 +50,16 @@ type NavEntry =
   | { kind: "separator" };
 
 const NAV_ITEMS: ReadonlyArray<NavEntry> = [
-  // Top: Home + the active work surfaces.
+  // Top group reads in workflow order: Home, then Families (the client
+  // anchor and step 1 of the flow), then the active work surfaces.
   { kind: "item", to: "/dashboard", label: "Home", icon: <HomeIcon /> },
+  { kind: "item", to: "/families", label: "Families", icon: <GroupsIcon /> },
   { kind: "item", to: "/intakes", label: "Intakes", icon: <DescriptionOutlinedIcon /> },
   { kind: "item", to: "/engagements", label: "Engagements", icon: <AssignmentOutlinedIcon /> },
   { kind: "item", to: "/followups", label: "Followups", icon: <TaskAltOutlinedIcon /> },
   { kind: "item", to: "/invoices", label: "Invoices", icon: <ReceiptLongOutlinedIcon /> },
-  // Reference data — who and what we're working with.
+  // Reference data — supporting lookups.
   { kind: "separator" },
-  { kind: "item", to: "/families", label: "Families", icon: <GroupsIcon /> },
   { kind: "item", to: "/contacts", label: "Contacts", icon: <ContactsIcon /> },
   { kind: "item", to: "/schools", label: "Schools", icon: <SchoolIcon /> },
   { kind: "item", to: "/catalog", label: "Catalog", icon: <AutoStoriesOutlinedIcon /> },
