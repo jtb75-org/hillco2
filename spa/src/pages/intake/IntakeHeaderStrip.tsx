@@ -4,7 +4,6 @@ import dayjs from "dayjs";
 
 import { LabeledField } from "../../components/LabeledField";
 import { SectionPanel } from "../../components/SectionPanel";
-import { ghostFieldSx } from "../../components/ghostFieldSx";
 
 import type { Outcome, ReferralSource } from "./intakeTypes";
 import { OUTCOME_STATUS_DISPLAY, REFERRAL_SOURCE_LABEL } from "./intakeTypes";
@@ -56,7 +55,6 @@ export function IntakeHeaderStrip({
               select
               size="small"
               fullWidth
-              sx={ghostFieldSx}
               value={referralSource ?? ""}
               onChange={(e) =>
                 onReferralSourceChange(
