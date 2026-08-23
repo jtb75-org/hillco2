@@ -16,6 +16,8 @@ import {
   ListItemIcon,
   ListItemText,
   Paper,
+  Radio,
+  RadioGroup,
   Stack,
   Step,
   StepLabel,
@@ -31,9 +33,10 @@ import { api } from "../../api/client";
 import { NewFamilyStepper } from "../families/NewFamilyStepper";
 
 /** Two-step launcher: (1) see every family and pick one (filter as you
- *  type) or create a new one via the New Family stepper; (2) choose which
- *  of that family's guardians/children go on this intake. Hands the chosen
- *  family id + member ids back via onContinue. */
+ *  type) or create a new one via the New Family stepper; (2) choose the
+ *  guardians (multi) and the ONE child (an intake covers a single child)
+ *  who are part of this intake. Hands the chosen family id + member ids
+ *  back via onContinue. */
 export interface FamilyPickerOption {
   id: string;
   household_name: string;
@@ -46,6 +49,7 @@ type FamilyRoster = { parents: Member[]; students: Member[] };
 
 export interface IntakeMembers {
   guardianIds: string[];
+  /** At most one — an intake covers a single child. */
   studentIds: string[];
 }
 
@@ -70,7 +74,7 @@ export function PickOrCreateFamilyDialog({
   const [prefillName, setPrefillName] = useState("");
   const [pendingSelectId, setPendingSelectId] = useState<string | null>(null);
   const [selGuardians, setSelGuardians] = useState<Set<string>>(new Set());
-  const [selStudents, setSelStudents] = useState<Set<string>>(new Set());
+  const [selStudent, setSelStudent] = useState<string | null>(null);
 
   const families = useQuery<FamilyPickerOption[], Error>({
     queryKey: ["families", "intake-picker"],
@@ -97,14 +101,14 @@ export function PickOrCreateFamilyDialog({
     },
   });
 
-  // Default every member checked when the roster lands.
+  // Default: all guardians checked, first child selected, when it lands.
   const seededFor = useRef<string | null>(null);
   useEffect(() => {
     if (step !== "roster" || !roster.data) return;
     if (seededFor.current === picked?.id) return;
     seededFor.current = picked?.id ?? null;
     setSelGuardians(new Set(roster.data.parents.map((p) => p.id)));
-    setSelStudents(new Set(roster.data.students.map((s) => s.id)));
+    setSelStudent(roster.data.students[0]?.id ?? null);
   }, [step, roster.data, picked?.id]);
 
   useEffect(() => {
@@ -126,7 +130,7 @@ export function PickOrCreateFamilyDialog({
       setPrefillName("");
       setPendingSelectId(null);
       setSelGuardians(new Set());
-      setSelStudents(new Set());
+      setSelStudent(null);
       seededFor.current = null;
     }
   }, [open]);
@@ -143,18 +147,18 @@ export function PickOrCreateFamilyDialog({
     );
   }, [all, q]);
 
-  const toggle = (set: Set<string>, setSet: (s: Set<string>) => void, id: string) => {
-    const next = new Set(set);
+  const toggleGuardian = (id: string) => {
+    const next = new Set(selGuardians);
     if (next.has(id)) next.delete(id);
     else next.add(id);
-    setSet(next);
+    setSelGuardians(next);
   };
 
   const startIntake = () => {
     if (!picked) return;
     onContinue(picked.id, {
       guardianIds: [...selGuardians],
-      studentIds: [...selStudents],
+      studentIds: selStudent ? [selStudent] : [],
     });
   };
 
@@ -250,9 +254,9 @@ export function PickOrCreateFamilyDialog({
               roster={roster.data}
               loading={roster.isPending}
               selGuardians={selGuardians}
-              selStudents={selStudents}
-              onToggleGuardian={(id) => toggle(selGuardians, setSelGuardians, id)}
-              onToggleStudent={(id) => toggle(selStudents, setSelStudents, id)}
+              selStudent={selStudent}
+              onToggleGuardian={toggleGuardian}
+              onSelectStudent={setSelStudent}
             />
           )}
         </DialogContent>
@@ -296,10 +300,21 @@ export function PickOrCreateFamilyDialog({
           setPendingSelectId(id);
           qc.invalidateQueries({ queryKey: ["families", "intake-picker"] });
         }}
-        onDone={(id, members) => {
-          // Wizard already collected the members — go straight into the
-          // intake seeded with them (no separate roster step needed).
-          onContinue(id, members);
+        onDone={(id) => {
+          // Route into the roster step so the operator picks the one child
+          // (and confirms guardians) for this intake — same as an
+          // existing family, and it enforces the single-child rule.
+          setPicked((prev) =>
+            prev?.id === id
+              ? prev
+              : {
+                  id,
+                  household_name: prefillName,
+                  primary_parent_name: null,
+                  student_names: [],
+                },
+          );
+          setStep("roster");
         }}
       />
     </>
@@ -311,17 +326,17 @@ function RosterStep({
   roster,
   loading,
   selGuardians,
-  selStudents,
+  selStudent,
   onToggleGuardian,
-  onToggleStudent,
+  onSelectStudent,
 }: {
   householdName: string;
   roster: FamilyRoster | undefined;
   loading: boolean;
   selGuardians: Set<string>;
-  selStudents: Set<string>;
+  selStudent: string | null;
   onToggleGuardian: (id: string) => void;
-  onToggleStudent: (id: string) => void;
+  onSelectStudent: (id: string) => void;
 }) {
   if (loading) {
     return (
@@ -374,24 +389,22 @@ function RosterStep({
       </Box>
       <Box>
         <Typography variant="overline" color="text.secondary">
-          Children
+          Child <Box component="span" sx={{ textTransform: "none" }}>(one per intake)</Box>
         </Typography>
         {students.length ? (
-          <Stack>
+          <RadioGroup
+            value={selStudent ?? ""}
+            onChange={(e) => onSelectStudent(e.target.value)}
+          >
             {students.map((s) => (
               <FormControlLabel
                 key={s.id}
-                control={
-                  <Checkbox
-                    size="small"
-                    checked={selStudents.has(s.id)}
-                    onChange={() => onToggleStudent(s.id)}
-                  />
-                }
+                value={s.id}
+                control={<Radio size="small" />}
                 label={<Typography variant="body2">{s.name}</Typography>}
               />
             ))}
-          </Stack>
+          </RadioGroup>
         ) : (
           <Typography variant="body2" color="text.secondary">
             None on file.
