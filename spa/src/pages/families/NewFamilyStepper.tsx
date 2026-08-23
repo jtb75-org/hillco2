@@ -78,8 +78,13 @@ export function NewFamilyStepper({
    *  refetch its list. */
   onCreated: (familyId: string) => void;
   /** Fired on "Done" when navigateOnDone is false — lets an embedding
-   *  flow (e.g. the intake launcher) take over instead of routing away. */
-  onDone?: (familyId: string) => void;
+   *  flow (e.g. the intake launcher) take over instead of routing away.
+   *  Hands back the person ids of the guardians/children just created so
+   *  the caller can seed them (e.g. onto a new intake). */
+  onDone?: (
+    familyId: string,
+    members: { guardianIds: string[]; studentIds: string[] },
+  ) => void;
   /** Prefill the household name (intake "+ Add <name>" path). */
   initialHouseholdName?: string;
   /** Default routes to the new family's page on Done; set false to hand
@@ -130,11 +135,16 @@ export function NewFamilyStepper({
 
   const finish = () => {
     const id = familyId;
+    // Capture member ids before reset() clears them.
+    const members = {
+      guardianIds: guardians.map((g) => g.id),
+      studentIds: students.map((s) => s.id),
+    };
     reset();
     onClose();
     if (!id) return;
     if (navigateOnDone) navigate(`/families/${id}`);
-    else onDone?.(id);
+    else onDone?.(id, members);
   };
 
   const canLeaveFamilyStep = Boolean(familyId) || householdName.trim().length > 0;

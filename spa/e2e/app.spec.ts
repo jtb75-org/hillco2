@@ -692,6 +692,48 @@ test("new family stepper builds a family with guardian (primary+billing) and chi
   await expect(page.getByText(/billing/i).first()).toBeVisible();
 });
 
+test("intake launcher roster step lists an existing family's members", async ({
+  page,
+  baseURL,
+}) => {
+  await login(page, baseURL);
+  const household = "E2E Roster Household";
+
+  // Seed a family with a guardian + child via the intake create-new path.
+  await page.goto("/app/intakes");
+  await page.getByRole("button", { name: "New intake" }).first().click();
+  const start1 = page.getByRole("dialog", { name: "Start intake" });
+  await start1.getByPlaceholder(/Filter by household/).fill(household);
+  await start1.getByText(`Create "${household}" as a new family`).click();
+  const wiz = page.getByRole("dialog", { name: "New family" });
+  await wiz.getByRole("button", { name: "Create & continue" }).click();
+  await wiz.getByPlaceholder(/Filter contacts/).fill("Casey Guardian");
+  await wiz.getByText('Create "Casey Guardian"').click();
+  await wiz.getByRole("button", { name: "Add", exact: true }).click();
+  await wiz.getByRole("button", { name: "Next" }).click();
+  await wiz.getByPlaceholder(/Filter students/).fill("Sam Child");
+  await wiz.getByText('Create "Sam Child"').click();
+  await wiz.getByRole("button", { name: "Add", exact: true }).click();
+  await wiz.getByRole("button", { name: "Next" }).click();
+  await wiz.getByRole("button", { name: "Done" }).click();
+  await expect(page).toHaveURL(/\/app\/intakes\/[0-9a-f-]+$/);
+
+  // Start a second intake and pick that now-existing family — the roster
+  // step must list its guardian + child (pre-checked).
+  await page.goto("/app/intakes");
+  await page.getByRole("button", { name: "New intake" }).first().click();
+  const start2 = page.getByRole("dialog", { name: "Start intake" });
+  await start2.getByPlaceholder(/Filter by household/).fill(household);
+  await start2.getByText(household, { exact: true }).click();
+  await start2.getByRole("button", { name: "Next" }).click();
+  await expect(start2.getByText("Casey Guardian")).toBeVisible();
+  await expect(start2.getByText("Sam Child")).toBeVisible();
+  // Deselect the child, then start — the intake is created for the family.
+  await start2.getByText("Sam Child").click();
+  await start2.getByRole("button", { name: "Continue" }).click();
+  await expect(page).toHaveURL(/\/app\/intakes\/[0-9a-f-]+$/);
+});
+
 test.describe.serial("intake conversion lifecycle", () => {
   let familyName = "";
   let desiredOutcome = "";

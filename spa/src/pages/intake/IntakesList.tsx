@@ -159,7 +159,15 @@ export function IntakesList() {
   });
 
   const create = useMutation({
-    mutationFn: async (familyId: string) => {
+    mutationFn: async ({
+      familyId,
+      guardianIds,
+      studentIds,
+    }: {
+      familyId: string;
+      guardianIds: string[];
+      studentIds: string[];
+    }) => {
       const { data, error } = await api.POST("/api/intakes", {
         body: { family_id: familyId } as never,
       });
@@ -169,7 +177,25 @@ export function IntakesList() {
           "Failed to create intake.";
         throw new Error(msg);
       }
-      return data as { id: string };
+      const intake = data as { id: string };
+      // Best-effort seed of the chosen roster — a member that fails to
+      // attach can still be added on the detail page, so don't block
+      // navigation on it.
+      await Promise.allSettled([
+        ...guardianIds.map((pid) =>
+          api.POST("/api/intakes/{intake_id}/guardians", {
+            params: { path: { intake_id: intake.id } },
+            body: { person_id: pid } as never,
+          }),
+        ),
+        ...studentIds.map((pid) =>
+          api.POST("/api/intakes/{intake_id}/students", {
+            params: { path: { intake_id: intake.id } },
+            body: { person_id: pid } as never,
+          }),
+        ),
+      ]);
+      return intake;
     },
     onSuccess: (intake) => {
       qc.invalidateQueries({ queryKey: ["intakes", "list"] });
@@ -284,9 +310,9 @@ export function IntakesList() {
         title="Start intake"
         continueLabel={create.isPending ? "Creating…" : "Continue"}
         onClose={() => setPickOpen(false)}
-        onContinue={(familyId) => {
+        onContinue={(familyId, members) => {
           setPickOpen(false);
-          create.mutate(familyId);
+          create.mutate({ familyId, ...members });
         }}
       />
     </Stack>
