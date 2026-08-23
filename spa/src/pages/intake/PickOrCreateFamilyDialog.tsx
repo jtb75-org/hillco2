@@ -296,10 +296,21 @@ export function PickOrCreateFamilyDialog({
           setPendingSelectId(id);
           qc.invalidateQueries({ queryKey: ["families", "intake-picker"] });
         }}
-        onDone={(id, members) => {
-          // Wizard already collected the members — go straight into the
-          // intake seeded with them (no separate roster step needed).
-          onContinue(id, members);
+        onDone={(id) => {
+          // Route into the roster step so the operator selects/confirms
+          // which of the just-created guardians/children go on this intake
+          // — same as picking an existing family.
+          setPicked((prev) =>
+            prev?.id === id
+              ? prev
+              : {
+                  id,
+                  household_name: prefillName,
+                  primary_parent_name: null,
+                  student_names: [],
+                },
+          );
+          setStep("roster");
         }}
       />
     </>

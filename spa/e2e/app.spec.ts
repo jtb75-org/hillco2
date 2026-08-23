@@ -36,6 +36,9 @@ async function createIntakeFromNewFamily(page: Page, familyName: string) {
   await wiz.getByRole("button", { name: "Skip" }).click(); // guardians
   await wiz.getByRole("button", { name: "Skip" }).click(); // children
   await wiz.getByRole("button", { name: "Done" }).click();
+  // Wizard hands back to the roster step; the new family has no members
+  // yet, so just continue into the intake.
+  await startIntake.getByRole("button", { name: "Continue" }).click();
   await expect(page).toHaveURL(/\/app\/intakes\/[0-9a-f-]+$/);
 }
 
@@ -716,6 +719,9 @@ test("intake launcher roster step lists an existing family's members", async ({
   await wiz.getByRole("button", { name: "Add", exact: true }).click();
   await wiz.getByRole("button", { name: "Next" }).click();
   await wiz.getByRole("button", { name: "Done" }).click();
+  // Wizard hands back to the roster step (Casey + Sam pre-checked) —
+  // continue to create this first intake.
+  await start1.getByRole("button", { name: "Continue" }).click();
   await expect(page).toHaveURL(/\/app\/intakes\/[0-9a-f-]+$/);
 
   // Start a second intake and pick that now-existing family — the roster
