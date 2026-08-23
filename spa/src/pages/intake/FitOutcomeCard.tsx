@@ -149,7 +149,7 @@ export function FitOutcomeCard({
                 multiline
                 minRows={2}
                 fullWidth
-                placeholder="Free text — useful for declined / nurture outcomes."
+                placeholder="Free text — useful for declined / deferred outcomes."
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
                 onBlur={() => {

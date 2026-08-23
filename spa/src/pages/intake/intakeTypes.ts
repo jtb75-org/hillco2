@@ -36,7 +36,7 @@ export const REFERRAL_SOURCE_LABEL: Record<ReferralSource, string> = {
 
 export const OUTCOME_LABEL: Record<Outcome, string> = {
   converting: "Converting to engagement",
-  nurture: "Nurture / follow up later",
+  nurture: "Deferred — follow up later",
   declined_by_family: "Declined — family passed",
   declined_by_hillco: "Declined — not a fit (HillCo)",
   no_response: "No response after intake",
