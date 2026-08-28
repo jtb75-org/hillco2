@@ -985,8 +985,15 @@ function ItemRow({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const memberships = new Set(item.engagement_type_ids);
+  const liveTypeIds = new Set(engagementTypes.map((t) => t.id));
   const toggleType = (typeId: string) => {
-    const next = new Set(memberships);
+    // Start from only the *live* memberships. An older item may still
+    // reference engagement types that were since removed (soft-deleted);
+    // the backend rejects a PATCH that carries those dead ids (400), so
+    // drop them here — which also cleans up the stale membership.
+    const next = new Set(
+      [...memberships].filter((id) => liveTypeIds.has(id)),
+    );
     if (next.has(typeId)) next.delete(typeId);
     else next.add(typeId);
     onPatch({ engagement_type_ids: Array.from(next) });
