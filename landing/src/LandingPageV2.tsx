@@ -920,13 +920,18 @@ function MainColumn() {
               sx={{
                 mt: 2.5,
                 borderRadius: 999,
-                bgcolor: NAVY,
+                bgcolor: ROYAL,
                 color: "white",
-                px: 3.5,
-                py: 1.2,
+                px: 3.75,
+                py: 1.25,
                 fontWeight: 800,
+                fontSize: "1.02rem",
                 textTransform: "none",
-                "&:hover": { bgcolor: DEEP_NAVY },
+                boxShadow: "0 8px 20px rgba(37,118,240,0.35)",
+                "&:hover": {
+                  bgcolor: "#1a63d6",
+                  boxShadow: "0 10px 24px rgba(37,118,240,0.45)",
+                },
               }}
             >
               Get in touch
