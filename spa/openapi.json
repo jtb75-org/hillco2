@@ -1258,6 +1258,45 @@
         }
       }
     },
+    "/api/contact-lead": {
+      "post": {
+        "tags": [
+          "contact-leads"
+        ],
+        "summary": "Create Contact Lead",
+        "operationId": "create_contact_lead_api_contact_lead_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContactLeadCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/engagements": {
       "get": {
         "tags": [
@@ -3521,7 +3560,7 @@
           "engagement-types"
         ],
         "summary": "Soft Delete Type",
-        "description": "Soft delete only. Hard-deleting a type that's still referenced\nby an engagement would violate the FK (ON DELETE RESTRICT).",
+        "description": "Soft delete only (a hard delete would violate the engagements FK,\nON DELETE RESTRICT).\n\nGuarded so the catalog can't be silently orphaned: a type with catalog\nactivities mapped to it is refused (409) unless the caller either\n`reassign_to` another live type (moves the mappings first) or passes\n`force=true` (removes anyway, leaving those activities unmapped).\nExisting engagements keep their type reference either way \u2014 soft-delete\npreserves the row and their task lists are frozen snapshots.",
         "operationId": "soft_delete_type_api_engagement_types__type_id__delete",
         "parameters": [
           {
@@ -3533,6 +3572,37 @@
               "format": "uuid",
               "title": "Type Id"
             }
+          },
+          {
+            "name": "reassign_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Move this type's catalog activities to this live type before removing.",
+              "title": "Reassign To"
+            },
+            "description": "Move this type's catalog activities to this live type before removing."
+          },
+          {
+            "name": "force",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Remove even though activities are mapped, leaving them unmapped.",
+              "default": false,
+              "title": "Force"
+            },
+            "description": "Remove even though activities are mapped, leaving them unmapped."
           }
         ],
         "responses": {
@@ -8260,6 +8330,52 @@
           "name"
         ],
         "title": "ContactCreate"
+      },
+      "ContactLeadCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "email": {
+            "type": "string",
+            "maxLength": 320,
+            "pattern": "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$",
+            "title": "Email"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "email"
+        ],
+        "title": "ContactLeadCreate"
       },
       "ContactUpdate": {
         "properties": {

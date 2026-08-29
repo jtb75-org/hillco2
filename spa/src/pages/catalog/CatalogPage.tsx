@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Box,
@@ -348,7 +348,7 @@ export function CatalogPage() {
 
   return (
     <Stack spacing={2}>
-      <EngagementTypesPanel types={allTypes} />
+      <EngagementTypesPanel types={allTypes} items={items.data} />
 
       <Stack direction="row" alignItems="baseline" spacing={1}>
         <Typography variant="h6" sx={{ fontWeight: 600, flex: 1 }}>
@@ -441,17 +441,50 @@ export function CatalogPage() {
 
 // ---- Engagement types panel ------------------------------------------------
 
-function EngagementTypesPanel({ types }: { types: EngagementType[] }) {
+function EngagementTypesPanel({
+  types,
+  items,
+}: {
+  types: EngagementType[];
+  items: Item[];
+}) {
   const qc = useQueryClient();
   const snackbar = useSnackbar();
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<EngagementType | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState<EngagementType | null>(null);
+  // Delete-guard choices for a type that still has activities mapped.
+  const [reassignFirst, setReassignFirst] = useState(true);
+  const [reassignTarget, setReassignTarget] = useState("");
+
+  // How many catalog activities are mapped to the type being removed, and
+  // where they could be reassigned.
+  const mappedCount = confirmingDelete
+    ? items.filter((it) => it.engagement_type_ids.includes(confirmingDelete.id)).length
+    : 0;
+  const reassignTargets = confirmingDelete
+    ? types.filter((t) => !t.deleted_at && t.id !== confirmingDelete.id)
+    : [];
+
+  // Reset the guard choices whenever a different type is queued for delete.
+  useEffect(() => {
+    if (!confirmingDelete) return;
+    setReassignFirst(true);
+    setReassignTarget(
+      types.find((t) => !t.deleted_at && t.id !== confirmingDelete.id)?.id ?? "",
+    );
+  }, [confirmingDelete, types]);
 
   const remove = useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async (opts: { id: string; reassignTo?: string; force?: boolean }) => {
       const { error } = await api.DELETE("/api/engagement-types/{type_id}", {
-        params: { path: { type_id: id } as never },
+        params: {
+          path: { type_id: opts.id },
+          query: {
+            ...(opts.reassignTo ? { reassign_to: opts.reassignTo } : {}),
+            ...(opts.force ? { force: true } : {}),
+          },
+        } as never,
       });
       if (error) {
         const msg = (error as { detail?: string }).detail ?? "Delete failed.";
@@ -460,6 +493,8 @@ function EngagementTypesPanel({ types }: { types: EngagementType[] }) {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["engagement-types"] });
+      // Reassignment moves catalog mappings — refresh the activities too.
+      qc.invalidateQueries({ queryKey: ["catalog", "items"] });
       snackbar.show("Engagement type removed");
     },
     onError: (e: Error) => snackbar.show(e.message, "error"),
@@ -554,25 +589,96 @@ function EngagementTypesPanel({ types }: { types: EngagementType[] }) {
           qc.invalidateQueries({ queryKey: ["engagement-types"] });
         }}
       />
-      <Dialog open={!!confirmingDelete} onClose={() => setConfirmingDelete(null)}>
+      <Dialog
+        open={!!confirmingDelete}
+        onClose={() => setConfirmingDelete(null)}
+        maxWidth="xs"
+        fullWidth
+      >
         <DialogTitle>Remove "{confirmingDelete?.label}"?</DialogTitle>
         <DialogContent>
-          <Typography variant="body2">
-            Soft delete only. Existing engagements that already use this type stay
-            intact; it just stops appearing in pickers and on new activities.
-          </Typography>
+          <Stack spacing={1.5}>
+            <Typography variant="body2" color="text.secondary">
+              Existing engagements that already use this type stay intact — it
+              just stops appearing in pickers and on new activities.
+            </Typography>
+
+            {mappedCount > 0 && (
+              <>
+                <Alert severity="warning" sx={{ py: 0.5 }}>
+                  {mappedCount} catalog{" "}
+                  {mappedCount === 1 ? "activity is" : "activities are"} mapped to
+                  this type.
+                </Alert>
+                {reassignTargets.length > 0 && (
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={reassignFirst}
+                        onChange={(e) => setReassignFirst(e.target.checked)}
+                      />
+                    }
+                    label={
+                      <Typography variant="body2">
+                        Reassign those activities to another type first
+                      </Typography>
+                    }
+                  />
+                )}
+                {reassignFirst && reassignTargets.length > 0 ? (
+                  <TextField
+                    select
+                    size="small"
+                    label="Reassign to"
+                    value={reassignTarget}
+                    onChange={(e) => setReassignTarget(e.target.value)}
+                    fullWidth
+                  >
+                    {reassignTargets.map((t) => (
+                      <MenuItem key={t.id} value={t.id}>
+                        {t.label}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                ) : (
+                  <Typography variant="caption" color="error">
+                    Those {mappedCount === 1 ? "activity" : "activities"} will be
+                    left unmapped — no engagement type will seed{" "}
+                    {mappedCount === 1 ? "it" : "them"} until you re-assign{" "}
+                    {mappedCount === 1 ? "it" : "them"}.
+                  </Typography>
+                )}
+              </>
+            )}
+          </Stack>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setConfirmingDelete(null)}>Cancel</Button>
           <Button
             color="error"
             variant="contained"
+            disabled={
+              remove.isPending ||
+              (mappedCount > 0 &&
+                reassignFirst &&
+                reassignTargets.length > 0 &&
+                !reassignTarget)
+            }
             onClick={() => {
-              if (confirmingDelete) remove.mutate(confirmingDelete.id);
+              if (!confirmingDelete) return;
+              const doReassign =
+                mappedCount > 0 && reassignFirst && reassignTargets.length > 0;
+              remove.mutate({
+                id: confirmingDelete.id,
+                reassignTo: doReassign ? reassignTarget : undefined,
+                force: mappedCount > 0 && !doReassign,
+              });
               setConfirmingDelete(null);
             }}
           >
-            Remove
+            {mappedCount > 0 && reassignFirst && reassignTargets.length > 0
+              ? "Reassign & remove"
+              : "Remove"}
           </Button>
         </DialogActions>
       </Dialog>

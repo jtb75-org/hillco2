@@ -11,7 +11,7 @@ reference intact.
 import re
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from ..auth import require_user
@@ -127,15 +127,94 @@ async def update_type(
 @router.delete("/{type_id}", status_code=204)
 async def soft_delete_type(
     type_id: UUID,
+    reassign_to: UUID | None = Query(
+        None,
+        description="Move this type's catalog activities to this live type before removing.",
+    ),
+    force: bool = Query(
+        False,
+        description="Remove even though activities are mapped, leaving them unmapped.",
+    ),
     _user=Depends(require_user),
     conn=Depends(get_conn),
 ):
-    """Soft delete only. Hard-deleting a type that's still referenced
-    by an engagement would violate the FK (ON DELETE RESTRICT)."""
+    """Soft delete only (a hard delete would violate the engagements FK,
+    ON DELETE RESTRICT).
+
+    Guarded so the catalog can't be silently orphaned: a type with catalog
+    activities mapped to it is refused (409) unless the caller either
+    `reassign_to` another live type (moves the mappings first) or passes
+    `force=true` (removes anyway, leaving those activities unmapped).
+    Existing engagements keep their type reference either way — soft-delete
+    preserves the row and their task lists are frozen snapshots."""
     if not await conn.fetchval(
         "SELECT 1 FROM engagement_types WHERE id = $1", type_id,
     ):
         raise HTTPException(status_code=404, detail="engagement_type not found")
+
+    # Count only activities that are actually live (their phase isn't
+    # soft-deleted) — matches what the catalog UI shows and what seeds.
+    n_activities = (
+        await conn.fetchval(
+            """
+            SELECT count(*)
+            FROM service_item_engagement_types siet
+            JOIN service_items si
+              ON si.id = siet.service_item_id AND si.deleted_at IS NULL
+            JOIN catalog_phases cp
+              ON cp.id = si.phase_id AND cp.deleted_at IS NULL
+            WHERE siet.engagement_type_id = $1
+            """,
+            type_id,
+        )
+        or 0
+    )
+
+    if n_activities and reassign_to is None and not force:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"{n_activities} "
+                f"{'activity is' if n_activities == 1 else 'activities are'} "
+                "mapped to this type. Reassign "
+                f"{'it' if n_activities == 1 else 'them'} to another type, "
+                "or force removal."
+            ),
+        )
+
+    if reassign_to is not None:
+        if reassign_to == type_id:
+            raise HTTPException(
+                status_code=400, detail="reassign_to must be a different type."
+            )
+        if not await conn.fetchval(
+            "SELECT 1 FROM engagement_types WHERE id = $1 AND deleted_at IS NULL",
+            reassign_to,
+        ):
+            raise HTTPException(
+                status_code=400, detail="reassign_to must be a live engagement type."
+            )
+        # Move this type's activity mappings to the target (skip dupes).
+        await conn.execute(
+            """
+            INSERT INTO service_item_engagement_types (service_item_id, engagement_type_id)
+            SELECT siet.service_item_id, $2
+            FROM service_item_engagement_types siet
+            WHERE siet.engagement_type_id = $1
+              AND NOT EXISTS (
+                SELECT 1 FROM service_item_engagement_types x
+                WHERE x.service_item_id = siet.service_item_id
+                  AND x.engagement_type_id = $2
+              )
+            """,
+            type_id, reassign_to,
+        )
+
+    # Drop this type's activity mappings (now reassigned, or force-removed).
+    await conn.execute(
+        "DELETE FROM service_item_engagement_types WHERE engagement_type_id = $1",
+        type_id,
+    )
     await conn.execute(
         """
         UPDATE engagement_types
