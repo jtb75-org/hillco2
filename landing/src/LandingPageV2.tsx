@@ -670,14 +670,14 @@ function LeftRail() {
         bgcolor: PALE_BLUE,
         minHeight: { md: 1100 },
         gridArea: "rail",
-        pt: { xs: 38, md: 52 },
+        pt: { xs: 44, md: 60 },
         px: { xs: 4, sm: 8, md: 6 },
         pb: 7,
         position: "relative",
       }}
     >
       <HeadshotBadge />
-      <Stack spacing={{ xs: 7, md: 11 }}>
+      <Box>
         <Box>
           <Typography
             component="h2"
@@ -704,7 +704,7 @@ function LeftRail() {
           </Box>
         </Box>
 
-        <Box>
+        <Box sx={{ mt: { xs: 4, md: 6 } }}>
           <Typography
             component="h2"
             sx={{
@@ -728,7 +728,7 @@ function LeftRail() {
           </Box>
         </Box>
 
-        <Box>
+        <Box sx={{ mt: { xs: 7, md: 11 } }}>
           <Typography
             component="h2"
             sx={{
@@ -769,7 +769,7 @@ function LeftRail() {
             About me
           </Button>
         </Box>
-      </Stack>
+      </Box>
       <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />
     </Box>
   );
@@ -778,15 +778,35 @@ function LeftRail() {
 function AboutDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle sx={{ color: NAVY, fontWeight: 900 }}>About Mary</DialogTitle>
-      <DialogContent sx={{ pt: 1 }}>
+      <DialogContent sx={{ pt: 3 }}>
         <Typography sx={{ color: NAVY, fontWeight: 900, fontSize: "1.15rem" }}>
           {CONSULTANT_NAME}, M.Ed.
         </Typography>
         <Typography sx={{ mt: 2, color: "#255ba3", lineHeight: 1.55 }}>
-          Mary brings experience as an educator and parent to her work with families navigating
-          school transitions. She helps families understand each student's learning profile,
-          compare educational settings, and plan thoughtful next steps.
+          With more than 25 years of experience in education, I provide thoughtful, individualized
+          guidance through school transitions and placement decisions. I specialize in guiding
+          families through every stage of this process, helping them identify educational
+          environments where their children can thrive and be successful. I meet families where they
+          are, listen closely to their goals and aspirations, and encourage them to consider the
+          whole learner&mdash;including their child&rsquo;s unique strengths, needs, interests, and
+          potential&mdash;when exploring educational opportunities. Additionally, as I listen to each
+          family&rsquo;s hopes and concerns, I help them look beyond traditional measures of
+          &ldquo;fit&rdquo; to understand the whole learner. By considering a child&rsquo;s
+          strengths, interests, learning profile, relationships, and aspirations, I help families
+          discover possibilities they may not have considered&mdash;and identify environments that
+          can nurture their confidence and realize their potential.
+        </Typography>
+        <Typography sx={{ mt: 2, color: "#255ba3", lineHeight: 1.55 }}>
+          I also partner with schools to strengthen the communities they serve. I help educational
+          leaders create inclusive, welcoming environments where students, families, faculty, and
+          staff feel valued, connected, and empowered to contribute. With experience as a school
+          leader and mentor, my work draws on extensive expertise in curriculum design, community
+          building, public speaking, donor engagement, and relationship development.
+        </Typography>
+        <Typography sx={{ mt: 2, color: NAVY, fontWeight: 700, lineHeight: 1.55 }}>
+          At the heart of my work is a simple belief: when we take the time to truly understand our
+          learners and build school communities around that understanding, extraordinary
+          possibilities emerge for students and their families.
         </Typography>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2.5 }}>
