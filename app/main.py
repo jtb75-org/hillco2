@@ -25,6 +25,7 @@ from .routes import engagement_tasks as engagement_tasks_routes
 from .routes import engagement_types as engagement_types_routes
 from .routes import engagements as engagements_routes
 from .routes import expenses as expenses_routes
+from .routes import feature_flags as feature_flags_routes
 from .routes import families as families_routes
 from .routes import followups as followups_routes
 from .routes import health as health_routes
@@ -203,4 +204,5 @@ app.include_router(admin_routes.router)
 app.include_router(agreements_routes.router)
 app.include_router(contract_templates_routes.router)
 app.include_router(org_settings_routes.router)
+app.include_router(feature_flags_routes.router)
 app.include_router(people_routes.router)

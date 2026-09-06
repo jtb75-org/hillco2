@@ -6,6 +6,7 @@ import { AuthProvider, redirectToLogin, useAuth } from "./auth";
 import { Dashboard } from "./pages/Dashboard";
 import { AdminLayout } from "./pages/admin/AdminLayout";
 import { AdminUsers } from "./pages/admin/Users";
+import { AdminFeatureFlags } from "./pages/admin/FeatureFlags";
 import { AdminAuditLog } from "./pages/admin/AuditLog";
 import { AdminAbout } from "./pages/admin/About";
 import { ContactsList } from "./pages/contacts/ContactsList";
@@ -126,6 +127,7 @@ export function App() {
             >
               <Route index element={<Navigate to="users" replace />} />
               <Route path="users" element={<AdminUsers />} />
+              <Route path="feature-flags" element={<AdminFeatureFlags />} />
               <Route path="audit-log" element={<AdminAuditLog />} />
               <Route path="about" element={<AdminAbout />} />
             </Route>

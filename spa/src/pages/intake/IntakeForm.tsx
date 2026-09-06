@@ -40,6 +40,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link as RouterLink, useNavigate, useParams } from "react-router-dom";
 
 import { api } from "../../api/client";
+import { useFeatureFlag } from "../../featureFlags";
 import { AddCard } from "../../components/AddCard";
 import { LabeledField } from "../../components/LabeledField";
 import { PageHeader } from "../../components/PageHeader";
@@ -85,6 +86,7 @@ export function IntakeForm() {
   const qc = useQueryClient();
   const snackbar = useSnackbar();
   const navigate = useNavigate();
+  const showReferral = useFeatureFlag("intake_referral");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
 
@@ -304,6 +306,7 @@ export function IntakeForm() {
         outcome={intake.data.outcome}
         onIntakeDateChange={(v) => patch.mutate({ intake_date: v })}
         onReferralSourceChange={(v) => patch.mutate({ referral_source: v })}
+        showReferral={showReferral}
       />
 
       {/* Roster accordions — the consultant picks who's on this

@@ -21,12 +21,16 @@ export function IntakeHeaderStrip({
   outcome,
   onIntakeDateChange,
   onReferralSourceChange,
+  showReferral = true,
 }: {
   intakeDate: string;
   referralSource: ReferralSource | null;
   outcome: Outcome | null;
   onIntakeDateChange: (next: string) => void;
   onReferralSourceChange: (next: ReferralSource | null) => void;
+  /** When false (the intake-referral feature flag is off), the referral
+   *  source picker is hidden entirely. */
+  showReferral?: boolean;
 }) {
   const status =
     outcome == null
@@ -49,31 +53,33 @@ export function IntakeHeaderStrip({
             />
           </LabeledField>
         </Box>
-        <Box sx={{ flex: 1 }}>
-          <LabeledField label="Referral source">
-            <TextField
-              select
-              size="small"
-              fullWidth
-              value={referralSource ?? ""}
-              onChange={(e) =>
-                onReferralSourceChange(
-                  (e.target.value || null) as ReferralSource | null,
-                )
-              }
-              SelectProps={{ displayEmpty: true }}
-            >
-              <MenuItem value="">
-                <em>— Not set —</em>
-              </MenuItem>
-              {Object.entries(REFERRAL_SOURCE_LABEL).map(([key, label]) => (
-                <MenuItem key={key} value={key}>
-                  {label}
+        {showReferral && (
+          <Box sx={{ flex: 1 }}>
+            <LabeledField label="Referral source">
+              <TextField
+                select
+                size="small"
+                fullWidth
+                value={referralSource ?? ""}
+                onChange={(e) =>
+                  onReferralSourceChange(
+                    (e.target.value || null) as ReferralSource | null,
+                  )
+                }
+                SelectProps={{ displayEmpty: true }}
+              >
+                <MenuItem value="">
+                  <em>— Not set —</em>
                 </MenuItem>
-              ))}
-            </TextField>
-          </LabeledField>
-        </Box>
+                {Object.entries(REFERRAL_SOURCE_LABEL).map(([key, label]) => (
+                  <MenuItem key={key} value={key}>
+                    {label}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </LabeledField>
+          </Box>
+        )}
         <Box sx={{ flex: 1 }}>
           <LabeledField label="Status">
             <Stack direction="row" spacing={1} alignItems="center" sx={{ pt: 0.5 }}>

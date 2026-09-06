@@ -7278,6 +7278,83 @@
         }
       }
     },
+    "/api/feature-flags": {
+      "get": {
+        "tags": [
+          "feature-flags"
+        ],
+        "summary": "List Flags",
+        "operationId": "list_flags_api_feature_flags_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FeatureFlag"
+                  },
+                  "type": "array",
+                  "title": "Response List Flags Api Feature Flags Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/feature-flags/{key}": {
+      "patch": {
+        "tags": [
+          "feature-flags"
+        ],
+        "summary": "Update Flag",
+        "operationId": "update_flag_api_feature_flags__key__patch",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeatureFlagUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeatureFlag"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/people": {
       "get": {
         "tags": [
@@ -9465,6 +9542,52 @@
         },
         "type": "object",
         "title": "FamilyUpdate"
+      },
+      "FeatureFlag": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "default": {
+            "type": "boolean",
+            "title": "Default"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "description",
+          "enabled",
+          "default"
+        ],
+        "title": "FeatureFlag"
+      },
+      "FeatureFlagUpdate": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled"
+        ],
+        "title": "FeatureFlagUpdate"
       },
       "FollowupCreate": {
         "properties": {

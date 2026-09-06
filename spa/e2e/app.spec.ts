@@ -67,6 +67,21 @@ async function addStudent(page: Page, studentName: string) {
   await expect(page.locator('[data-testid^="intake-candidacy-row-"]').first()).toBeVisible();
 }
 
+// Set the "Intake referral source" feature flag on/off via Admin →
+// Feature flags. Idempotent: only clicks the switch when it isn't
+// already in the requested state.
+async function setIntakeReferralFlag(page: Page, enabled: boolean) {
+  await page.goto("/app/admin/feature-flags");
+  const toggle = page.getByRole("checkbox", {
+    name: "Toggle Intake referral source",
+  });
+  await expect(toggle).toBeVisible();
+  if ((await toggle.isChecked()) !== enabled) {
+    await toggle.click();
+    await expect(toggle).toBeChecked({ checked: enabled });
+  }
+}
+
 async function convertIntakeToAssessment(page: Page, desiredOutcome: string) {
   await page.getByTestId("intake-desired-outcome").fill(desiredOutcome);
   await page.getByTestId("intake-desired-outcome").blur();
@@ -810,4 +825,26 @@ test.describe.serial("intake conversion lifecycle", () => {
       page.locator("div").filter({ hasText: /^New/ }).filter({ hasText: familyName }).first(),
     ).toBeVisible();
   });
+});
+
+test("intake referral field respects the feature flag", async ({ page, baseURL }) => {
+  await login(page, baseURL);
+
+  const familyName = `E2E Referral Flag ${Date.now()}`;
+  await createIntakeFromNewFamily(page, familyName);
+  const intakeUrl = page.url();
+
+  // Flag defaults on → the referral-source picker is present.
+  await expect(page.getByText("Referral source", { exact: true })).toBeVisible();
+
+  // Turn it off; the field disappears from the intake header strip.
+  await setIntakeReferralFlag(page, false);
+  await page.goto(intakeUrl);
+  await expect(page.getByText("Intake date", { exact: true })).toBeVisible();
+  await expect(page.getByText("Referral source", { exact: true })).toHaveCount(0);
+
+  // Restore it (also leaves global state clean for other tests).
+  await setIntakeReferralFlag(page, true);
+  await page.goto(intakeUrl);
+  await expect(page.getByText("Referral source", { exact: true })).toBeVisible();
 });
