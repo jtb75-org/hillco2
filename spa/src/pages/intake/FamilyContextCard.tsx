@@ -14,6 +14,7 @@ import {
 import { LabeledField } from "../../components/LabeledField";
 import { RichTextEditor } from "../../components/RichTextEditor";
 import { SectionPanel } from "../../components/SectionPanel";
+import { useFeatureFlag } from "../../featureFlags";
 
 import type { IntakeDetail } from "./intakeTypes";
 
@@ -28,6 +29,8 @@ export function FamilyContextCard({
   intake: IntakeDetail;
   onPatch: (body: Partial<IntakeDetail>) => void;
 }) {
+  const showDesiredOutcome = useFeatureFlag("intake_desired_outcome");
+  const showConstraints = useFeatureFlag("intake_constraints");
   return (
     <SectionPanel
       title="Family context"
@@ -35,27 +38,31 @@ export function FamilyContextCard({
     >
       <Box sx={{ p: 2.5 }}>
         <Grid container spacing={2}>
-          <Grid item xs={12} md={6}>
-            <LabeledField label="Desired outcome (in parents' words)">
-              <DebouncedTextField
-                multiline
-                minRows={3}
-                placeholder="A school where Peter feels seen…"
-                value={intake.desired_outcome ?? ""}
-                inputProps={{ "data-testid": "intake-desired-outcome" } as Record<string, string>}
-                onCommit={(v) => onPatch({ desired_outcome: v || null })}
-              />
-            </LabeledField>
-          </Grid>
-          <Grid item xs={12} md={6}>
-            <LabeledField label="Constraints (commute, budget, schedule)">
-              <ChipInput
-                value={intake.constraints}
-                onChange={(next) => onPatch({ constraints: next })}
-                placeholder="Add a constraint…"
-              />
-            </LabeledField>
-          </Grid>
+          {showDesiredOutcome && (
+            <Grid item xs={12} md={6}>
+              <LabeledField label="Desired outcome (in parents' words)">
+                <DebouncedTextField
+                  multiline
+                  minRows={3}
+                  placeholder="A school where Peter feels seen…"
+                  value={intake.desired_outcome ?? ""}
+                  inputProps={{ "data-testid": "intake-desired-outcome" } as Record<string, string>}
+                  onCommit={(v) => onPatch({ desired_outcome: v || null })}
+                />
+              </LabeledField>
+            </Grid>
+          )}
+          {showConstraints && (
+            <Grid item xs={12} md={6}>
+              <LabeledField label="Constraints (commute, budget, schedule)">
+                <ChipInput
+                  value={intake.constraints}
+                  onChange={(next) => onPatch({ constraints: next })}
+                  placeholder="Add a constraint…"
+                />
+              </LabeledField>
+            </Grid>
+          )}
 
           <Grid item xs={12}>
             <Divider sx={{ my: 1 }} />

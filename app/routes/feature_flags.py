@@ -26,6 +26,16 @@ FLAG_DEFS: dict[str, dict] = {
         "description": "Show the referral-source field on intakes.",
         "default": True,
     },
+    "intake_desired_outcome": {
+        "label": "Intake desired outcome",
+        "description": "Show the \"Desired outcome (in parents' words)\" field on intakes.",
+        "default": True,
+    },
+    "intake_constraints": {
+        "label": "Intake constraints",
+        "description": "Show the \"Constraints (commute, budget, schedule)\" field on intakes.",
+        "default": True,
+    },
 }
 
 

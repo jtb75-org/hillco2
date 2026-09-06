@@ -67,19 +67,21 @@ async function addStudent(page: Page, studentName: string) {
   await expect(page.locator('[data-testid^="intake-candidacy-row-"]').first()).toBeVisible();
 }
 
-// Set the "Intake referral source" feature flag on/off via Admin →
-// Feature flags. Idempotent: only clicks the switch when it isn't
+// Set a feature flag on/off via Admin → Feature flags, addressed by its
+// visible label. Idempotent: only clicks the switch when it isn't
 // already in the requested state.
-async function setIntakeReferralFlag(page: Page, enabled: boolean) {
+async function setFeatureFlag(page: Page, flagLabel: string, enabled: boolean) {
   await page.goto("/app/admin/feature-flags");
-  const toggle = page.getByRole("checkbox", {
-    name: "Toggle Intake referral source",
-  });
+  const toggle = page.getByRole("checkbox", { name: `Toggle ${flagLabel}` });
   await expect(toggle).toBeVisible();
   if ((await toggle.isChecked()) !== enabled) {
     await toggle.click();
     await expect(toggle).toBeChecked({ checked: enabled });
   }
+}
+
+async function setIntakeReferralFlag(page: Page, enabled: boolean) {
+  await setFeatureFlag(page, "Intake referral source", enabled);
 }
 
 async function convertIntakeToAssessment(page: Page, desiredOutcome: string) {
@@ -824,6 +826,39 @@ test.describe.serial("intake conversion lifecycle", () => {
     await expect(
       page.locator("div").filter({ hasText: /^New/ }).filter({ hasText: familyName }).first(),
     ).toBeVisible();
+  });
+
+  // In this serial group because it toggles the desired-outcome /
+  // constraints flags OFF globally; convertIntakeToAssessment (above)
+  // fills those exact fields, so the two must never run concurrently.
+  test("family-context fields respect their feature flags", async ({ page, baseURL }) => {
+    await login(page, baseURL);
+
+    const flagFamily = `E2E FamCtx Flags ${Date.now()}`;
+    await createIntakeFromNewFamily(page, flagFamily);
+    const intakeUrl = page.url();
+
+    const desired = page.getByText("Desired outcome (in parents' words)");
+    const constraints = page.getByText("Constraints (commute, budget, schedule)");
+
+    // Both default on.
+    await expect(desired).toBeVisible();
+    await expect(constraints).toBeVisible();
+
+    // Turn both off; the two Family-context fields disappear.
+    await setFeatureFlag(page, "Intake desired outcome", false);
+    await setFeatureFlag(page, "Intake constraints", false);
+    await page.goto(intakeUrl);
+    await expect(page.getByText("Family context")).toBeVisible();
+    await expect(desired).toHaveCount(0);
+    await expect(constraints).toHaveCount(0);
+
+    // Restore (leaves global state clean for other tests).
+    await setFeatureFlag(page, "Intake desired outcome", true);
+    await setFeatureFlag(page, "Intake constraints", true);
+    await page.goto(intakeUrl);
+    await expect(desired).toBeVisible();
+    await expect(constraints).toBeVisible();
   });
 });
 
