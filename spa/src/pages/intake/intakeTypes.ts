@@ -34,8 +34,12 @@ export const REFERRAL_SOURCE_LABEL: Record<ReferralSource, string> = {
   other: "Other",
 };
 
-export const OUTCOME_LABEL: Record<Outcome, string> = {
-  converting: "Converting to engagement",
+// Selectable outcomes are dispositions the consultant sets when they are
+// NOT converting. Conversion is no longer an "outcome" — it's the
+// per-student "Create engagement" action, reflected by converted_at.
+// ("converting" stays in the Outcome type + status map below for legacy
+// rows created before that change, but is intentionally not selectable.)
+export const OUTCOME_LABEL: Record<Exclude<Outcome, "converting">, string> = {
   nurture: "Deferred — follow up later",
   declined_by_family: "Declined — family passed",
   declined_by_hillco: "Declined — not a fit (HillCo)",
@@ -85,6 +89,14 @@ export interface ExistingEngagement {
   start_date: string | null;
 }
 
+/** The engagement this intake spawned for a given student (any status),
+ *  or null. Drives the per-student create button vs. link. */
+export interface IntakeEngagementLink {
+  id: string;
+  engagement_type: string;
+  status: string;
+}
+
 /** Full per-intake-student row returned by GET /api/intakes/:id. */
 export interface IntakeStudent {
   id: string;
@@ -110,6 +122,7 @@ export interface IntakeStudent {
   recommended_engagement_type: string | null;
   mentions: Mention[];
   existing_engagements: ExistingEngagement[];
+  intake_engagement: IntakeEngagementLink | null;
 }
 
 /** Full intake row returned by GET /api/intakes/:id. */

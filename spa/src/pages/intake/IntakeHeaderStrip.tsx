@@ -19,6 +19,7 @@ export function IntakeHeaderStrip({
   intakeDate,
   referralSource,
   outcome,
+  converted = false,
   onIntakeDateChange,
   onReferralSourceChange,
   showReferral = true,
@@ -26,14 +27,18 @@ export function IntakeHeaderStrip({
   intakeDate: string;
   referralSource: ReferralSource | null;
   outcome: Outcome | null;
+  /** Whether this intake has spawned at least one engagement
+   *  (converted_at set). Takes precedence over `outcome` for the chip. */
+  converted?: boolean;
   onIntakeDateChange: (next: string) => void;
   onReferralSourceChange: (next: ReferralSource | null) => void;
   /** When false (the intake-referral feature flag is off), the referral
    *  source picker is hidden entirely. */
   showReferral?: boolean;
 }) {
-  const status =
-    outcome == null
+  const status = converted
+    ? { label: "Converted", color: "success" as const }
+    : outcome == null
       ? { label: "New", color: "primary" as const }
       : OUTCOME_STATUS_DISPLAY[outcome];
   return (
@@ -85,9 +90,11 @@ export function IntakeHeaderStrip({
             <Stack direction="row" spacing={1} alignItems="center" sx={{ pt: 0.5 }}>
               <Chip size="small" label={status.label} color={status.color} />
               <Typography variant="caption" color="text.secondary">
-                {outcome == null
-                  ? "Set the outcome below to close"
-                  : "Closed — change outcome to re-open"}
+                {converted
+                  ? "Engagement created — see below"
+                  : outcome == null
+                    ? "Set the outcome below to close"
+                    : "Closed — change outcome to re-open"}
               </Typography>
             </Stack>
           </LabeledField>

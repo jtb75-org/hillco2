@@ -340,8 +340,33 @@ async def _intake_students(conn, intake_id: UUID) -> list[dict]:
         student["existing_engagements"] = await _existing_engagements(
             conn, student["id"]
         )
+        student["intake_engagement"] = await _intake_engagement(
+            conn, intake_id, student["id"]
+        )
         students.append(student)
     return students
+
+
+async def _intake_engagement(conn, intake_id: UUID, person_id: UUID) -> dict | None:
+    """The live engagement this intake spawned for this student, if any.
+
+    Drives the per-student "Create engagement" affordance: while this
+    exists, the button is replaced by a link; deleting the engagement
+    (which clears it, deleted_at IS NULL no longer matching) re-enables
+    creation. Any status counts — a completed engagement still originated
+    here — so the UI reflects reality rather than a stored flag."""
+    row = await conn.fetchrow(
+        """
+        SELECT id, engagement_type, status
+        FROM engagements
+        WHERE intake_id = $1 AND student_id = $2 AND deleted_at IS NULL
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        intake_id,
+        person_id,
+    )
+    return dict(row) if row else None
 
 
 async def _existing_engagements(conn, person_id: UUID) -> list[dict]:
@@ -859,6 +884,116 @@ async def convert_intake(
         )
 
     return {"engagement_ids": engagement_ids}
+
+
+class StudentEngagementCreate(BaseModel):
+    engagement_type: str
+
+
+@router.post("/intakes/{intake_id}/students/{person_id}/engagement")
+async def create_student_engagement(
+    intake_id: UUID,
+    person_id: UUID,
+    body: StudentEngagementCreate,
+    user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    """Create one engagement for a single student on this intake.
+
+    The per-student replacement for the batch convert flow: the operator
+    picks a type on the student's row and clicks Create. Reuses the same
+    intake snapshot + catalog seeding, applies the same duplicate guard,
+    persists the chosen type on the intake_students row, and marks the
+    intake converted (converted_at) + the family a client. Deleting the
+    engagement later re-opens the intake via the engagements delete path.
+    Row-locks the intake so concurrent creates can't double-fire."""
+    async with conn.transaction():
+        intake = await conn.fetchrow(
+            "SELECT * FROM intakes WHERE id = $1 AND deleted_at IS NULL FOR UPDATE",
+            intake_id,
+        )
+        if not intake:
+            raise HTTPException(status_code=404, detail="Intake not found")
+
+        student = await conn.fetchrow(
+            """
+            SELECT ist.*, p.kind
+            FROM intake_students ist
+            JOIN people p ON p.id = ist.person_id AND p.deleted_at IS NULL
+            WHERE ist.intake_id = $1 AND ist.person_id = $2
+            """,
+            intake_id,
+            person_id,
+        )
+        if not student:
+            raise HTTPException(
+                status_code=404, detail="Student is not on this intake."
+            )
+
+        engagement_type = body.engagement_type
+        await _validate_engagement_type(conn, engagement_type)
+
+        # Duplicate guard — same rule as the batch convert.
+        dup = await conn.fetchval(
+            """
+            SELECT 1 FROM engagements
+            WHERE family_id = $1 AND student_id = $2 AND engagement_type = $3
+              AND status IN ('in_progress', 'on_hold') AND deleted_at IS NULL
+            LIMIT 1
+            """,
+            intake["family_id"], person_id, engagement_type,
+        )
+        if dup:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"An active {engagement_type} engagement already exists "
+                    "for this student."
+                ),
+            )
+
+        # Persist the chosen type so the row's dropdown remembers it even
+        # after the engagement is later deleted.
+        await conn.execute(
+            """
+            UPDATE intake_students
+            SET recommended_engagement_type = $3, candidate = TRUE
+            WHERE intake_id = $1 AND person_id = $2
+            """,
+            intake_id, person_id, engagement_type,
+        )
+
+        student = dict(student)
+        student["recommended_engagement_type"] = engagement_type
+        snapshot = _build_intake_snapshot(dict(intake), student)
+        eng_id = await conn.fetchval(
+            """
+            INSERT INTO engagements (
+              family_id, student_id, intake_id,
+              engagement_type, status, start_date,
+              lead_consultant_id, intake_snapshot
+            ) VALUES ($1, $2, $3, $4, 'in_progress', CURRENT_DATE, $5, $6::jsonb)
+            RETURNING id
+            """,
+            intake["family_id"], person_id, intake_id,
+            engagement_type, user["id"], snapshot,
+        )
+        await seed_catalog_for_engagement(
+            conn,
+            engagement_id=eng_id,
+            engagement_type=engagement_type,
+            user_id=user["id"],
+        )
+        await conn.execute(
+            "UPDATE intakes SET converted_at = NOW() WHERE id = $1 AND converted_at IS NULL",
+            intake_id,
+        )
+        await conn.execute(
+            "UPDATE families SET lifecycle_stage = 'client' WHERE id = $1",
+            intake["family_id"],
+        )
+
+    return {"engagement_id": str(eng_id)}
 
 
 # ---- soft delete ---------------------------------------------------------

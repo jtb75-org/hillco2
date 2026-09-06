@@ -181,32 +181,26 @@ export function IntakeForm() {
     onError: (e: Error) => snackbar.show(e.message, "error"),
   });
 
-  const convert = useMutation({
-    mutationFn: async () => {
-      if (!id) return null;
-      const res = await fetch(`/api/intakes/${id}/convert`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: "{}",
-      });
-      if (!res.ok) {
-        const json = await res.json().catch(() => ({}));
+  const createEngagement = useMutation({
+    mutationFn: async (vars: { personId: string; engagementType: string }) => {
+      if (!id) return;
+      const { error } = await api.POST(
+        "/api/intakes/{intake_id}/students/{person_id}/engagement",
+        {
+          params: { path: { intake_id: id, person_id: vars.personId } },
+          body: { engagement_type: vars.engagementType },
+        },
+      );
+      if (error) {
         throw new Error(
-          (json as { detail?: string }).detail ?? "Convert failed.",
+          (error as { detail?: string }).detail ?? "Could not create engagement.",
         );
       }
-      return (await res.json()) as { engagement_ids: string[] };
     },
-    onSuccess: (result) => {
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["intakes", id] });
       qc.invalidateQueries({ queryKey: ["engagements", "list"] });
-      if (result && result.engagement_ids.length === 1) {
-        snackbar.show("Engagement created.");
-        navigate(`/engagements/${result.engagement_ids[0]}`);
-      } else if (result) {
-        snackbar.show(`${result.engagement_ids.length} engagements created.`);
-      }
+      snackbar.show("Engagement created.");
     },
     onError: (e: Error) => snackbar.show(e.message, "error"),
   });
@@ -304,6 +298,7 @@ export function IntakeForm() {
         intakeDate={intake.data.intake_date}
         referralSource={intake.data.referral_source}
         outcome={intake.data.outcome}
+        converted={intake.data.converted_at != null}
         onIntakeDateChange={(v) => patch.mutate({ intake_date: v })}
         onReferralSourceChange={(v) => patch.mutate({ referral_source: v })}
         showReferral={showReferral}
@@ -348,14 +343,9 @@ export function IntakeForm() {
         onPatchStudent={(personId, body) =>
           patchStudent.mutate({ personId, body })
         }
-        onConvert={async () => {
-          try {
-            return await convert.mutateAsync();
-          } catch {
-            return null;
-          }
+        onCreateEngagement={async (personId, engagementType) => {
+          await createEngagement.mutateAsync({ personId, engagementType });
         }}
-        converting={convert.isPending}
       />
 
       <IntakeNotesSection

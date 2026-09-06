@@ -64,13 +64,22 @@ type Bucket = "in_progress" | "nurturing" | "converted" | "closed" | "all";
 // Matches the kanban column groupings so the stat-strip counts and
 // the kanban columns stay in lockstep. Lifted out of KANBAN_COLUMNS
 // so the list view can filter by the same logic.
+// converted_at is the single source of truth for "Converted" now that
+// engagements are created per-student (no more outcome='converting'
+// step). It wins over any outcome the consultant may also have set.
 const BUCKET_MATCH: Record<Exclude<Bucket, "all">, (r: IntakeRow) => boolean> = {
-  in_progress: (r) =>
-    r.outcome == null || (r.outcome === "converting" && r.converted_at == null),
-  nurturing: (r) => r.outcome === "nurture",
-  converted: (r) => r.outcome === "converting" && r.converted_at != null,
+  converted: (r) => r.converted_at != null,
+  nurturing: (r) => r.converted_at == null && r.outcome === "nurture",
   closed: (r) =>
-    r.outcome != null && r.outcome !== "converting" && r.outcome !== "nurture",
+    r.converted_at == null &&
+    r.outcome != null &&
+    r.outcome !== "nurture" &&
+    r.outcome !== "converting",
+  // Everything else: no engagements yet and no terminal disposition
+  // (covers legacy outcome='converting' rows that never converted).
+  in_progress: (r) =>
+    r.converted_at == null &&
+    (r.outcome == null || r.outcome === "converting"),
 };
 
 // Display label + hover description for each phase. Single source of
@@ -445,21 +454,12 @@ interface KanbanColumnDef {
 }
 
 // Four buckets keyed on what work is actually left:
-//   In Progress → no outcome yet, OR outcome='converting' but the
-//     convert flow hasn't run (the operator still has to click
-//     Convert; the work is unfinished).
-//   Converted → outcome='converting' AND converted_at IS NOT NULL —
-//     engagement(s) spawned, this intake is done.
-//   Nurturing → outcome='nurture'.
-//   Closed → any negative terminal outcome (declined / no_response /
-//     duplicate).
-//
-// We intentionally don't show a separate "Converting" column. The
-// time between "decided to convert" and "actually converted" is
-// usually seconds; surfacing it as its own column adds noise without
-// flagging unfinished work the operator needs to revisit. The list
-// view still labels those rows "Converting" via OutcomeChip so the
-// stated intent stays visible.
+//   New → no engagements yet and no terminal disposition.
+//   Deferred → outcome='nurture' (and not converted).
+//   Converted → converted_at IS NOT NULL — at least one engagement was
+//     created from this intake.
+//   Closed → a negative terminal outcome (declined / no_response /
+//     duplicate) and not converted.
 //
 // Match fns delegate to BUCKET_MATCH so the stat strip and the kanban
 // columns can't drift apart.
@@ -629,13 +629,13 @@ function OutcomeChip({
   outcome: Outcome | null;
   convertedAt: string | null;
 }) {
+  // An intake with engagements is Converted regardless of any outcome
+  // the consultant also set — converted_at is the source of truth.
+  if (convertedAt) {
+    return <StatusChip size="small" label="Converted" tone="success" variant="soft" />;
+  }
   if (!outcome) {
     return <StatusChip size="small" label="New" tone="info" variant="soft" />;
-  }
-  // Override the 'Converting' label once the convert flow has actually
-  // spawned engagements — at that point the work is done, not in flight.
-  if (outcome === "converting" && convertedAt) {
-    return <StatusChip size="small" label="Converted" tone="success" variant="soft" />;
   }
   const display = OUTCOME_STATUS_DISPLAY[outcome];
   return (

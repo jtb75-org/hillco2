@@ -64,7 +64,7 @@ async function addStudent(page: Page, studentName: string) {
   await dialog.getByText("Current grade").locator("..").getByRole("textbox").fill("8th");
   await dialog.getByRole("button", { name: "Add" }).click();
   await expect(dialog).toBeHidden();
-  await expect(page.locator('[data-testid^="intake-candidacy-row-"]').first()).toBeVisible();
+  await expect(page.locator('[data-testid^="intake-engagement-row-"]').first()).toBeVisible();
 }
 
 // Set a feature flag on/off via Admin → Feature flags, addressed by its
@@ -91,14 +91,16 @@ async function convertIntakeToAssessment(page: Page, desiredOutcome: string) {
   await page.keyboard.press("Enter");
   await page.getByTestId("intake-consent-control").click();
 
-  const candidacyRow = page.locator('[data-testid^="intake-candidacy-row-"]').first();
-  await candidacyRow.locator('[data-testid^="intake-candidate-control-"]').click();
-  await candidacyRow.locator('[data-testid^="intake-recommended-type-"]').getByRole("combobox").click();
+  // Per-student: pick the engagement type, then Create. The row then
+  // shows a link to the new engagement — follow it.
+  const row = page.locator('[data-testid^="intake-engagement-row-"]').first();
+  await row.locator('[data-testid^="intake-engagement-type-"]').getByRole("combobox").click();
   await page.getByRole("option", { name: "Assessment" }).click();
+  await row.locator('[data-testid^="intake-create-engagement-"]').click();
 
-  await page.getByTestId("intake-outcome-select").getByRole("combobox").click();
-  await page.getByRole("option", { name: "Converting" }).click();
-  await page.getByRole("button", { name: "Convert to engagement →" }).click();
+  const link = row.locator('[data-testid^="intake-engagement-link-"]');
+  await expect(link).toBeVisible();
+  await link.click();
   await expect(page).toHaveURL(/\/app\/engagements\/[0-9a-f-]+$/);
 }
 
@@ -819,7 +821,8 @@ test.describe.serial("intake conversion lifecycle", () => {
     await page.goto("/app/intakes");
     await page.getByRole("button", { name: "List" }).click();
     const row = page.getByRole("row", { name: new RegExp(familyName) });
-    await expect(row).toContainText("Converting");
+    // Engagement deleted → converted_at cleared → intake reads "New" again.
+    await expect(row).toContainText("New");
 
     await page.getByRole("button", { name: "Kanban" }).click();
     await expect(page.getByText(familyName)).toBeVisible();

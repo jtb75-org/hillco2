@@ -4297,6 +4297,68 @@
         }
       }
     },
+    "/api/intakes/{intake_id}/students/{person_id}/engagement": {
+      "post": {
+        "tags": [
+          "intakes"
+        ],
+        "summary": "Create Student Engagement",
+        "description": "Create one engagement for a single student on this intake.\n\nThe per-student replacement for the batch convert flow: the operator\npicks a type on the student's row and clicks Create. Reuses the same\nintake snapshot + catalog seeding, applies the same duplicate guard,\npersists the chosen type on the intake_students row, and marks the\nintake converted (converted_at) + the family a client. Deleting the\nengagement later re-opens the intake via the engagements delete path.\nRow-locks the intake so concurrent creates can't double-fire.",
+        "operationId": "create_student_engagement_api_intakes__intake_id__students__person_id__engagement_post",
+        "parameters": [
+          {
+            "name": "intake_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Intake Id"
+            }
+          },
+          {
+            "name": "person_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Person Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StudentEngagementCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/engagements/{engagement_id}/learning-profiles": {
       "get": {
         "tags": [
@@ -13141,6 +13203,19 @@
         },
         "type": "object",
         "title": "StudentCreate"
+      },
+      "StudentEngagementCreate": {
+        "properties": {
+          "engagement_type": {
+            "type": "string",
+            "title": "Engagement Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "engagement_type"
+        ],
+        "title": "StudentEngagementCreate"
       },
       "StudentUpdate": {
         "properties": {
