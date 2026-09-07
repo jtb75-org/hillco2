@@ -22,18 +22,23 @@ router = APIRouter(prefix="/api/feature-flags", tags=["feature-flags"])
 # only the on/off override, keyed by this string.
 FLAG_DEFS: dict[str, dict] = {
     "intake_referral": {
-        "label": "Intake referral source",
-        "description": "Show the referral-source field on intakes.",
+        "label": "Intake → Referral source",
+        "description": "Show the referral-source field on the intake page.",
         "default": True,
     },
     "intake_desired_outcome": {
-        "label": "Intake desired outcome",
-        "description": "Show the \"Desired outcome (in parents' words)\" field on intakes.",
+        "label": "Intake → Desired outcome (in parents' words)",
+        "description": "Show the desired-outcome field on the intake page.",
         "default": True,
     },
     "intake_constraints": {
-        "label": "Intake constraints",
-        "description": "Show the \"Constraints (commute, budget, schedule)\" field on intakes.",
+        "label": "Intake → Constraints (commute, budget, schedule)",
+        "description": "Show the constraints field on the intake page.",
+        "default": True,
+    },
+    "intake_disposition_reason": {
+        "label": "Intake → Disposition reason / context",
+        "description": "Show the disposition-reason field on the intake page.",
         "default": True,
     },
 }

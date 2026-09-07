@@ -81,7 +81,7 @@ async function setFeatureFlag(page: Page, flagLabel: string, enabled: boolean) {
 }
 
 async function setIntakeReferralFlag(page: Page, enabled: boolean) {
-  await setFeatureFlag(page, "Intake referral source", enabled);
+  await setFeatureFlag(page, "Intake → Referral source", enabled);
 }
 
 async function convertIntakeToAssessment(page: Page, desiredOutcome: string) {
@@ -849,16 +849,16 @@ test.describe.serial("intake conversion lifecycle", () => {
     await expect(constraints).toBeVisible();
 
     // Turn both off; the two Family-context fields disappear.
-    await setFeatureFlag(page, "Intake desired outcome", false);
-    await setFeatureFlag(page, "Intake constraints", false);
+    await setFeatureFlag(page, "Intake → Desired outcome (in parents' words)", false);
+    await setFeatureFlag(page, "Intake → Constraints (commute, budget, schedule)", false);
     await page.goto(intakeUrl);
     await expect(page.getByText("Family context")).toBeVisible();
     await expect(desired).toHaveCount(0);
     await expect(constraints).toHaveCount(0);
 
     // Restore (leaves global state clean for other tests).
-    await setFeatureFlag(page, "Intake desired outcome", true);
-    await setFeatureFlag(page, "Intake constraints", true);
+    await setFeatureFlag(page, "Intake → Desired outcome (in parents' words)", true);
+    await setFeatureFlag(page, "Intake → Constraints (commute, budget, schedule)", true);
     await page.goto(intakeUrl);
     await expect(desired).toBeVisible();
     await expect(constraints).toBeVisible();
@@ -885,4 +885,24 @@ test("intake referral field respects the feature flag", async ({ page, baseURL }
   await setIntakeReferralFlag(page, true);
   await page.goto(intakeUrl);
   await expect(page.getByText("Referral source", { exact: true })).toBeVisible();
+});
+
+test("intake disposition-reason field respects the feature flag", async ({ page, baseURL }) => {
+  await login(page, baseURL);
+
+  const familyName = `E2E Disposition Flag ${Date.now()}`;
+  await createIntakeFromNewFamily(page, familyName);
+  const intakeUrl = page.url();
+
+  const field = page.getByText("Disposition reason / context");
+  await expect(field).toBeVisible();
+
+  await setFeatureFlag(page, "Intake → Disposition reason / context", false);
+  await page.goto(intakeUrl);
+  await expect(page.getByText("Intake outcome")).toBeVisible();
+  await expect(field).toHaveCount(0);
+
+  await setFeatureFlag(page, "Intake → Disposition reason / context", true);
+  await page.goto(intakeUrl);
+  await expect(field).toBeVisible();
 });

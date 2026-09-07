@@ -14,6 +14,7 @@ import { Link as RouterLink } from "react-router-dom";
 
 import { LabeledField } from "../../components/LabeledField";
 import { SectionPanel } from "../../components/SectionPanel";
+import { useFeatureFlag } from "../../featureFlags";
 
 import type {
   EngagementTypeOption,
@@ -43,6 +44,7 @@ export function FitOutcomeCard({
   onCreateEngagement: (personId: string, engagementType: string) => Promise<void>;
 }) {
   const [creatingId, setCreatingId] = useState<string | null>(null);
+  const showDisposition = useFeatureFlag("intake_disposition_reason");
 
   // Local mirror for the disposition textarea — PATCH-on-blur to avoid
   // a write per keystroke. The other fields all PATCH on change.
@@ -120,23 +122,25 @@ export function FitOutcomeCard({
               </TextField>
             </LabeledField>
           </Grid>
-          <Grid item xs={12} md={6}>
-            <LabeledField label="Disposition reason / context">
-              <TextField
-                multiline
-                minRows={2}
-                fullWidth
-                placeholder="Free text — useful for declined / deferred outcomes."
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                onBlur={() => {
-                  if (reason !== (intake.disposition_reason ?? "")) {
-                    onPatchIntake({ disposition_reason: reason || null });
-                  }
-                }}
-              />
-            </LabeledField>
-          </Grid>
+          {showDisposition && (
+            <Grid item xs={12} md={6}>
+              <LabeledField label="Disposition reason / context">
+                <TextField
+                  multiline
+                  minRows={2}
+                  fullWidth
+                  placeholder="Free text — useful for declined / deferred outcomes."
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  onBlur={() => {
+                    if (reason !== (intake.disposition_reason ?? "")) {
+                      onPatchIntake({ disposition_reason: reason || null });
+                    }
+                  }}
+                />
+              </LabeledField>
+            </Grid>
+          )}
         </Grid>
       </Box>
     </SectionPanel>
