@@ -84,12 +84,17 @@ class AgreementSupersede(BaseModel):
 
 # ---- Helpers --------------------------------------------------------------
 
-async def _engagement_or_404(conn, engagement_id: UUID) -> None:
-    if not await conn.fetchval(
-        "SELECT 1 FROM engagements WHERE id = $1 AND deleted_at IS NULL",
+async def _engagement_or_404(conn, engagement_id: UUID):
+    row = await conn.fetchrow(
+        """
+        SELECT id, billing_mode, fixed_fee
+        FROM engagements WHERE id = $1 AND deleted_at IS NULL
+        """,
         engagement_id,
-    ):
+    )
+    if not row:
         raise HTTPException(status_code=404, detail="Engagement not found")
+    return row
 
 
 async def _agreement_or_404(conn, agreement_id: UUID):
@@ -166,12 +171,26 @@ async def create_agreement(
     If template_id is supplied, the template's body_markdown is
     snapshotted into the new agreement. Operator edits via PATCH affect
     the agreement copy only — the source template is untouched."""
-    await _engagement_or_404(conn, engagement_id)
+    eng = await _engagement_or_404(conn, engagement_id)
     await _validate_document_for_agreement(conn, body.document_id)
 
     contract_number = None
     if body.type == "services_contract":
         contract_number = await conn.fetchval("SELECT next_contract_number()")
+
+    # Fixed-bid services contract: the fee is the engagement's fixed_fee
+    # unless the operator overrides `amount`. Once this agreement is active,
+    # its amount is the canonical signed figure (a later engagement-fee edit
+    # won't rewrite it). Block creation if the engagement has no fee yet.
+    amount = body.amount
+    if body.type == "services_contract" and eng["billing_mode"] == "fixed":
+        if amount is None:
+            amount = eng["fixed_fee"]
+        if amount is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Set the engagement's fixed fee before creating a fixed-fee contract.",
+            )
 
     body_markdown: str | None = None
     if body.template_id is not None:
@@ -207,7 +226,7 @@ async def create_agreement(
         )
         RETURNING *
         """,
-        engagement_id, body.type, contract_number, body.amount,
+        engagement_id, body.type, contract_number, amount,
         body.signed_at, body.effective_date, body.expires_at,
         body.document_id, (body.notes or "").strip() or None, user["id"],
         body.template_id, body_markdown,
@@ -486,6 +505,7 @@ async def _build_default_context(conn, agreement: dict) -> dict[str, str]:
     eng = await conn.fetchrow(
         """
         SELECT e.id, e.engagement_type, e.default_hourly_rate,
+               e.billing_mode, e.fixed_fee,
                e.start_date, e.student_id, e.family_id,
                f.household_name AS family_name,
                TRIM(BOTH ' ' FROM
@@ -555,6 +575,13 @@ async def _build_default_context(conn, agreement: dict) -> dict[str, str]:
     # Money / dates
     if eng and eng["default_hourly_rate"] is not None:
         ctx["hourly_rate"] = str(eng["default_hourly_rate"])
+    # Fixed fee: the signed agreement amount is canonical; fall back to the
+    # engagement's fixed_fee (the quote) for a not-yet-priced draft.
+    fixed_fee = agreement.get("amount")
+    if fixed_fee is None and eng is not None:
+        fixed_fee = eng["fixed_fee"]
+    if fixed_fee is not None:
+        ctx["fixed_fee"] = str(fixed_fee)
     ctx["effective_date"] = (
         agreement.get("signed_at") or agreement.get("effective_date") or today
     )

@@ -121,6 +121,19 @@ async def _validate_engagement_type(conn, code: str) -> None:
         )
 
 
+async def _type_billing(conn, code: str) -> tuple[str, object]:
+    """The engagement type's billing_mode + default_fixed_fee, snapshotted
+    onto a new engagement at creation (a later catalog edit won't rewrite
+    an existing engagement's terms)."""
+    row = await conn.fetchrow(
+        "SELECT billing_mode, default_fixed_fee FROM engagement_types WHERE code = $1",
+        code,
+    )
+    if row is None:
+        return "hourly", None
+    return row["billing_mode"], row["default_fixed_fee"]
+
+
 def _maybe_json(value):
     """JSONB columns come back from asyncpg as Python strings when no
     codec is registered. Decode for the response shape; leave non-str
@@ -850,17 +863,23 @@ async def convert_intake(
 
         for c in candidates:
             snapshot = _build_intake_snapshot(dict(intake), dict(c))
+            billing_mode, fixed_fee = await _type_billing(
+                conn, c["recommended_engagement_type"]
+            )
             eng_id = await conn.fetchval(
                 """
                 INSERT INTO engagements (
                   family_id, student_id, intake_id,
                   engagement_type, status, start_date,
-                  lead_consultant_id, intake_snapshot
-                ) VALUES ($1, $2, $3, $4, 'in_progress', CURRENT_DATE, $5, $6::jsonb)
+                  lead_consultant_id, intake_snapshot,
+                  billing_mode, fixed_fee
+                ) VALUES ($1, $2, $3, $4, 'in_progress', CURRENT_DATE, $5, $6::jsonb,
+                          $7, $8)
                 RETURNING id
                 """,
                 intake["family_id"], c["person_id"], intake_id,
                 c["recommended_engagement_type"], user["id"], snapshot,
+                billing_mode, fixed_fee,
             )
             engagement_ids.append(str(eng_id))
             # Auto-seed every applicable catalog item for this engagement
@@ -966,17 +985,21 @@ async def create_student_engagement(
         student = dict(student)
         student["recommended_engagement_type"] = engagement_type
         snapshot = _build_intake_snapshot(dict(intake), student)
+        billing_mode, fixed_fee = await _type_billing(conn, engagement_type)
         eng_id = await conn.fetchval(
             """
             INSERT INTO engagements (
               family_id, student_id, intake_id,
               engagement_type, status, start_date,
-              lead_consultant_id, intake_snapshot
-            ) VALUES ($1, $2, $3, $4, 'in_progress', CURRENT_DATE, $5, $6::jsonb)
+              lead_consultant_id, intake_snapshot,
+              billing_mode, fixed_fee
+            ) VALUES ($1, $2, $3, $4, 'in_progress', CURRENT_DATE, $5, $6::jsonb,
+                      $7, $8)
             RETURNING id
             """,
             intake["family_id"], person_id, intake_id,
             engagement_type, user["id"], snapshot,
+            billing_mode, fixed_fee,
         )
         await seed_catalog_for_engagement(
             conn,

@@ -23,6 +23,7 @@ import { Link as RouterLink, useNavigate } from "react-router-dom";
 
 import { InvoiceStatusChip } from "../invoices/InvoiceStatusChip";
 import {
+  useCreateFixedFeeInvoice,
   useCreateInvoice,
   useEngagementInvoices,
   useUninvoicedForEngagement,
@@ -38,17 +39,23 @@ import { useSnackbar } from "../../components/Snackbar";
 interface BillingCardProps {
   engagementId: string;
   defaultHourlyRate: string | null;
+  billingMode: "hourly" | "fixed";
+  fixedFee: string | null;
 }
 
 export function BillingCard({
   engagementId,
   defaultHourlyRate,
+  billingMode,
+  fixedFee,
 }: BillingCardProps) {
   const navigate = useNavigate();
   const snackbar = useSnackbar();
+  const isFixed = billingMode === "fixed";
   const uninvoiced = useUninvoicedForEngagement(engagementId);
   const invoices = useEngagementInvoices(engagementId);
   const createInvoice = useCreateInvoice(engagementId);
+  const createFixedFee = useCreateFixedFeeInvoice(engagementId);
   const [selectedTimeIds, setSelectedTimeIds] = useState<Set<string>>(new Set());
   const [selectedExpenseIds, setSelectedExpenseIds] = useState<Set<string>>(new Set());
   // Contract terms are net-30, so pre-fill issue (today) + 30 days. The
@@ -105,6 +112,19 @@ export function BillingCard({
     setSelectedExpenseIds((prev) => toggled(prev, id));
   };
 
+  const handleBillFixedFee = () => {
+    createFixedFee.mutate(
+      { due_date: dueDate || null, notes: notes.trim() || null },
+      {
+        onSuccess: (invoice) => {
+          snackbar.show(`Draft ${invoice.invoice_number} created`);
+          navigate(`/invoices/${invoice.id}`);
+        },
+        onError: (error: Error) => snackbar.show(error.message, "error"),
+      },
+    );
+  };
+
   const handleCreate = () => {
     createInvoice.mutate(
       {
@@ -130,12 +150,16 @@ export function BillingCard({
       titleVariant="overline"
       actions={
         <Typography variant="caption" color="text.secondary">
-          {formatInvoiceMoney(selectedTotal)} selected
+          {isFixed
+            ? fixedFee
+              ? `Fixed fee ${formatInvoiceMoney(fixedFee)}`
+              : "Fixed — no fee set"
+            : `${formatInvoiceMoney(selectedTotal)} selected`}
         </Typography>
       }
     >
       <Stack spacing={2} sx={{ p: 2.5 }}>
-        {uninvoiced.error && (
+        {!isFixed && uninvoiced.error && (
           <Alert
             severity="error"
             action={
@@ -174,9 +198,13 @@ export function BillingCard({
           alignItems={{ md: "center" }}
         >
           <Box sx={{ flex: 1 }}>
-            <Typography variant="subtitle2">Create draft invoice</Typography>
+            <Typography variant="subtitle2">
+              {isFixed ? "Bill fixed fee" : "Create draft invoice"}
+            </Typography>
             <Typography variant="caption" color="text.secondary">
-              Select billable uninvoiced time and expenses for this engagement.
+              {isFixed
+                ? "This engagement bills a fixed package fee. Billing creates a one-line draft for the fee; add or adjust lines on the draft as needed."
+                : "Select billable uninvoiced time and expenses for this engagement."}
             </Typography>
           </Box>
           <TextField
@@ -190,7 +218,32 @@ export function BillingCard({
           />
         </Stack>
 
-        {!uninvoiced.isPending && !hasUninvoiced ? (
+        {isFixed ? (
+          <Stack spacing={1.5}>
+            <TextField
+              label="Notes"
+              size="small"
+              multiline
+              minRows={2}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
+            <Stack direction="row" justifyContent="flex-end">
+              <Button
+                variant="contained"
+                startIcon={<AddIcon />}
+                disabled={!fixedFee || createFixedFee.isPending}
+                onClick={handleBillFixedFee}
+              >
+                {createFixedFee.isPending
+                  ? "Creating…"
+                  : fixedFee
+                    ? `Bill fixed fee (${formatInvoiceMoney(fixedFee)})`
+                    : "Set a fixed fee first"}
+              </Button>
+            </Stack>
+          </Stack>
+        ) : !uninvoiced.isPending && !hasUninvoiced ? (
           <Typography variant="body2" color="text.disabled">
             No billable uninvoiced time or expenses.
           </Typography>
@@ -233,26 +286,28 @@ export function BillingCard({
           </Stack>
         )}
 
-        <Stack spacing={1.5}>
-          <TextField
-            label="Notes"
-            size="small"
-            multiline
-            minRows={2}
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-          />
-          <Stack direction="row" justifyContent="flex-end" spacing={1}>
-            <Button
-              variant="contained"
-              startIcon={<AddIcon />}
-              disabled={!canCreate}
-              onClick={handleCreate}
-            >
-              {createInvoice.isPending ? "Creating…" : "Create draft"}
-            </Button>
+        {!isFixed && (
+          <Stack spacing={1.5}>
+            <TextField
+              label="Notes"
+              size="small"
+              multiline
+              minRows={2}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
+            <Stack direction="row" justifyContent="flex-end" spacing={1}>
+              <Button
+                variant="contained"
+                startIcon={<AddIcon />}
+                disabled={!canCreate}
+                onClick={handleCreate}
+              >
+                {createInvoice.isPending ? "Creating…" : "Create draft"}
+              </Button>
+            </Stack>
           </Stack>
-        </Stack>
+        )}
       </Stack>
     </SectionPanel>
   );

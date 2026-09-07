@@ -9,6 +9,8 @@ the UI. Soft delete only; historical engagements keep their type
 reference intact.
 """
 import re
+from decimal import Decimal
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -23,11 +25,16 @@ router = APIRouter(prefix="/api/engagement-types", tags=["engagement-types"])
 _CODE_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 
 
+BillingMode = Literal["hourly", "fixed"]
+
+
 class EngagementTypeCreate(BaseModel):
     code: str = Field(..., min_length=1, max_length=64)
     label: str = Field(..., min_length=1, max_length=200)
     description: str | None = None
     sort_order: int = 0
+    billing_mode: BillingMode = "hourly"
+    default_fixed_fee: Decimal | None = Field(default=None, ge=0)
 
 
 class EngagementTypeUpdate(BaseModel):
@@ -37,6 +44,28 @@ class EngagementTypeUpdate(BaseModel):
     label: str | None = Field(default=None, min_length=1, max_length=200)
     description: str | None = None
     sort_order: int | None = None
+    billing_mode: BillingMode | None = None
+    default_fixed_fee: Decimal | None = Field(default=None, ge=0)
+
+
+def _billing_fields(billing_mode: str | None, default_fixed_fee, *, current_mode=None):
+    """Normalize + validate the billing_mode / default_fixed_fee pair.
+
+    A fixed type must carry a price; an hourly type must not. Returns the
+    (mode, fee) to persist, or raises 400. `current_mode` is the stored
+    mode for partial (PATCH) updates that only touch one of the two.
+    """
+    mode = billing_mode if billing_mode is not None else current_mode
+    if mode == "hourly":
+        return "hourly", None
+    if mode == "fixed":
+        if default_fixed_fee is None:
+            raise HTTPException(
+                status_code=400,
+                detail="A fixed-billing engagement type needs a default fixed fee.",
+            )
+        return "fixed", default_fixed_fee
+    return mode, default_fixed_fee
 
 
 def _normalize_code(code: str) -> str:
@@ -62,6 +91,7 @@ async def list_types(
     rows = await conn.fetch(
         f"""
         SELECT id, code, label, description, sort_order,
+               billing_mode, default_fixed_fee,
                created_at, updated_at, deleted_at
         FROM engagement_types
         {where}
@@ -83,16 +113,22 @@ async def create_type(
     )
     if existing:
         raise HTTPException(status_code=409, detail=f"engagement_type '{code}' already exists")
+    billing_mode, default_fixed_fee = _billing_fields(
+        body.billing_mode, body.default_fixed_fee,
+    )
     row = await conn.fetchrow(
         """
-        INSERT INTO engagement_types (code, label, description, sort_order)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO engagement_types
+          (code, label, description, sort_order, billing_mode, default_fixed_fee)
+        VALUES ($1, $2, $3, $4, $5, $6)
         RETURNING *
         """,
         code,
         body.label.strip(),
         (body.description or "").strip() or None,
         body.sort_order,
+        billing_mode,
+        default_fixed_fee,
     )
     return dict(row)
 
@@ -113,6 +149,16 @@ async def update_type(
         fields["label"] = fields["label"].strip()
     if "description" in fields:
         fields["description"] = (fields["description"] or "").strip() or None
+    # Billing mode + fee must stay consistent (DB CHECK). Whenever either is
+    # touched, resolve the pair against the stored values and write both.
+    if "billing_mode" in fields or "default_fixed_fee" in fields:
+        cur = await conn.fetchrow(
+            "SELECT billing_mode, default_fixed_fee FROM engagement_types WHERE id = $1",
+            type_id,
+        )
+        mode = fields.get("billing_mode", cur["billing_mode"])
+        fee = fields.get("default_fixed_fee", cur["default_fixed_fee"])
+        fields["billing_mode"], fields["default_fixed_fee"] = _billing_fields(mode, fee)
     if not fields:
         raise HTTPException(status_code=400, detail="No fields to update")
     set_sql = ", ".join(f"{col} = ${i+2}" for i, col in enumerate(fields))

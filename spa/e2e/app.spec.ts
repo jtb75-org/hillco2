@@ -906,3 +906,49 @@ test("intake disposition-reason field respects the feature flag", async ({ page,
   await page.goto(intakeUrl);
   await expect(field).toBeVisible();
 });
+
+async function createFixedEngagementFixture(page: Page, fee = "3200.00") {
+  const suffix = `${Date.now().toString(36)}${Math.floor(Math.random() * 1000)}`;
+  const typeResp = await page.context().request.post("/api/engagement-types", {
+    data: {
+      code: `t_${suffix}`,
+      label: `Fixed ${suffix}`,
+      billing_mode: "fixed",
+      default_fixed_fee: fee,
+    },
+  });
+  expect(typeResp.ok()).toBeTruthy();
+  const type = await typeResp.json();
+
+  const family = await (
+    await page.context().request.post("/api/families", {
+      data: { household_name: `E2E Fixed Household ${suffix}` },
+    })
+  ).json();
+  const student = await (
+    await page.context().request.post(`/api/families/${family.id}/students`, {
+      data: { first_name: "Fixed", last_name: `Student ${suffix}`, current_grade: "10" },
+    })
+  ).json();
+  const engagement = await (
+    await page.context().request.post(`/api/families/${family.id}/engagements`, {
+      data: { student_id: student.id, engagement_type: type.code },
+    })
+  ).json();
+  return { engagement, fee };
+}
+
+test("fixed-bid engagement bills its fixed fee as a one-line invoice", async ({ page, baseURL }) => {
+  await login(page, baseURL);
+  const { engagement } = await createFixedEngagementFixture(page);
+
+  await page.goto(`/app/engagements/${engagement.id}`);
+
+  const billBtn = page.getByRole("button", { name: /Bill fixed fee/i });
+  await expect(billBtn).toBeVisible();
+  await billBtn.click();
+
+  await expect(page).toHaveURL(/\/app\/invoices\/[0-9a-f-]+$/);
+  await expect(page.getByText(/Fixed fee —/)).toBeVisible();
+  await expect(page.getByText("$3,200.00").first()).toBeVisible();
+});

@@ -155,7 +155,13 @@ function lifecycleOf(a: Agreement): LifecycleState {
   return a.status as LifecycleState;
 }
 
-export function ContractCard({ engagementId }: { engagementId: string }) {
+export function ContractCard({
+  engagementId,
+  billingMode,
+}: {
+  engagementId: string;
+  billingMode: "hourly" | "fixed";
+}) {
   const qc = useQueryClient();
   const snackbar = useSnackbar();
   const [addOpen, setAddOpen] = useState(false);
@@ -295,6 +301,7 @@ export function ContractCard({ engagementId }: { engagementId: string }) {
       <AddAgreementDialog
         open={addOpen}
         engagementId={engagementId}
+        billingMode={billingMode}
         existingTypes={new Set(
           all.filter((a) => a.status !== "superseded" && a.status !== "expired" && a.status !== "terminated").map((a) => a.type),
         )}
@@ -491,12 +498,14 @@ function AgreementRow({
 function AddAgreementDialog({
   open,
   engagementId,
+  billingMode,
   existingTypes,
   onClose,
   onCreated,
 }: {
   open: boolean;
   engagementId: string;
+  billingMode: "hourly" | "fixed";
   existingTypes: Set<AgreementType>;
   onClose: () => void;
   onCreated: () => void;
@@ -510,12 +519,15 @@ function AddAgreementDialog({
   const alreadyHasActive = existingTypes.has(type);
 
   const templates = useQuery<ContractTemplate[], Error>({
-    queryKey: ["contract-templates", { kind: type }],
+    queryKey: ["contract-templates", { kind: type, billingMode }],
     enabled: open,
     queryFn: async () => {
-      const res = await fetch(`/api/contract-templates?kind=${type}`, {
-        credentials: "include",
-      });
+      // billing_mode orders the matching services-contract template first
+      // (hourly vs fixed), so the auto-select below picks the right one.
+      const res = await fetch(
+        `/api/contract-templates?kind=${type}&billing_mode=${billingMode}`,
+        { credentials: "include" },
+      );
       if (!res.ok) throw new Error("Failed to load templates.");
       return res.json();
     },

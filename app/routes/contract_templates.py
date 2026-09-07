@@ -42,7 +42,10 @@ VARIABLE_HINTS: dict[str, str] = {
     "firm_address":                  "firm_settings",
     # Engagement
     "hourly_rate":     "engagement",
+    "fixed_fee":       "engagement",
     "effective_date":  "engagement",
+    # Fixed-bid, operator-typed
+    "payment_schedule": "agreement-override",
     # Family
     "client_name":     "family",
     # client_address auto-fills from the billing-flagged guardian's
@@ -57,6 +60,7 @@ VARIABLE_HINTS: dict[str, str] = {
 
 
 AgreementType = Literal["services_contract", "medical_release"]
+BillingMode = Literal["hourly", "fixed"]
 
 
 # {{snake_case}} pattern: lowercase letters, digits, underscores; at
@@ -80,6 +84,8 @@ class TemplateCreate(BaseModel):
     body_markdown: str = Field(..., min_length=1)
     is_active: bool = True
     sort_order: int = 0
+    # Only meaningful for services_contract; forced NULL for medical_release.
+    billing_mode: BillingMode | None = None
 
 
 class TemplateUpdate(BaseModel):
@@ -87,6 +93,7 @@ class TemplateUpdate(BaseModel):
     body_markdown: str | None = Field(default=None, min_length=1)
     is_active: bool | None = None
     sort_order: int | None = None
+    billing_mode: BillingMode | None = None
 
 
 # ---- Helpers --------------------------------------------------------------
@@ -112,13 +119,23 @@ def _enrich(row: dict) -> dict:
 @router.get("/contract-templates")
 async def list_templates(
     kind: AgreementType | None = Query(None, description="Filter by agreement type"),
+    billing_mode: BillingMode | None = Query(
+        None,
+        description=(
+            "Preferred billing mode. Doesn't filter — orders exact matches "
+            "first, then universal (null-mode) templates, so the caller can "
+            "take the first result."
+        ),
+    ),
     include_inactive: bool = Query(False),
     _user=Depends(require_user),
     conn=Depends(get_conn),
 ):
     """List templates, newest-first per kind by sort_order. Returns
     each with its auto-extracted variable list so the admin UI can
-    show what fillins will be required."""
+    show what fillins will be required. When `billing_mode` is given,
+    matching templates are ordered first (then universal), so a caller
+    can auto-select the right services contract for an engagement."""
     clauses = ["deleted_at IS NULL"]
     args: list = []
     if kind is not None:
@@ -127,13 +144,24 @@ async def list_templates(
     if not include_inactive:
         clauses.append("is_active = TRUE")
     where = " AND ".join(clauses)
+
+    if billing_mode is not None:
+        args.append(billing_mode)
+        # exact mode match (0) < universal/null (1) < other mode (2)
+        order = (
+            f"CASE WHEN billing_mode = ${len(args)} THEN 0 "
+            "WHEN billing_mode IS NULL THEN 1 ELSE 2 END, kind, sort_order, name"
+        )
+    else:
+        order = "kind, sort_order, name"
+
     rows = await conn.fetch(
         f"""
-        SELECT id, kind, name, body_markdown, is_active, sort_order,
+        SELECT id, kind, name, body_markdown, billing_mode, is_active, sort_order,
                created_at, updated_at
         FROM contract_templates
         WHERE {where}
-        ORDER BY kind, sort_order, name
+        ORDER BY {order}
         """,
         *args,
     )
@@ -156,12 +184,14 @@ async def create_template(
     _user=Depends(require_user),
     conn=Depends(get_conn),
 ):
+    # billing_mode only applies to services contracts.
+    billing_mode = body.billing_mode if body.kind == "services_contract" else None
     row = await conn.fetchrow(
         """
         INSERT INTO contract_templates
-          (kind, name, body_markdown, is_active, sort_order)
-        VALUES ($1::agreement_type, $2, $3, $4, $5)
-        RETURNING id, kind, name, body_markdown, is_active, sort_order,
+          (kind, name, body_markdown, is_active, sort_order, billing_mode)
+        VALUES ($1::agreement_type, $2, $3, $4, $5, $6)
+        RETURNING id, kind, name, body_markdown, billing_mode, is_active, sort_order,
                   created_at, updated_at
         """,
         body.kind,
@@ -169,6 +199,7 @@ async def create_template(
         body.body_markdown,
         body.is_active,
         body.sort_order,
+        billing_mode,
     )
     return _enrich(row)
 
@@ -180,12 +211,15 @@ async def update_template(
     _user=Depends(require_user),
     conn=Depends(get_conn),
 ):
-    await _template_or_404(conn, template_id)
+    tpl = await _template_or_404(conn, template_id)
     fields = body.model_dump(exclude_unset=True)
     if not fields:
         raise HTTPException(status_code=400, detail="No fields to update")
     if "name" in fields and fields["name"] is not None:
         fields["name"] = fields["name"].strip()
+    # billing_mode only applies to services contracts.
+    if "billing_mode" in fields and tpl["kind"] != "services_contract":
+        fields["billing_mode"] = None
 
     sets = []
     args: list = [template_id]
@@ -197,7 +231,7 @@ async def update_template(
         f"""
         UPDATE contract_templates SET {", ".join(sets)}
         WHERE id = $1 AND deleted_at IS NULL
-        RETURNING id, kind, name, body_markdown, is_active, sort_order,
+        RETURNING id, kind, name, body_markdown, billing_mode, is_active, sort_order,
                   created_at, updated_at
         """,
         *args,

@@ -54,6 +54,11 @@ class EngagementUpdate(BaseModel):
     start_date: date | None = None
     target_end_date: date | None = None
     default_hourly_rate: Decimal | None = None
+    # Per-engagement billing override. Changing engagement_type does NOT
+    # re-snapshot these (never silently alter a negotiated deal) — set them
+    # explicitly if the mode/fee should move with a type change.
+    billing_mode: Literal["hourly", "fixed"] | None = None
+    fixed_fee: Decimal | None = Field(default=None, ge=0)
     lead_consultant_id: UUID | None = None
     notes: str | None = None
     # Reassignment is rare but supported. Must belong to the same family;
@@ -168,7 +173,7 @@ async def list_engagements(
         f"""
         SELECT
           e.id, e.engagement_type, e.status, e.start_date, e.target_end_date,
-          e.default_hourly_rate,
+          e.default_hourly_rate, e.billing_mode, e.fixed_fee,
           f.id AS family_id, f.household_name,
           s.id AS student_id,
           TRIM(BOTH ' ' FROM COALESCE(s.first_name,'') || CASE WHEN s.last_name IS NOT NULL AND s.last_name <> '' THEN ' ' || s.last_name ELSE '' END) AS student_name,
@@ -203,19 +208,29 @@ async def create_engagement(
 
     lead_id = body.lead_consultant_id or user["id"]
     notes = (body.notes or "").strip() or None
+    # Snapshot the type's billing defaults onto the engagement (a later
+    # catalog edit won't rewrite this deal's terms).
+    type_row = await conn.fetchrow(
+        "SELECT billing_mode, default_fixed_fee FROM engagement_types WHERE code = $1",
+        body.engagement_type,
+    )
+    billing_mode = type_row["billing_mode"] if type_row else "hourly"
+    fixed_fee = type_row["default_fixed_fee"] if type_row else None
 
     eng_id = await conn.fetchval(
         """
         INSERT INTO engagements (
           family_id, student_id, engagement_type, status,
           start_date, target_end_date,
-          default_hourly_rate, lead_consultant_id, notes
-        ) VALUES ($1, $2, $3, 'in_progress', $4, $5, $6, $7, $8)
+          default_hourly_rate, lead_consultant_id, notes,
+          billing_mode, fixed_fee
+        ) VALUES ($1, $2, $3, 'in_progress', $4, $5, $6, $7, $8, $9, $10)
         RETURNING id
         """,
         family_id, body.student_id, body.engagement_type,
         body.start_date, body.target_end_date,
         body.default_hourly_rate, lead_id, notes,
+        billing_mode, fixed_fee,
     )
 
     return await engagement_detail(eng_id, _user=user, conn=conn)

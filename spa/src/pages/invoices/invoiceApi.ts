@@ -108,6 +108,31 @@ export function useCreateInvoice(engagementId: string) {
   });
 }
 
+/** Fixed-bid: bill the engagement's fixed fee as a one-line draft invoice. */
+export function useCreateFixedFeeInvoice(engagementId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: { due_date?: string | null; notes?: string | null }) => {
+      const { data, error } = await api.POST(
+        "/api/engagements/{engagement_id}/invoices/fixed-fee",
+        {
+          params: { path: { engagement_id: engagementId } },
+          body,
+        },
+      );
+      if (error || !data) {
+        throw new Error(
+          (error as { detail?: string })?.detail ?? "Failed to create invoice.",
+        );
+      }
+      return data as InvoiceDetail;
+    },
+    onSuccess: () => {
+      invalidateInvoiceWorkflow(qc, engagementId);
+    },
+  });
+}
+
 export class NothingLeftToInvoiceError extends Error {
   constructor() {
     super("Nothing left to invoice on this engagement");

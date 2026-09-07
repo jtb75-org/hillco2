@@ -13,6 +13,7 @@ import {
   DialogTitle,
   FormControlLabel,
   IconButton,
+  InputAdornment,
   MenuItem,
   Paper,
   Stack,
@@ -103,6 +104,8 @@ interface EngagementType {
   label: string;
   description: string | null;
   sort_order: number;
+  billing_mode: "hourly" | "fixed";
+  default_fixed_fee: string | null;
   deleted_at: string | null;
 }
 
@@ -545,7 +548,11 @@ function EngagementTypesPanel({
           {live.map((t) => (
             <Chip
               key={t.id}
-              label={`${t.label} · ${t.code}`}
+              label={`${t.label} · ${
+                t.billing_mode === "fixed"
+                  ? `Fixed $${t.default_fixed_fee ?? "?"}`
+                  : "Hourly"
+              }`}
               onClick={() => setEditing(t)}
               onDelete={() => setConfirmingDelete(t)}
               variant="outlined"
@@ -702,6 +709,8 @@ function AddEngagementTypeDialog({
   const [code, setCode] = useState("");
   const [label, setLabel] = useState("");
   const [description, setDescription] = useState("");
+  const [billingMode, setBillingMode] = useState<"hourly" | "fixed">("hourly");
+  const [fixedFee, setFixedFee] = useState("");
   const create = useMutation({
     mutationFn: async () => {
       const { error } = await api.POST("/api/engagement-types", {
@@ -710,6 +719,8 @@ function AddEngagementTypeDialog({
           label: label.trim(),
           description: description.trim() || null,
           sort_order: nextSortOrder,
+          billing_mode: billingMode,
+          default_fixed_fee: billingMode === "fixed" ? fixedFee.trim() : null,
         } as never,
       });
       if (error) {
@@ -721,10 +732,13 @@ function AddEngagementTypeDialog({
       setCode("");
       setLabel("");
       setDescription("");
+      setBillingMode("hourly");
+      setFixedFee("");
       onCreated();
     },
     onError: (e: Error) => snackbar.show(e.message, "error"),
   });
+  const feeMissing = billingMode === "fixed" && !fixedFee.trim();
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>Add engagement type</DialogTitle>
@@ -754,19 +768,67 @@ function AddEngagementTypeDialog({
             value={description}
             onChange={(e) => setDescription(e.target.value)}
           />
+          <BillingFields
+            billingMode={billingMode}
+            fixedFee={fixedFee}
+            onBillingModeChange={setBillingMode}
+            onFixedFeeChange={setFixedFee}
+          />
         </Stack>
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>Cancel</Button>
         <Button
           variant="contained"
-          disabled={!code.trim() || !label.trim() || create.isPending}
+          disabled={!code.trim() || !label.trim() || feeMissing || create.isPending}
           onClick={() => create.mutate()}
         >
           {create.isPending ? "Adding…" : "Add type"}
         </Button>
       </DialogActions>
     </Dialog>
+  );
+}
+
+/** Billing-mode toggle + a fixed-fee field that appears in Fixed mode.
+ *  Shared by the add/edit engagement-type dialogs. */
+function BillingFields({
+  billingMode,
+  fixedFee,
+  onBillingModeChange,
+  onFixedFeeChange,
+}: {
+  billingMode: "hourly" | "fixed";
+  fixedFee: string;
+  onBillingModeChange: (m: "hourly" | "fixed") => void;
+  onFixedFeeChange: (v: string) => void;
+}) {
+  return (
+    <>
+      <TextField
+        select
+        size="small"
+        label="Billing"
+        value={billingMode}
+        onChange={(e) => onBillingModeChange(e.target.value as "hourly" | "fixed")}
+        helperText="Hourly bills from time entries; Fixed bills a set package fee."
+      >
+        <MenuItem value="hourly">Hourly (time &amp; materials)</MenuItem>
+        <MenuItem value="fixed">Fixed fee</MenuItem>
+      </TextField>
+      {billingMode === "fixed" && (
+        <TextField
+          size="small"
+          label="Default fixed fee"
+          type="number"
+          value={fixedFee}
+          onChange={(e) => onFixedFeeChange(e.target.value)}
+          required
+          InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment> }}
+          helperText="Default price for this package; can be adjusted per engagement."
+        />
+      )}
+    </>
   );
 }
 
@@ -782,14 +844,19 @@ function EditEngagementTypeDialog({
   const snackbar = useSnackbar();
   const [label, setLabel] = useState(target?.label ?? "");
   const [description, setDescription] = useState(target?.description ?? "");
-  // Reset local state when target changes (open with a fresh row).
-  // useEffect would be cleaner; here we just key on the dialog's open
-  // transition via a derived check.
-  if (target && label === "" && description === "") {
-    // first render after target set; initialize once
-    setLabel(target.label);
-    setDescription(target.description ?? "");
-  }
+  const [billingMode, setBillingMode] = useState<"hourly" | "fixed">(
+    target?.billing_mode ?? "hourly",
+  );
+  const [fixedFee, setFixedFee] = useState(target?.default_fixed_fee ?? "");
+  // Re-seed local state whenever the dialog opens on a new row.
+  useEffect(() => {
+    if (target) {
+      setLabel(target.label);
+      setDescription(target.description ?? "");
+      setBillingMode(target.billing_mode);
+      setFixedFee(target.default_fixed_fee ?? "");
+    }
+  }, [target]);
   const save = useMutation({
     mutationFn: async () => {
       if (!target) return;
@@ -798,6 +865,8 @@ function EditEngagementTypeDialog({
         body: {
           label: label.trim(),
           description: description.trim() || null,
+          billing_mode: billingMode,
+          default_fixed_fee: billingMode === "fixed" ? fixedFee.trim() : null,
         } as never,
       });
       if (error) {
@@ -832,6 +901,12 @@ function EditEngagementTypeDialog({
             value={description}
             onChange={(e) => setDescription(e.target.value)}
           />
+          <BillingFields
+            billingMode={billingMode}
+            fixedFee={fixedFee}
+            onBillingModeChange={setBillingMode}
+            onFixedFeeChange={setFixedFee}
+          />
           <Typography variant="caption" color="text.disabled">
             Code "{target?.code}" can't be renamed — it's the stable identifier
             referenced by engagements and activity memberships.
@@ -842,7 +917,11 @@ function EditEngagementTypeDialog({
         <Button onClick={onClose}>Cancel</Button>
         <Button
           variant="contained"
-          disabled={!label.trim() || save.isPending}
+          disabled={
+            !label.trim() ||
+            (billingMode === "fixed" && !fixedFee.trim()) ||
+            save.isPending
+          }
           onClick={() => save.mutate()}
         >
           {save.isPending ? "Saving…" : "Save"}

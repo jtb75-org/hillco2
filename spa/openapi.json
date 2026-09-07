@@ -5824,6 +5824,58 @@
         }
       }
     },
+    "/api/engagements/{engagement_id}/invoices/fixed-fee": {
+      "post": {
+        "tags": [
+          "invoices"
+        ],
+        "summary": "Create Fixed Fee Invoice",
+        "description": "Bill a fixed-bid engagement's fee as a single-line draft invoice.\n\nMinimal Phase-1 affordance: one `custom` line at the engagement's\nfixed_fee. No milestone/deposit/drawdown logic yet \u2014 that's Phase 2.\nRejects hourly engagements and fixed ones with no fee set.",
+        "operationId": "create_fixed_fee_invoice_api_engagements__engagement_id__invoices_fixed_fee_post",
+        "parameters": [
+          {
+            "name": "engagement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Engagement Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvoiceDraftUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/invoices/{invoice_id}": {
       "get": {
         "tags": [
@@ -7010,7 +7062,7 @@
           "contract_templates"
         ],
         "summary": "List Templates",
-        "description": "List templates, newest-first per kind by sort_order. Returns\neach with its auto-extracted variable list so the admin UI can\nshow what fillins will be required.",
+        "description": "List templates, newest-first per kind by sort_order. Returns\neach with its auto-extracted variable list so the admin UI can\nshow what fillins will be required. When `billing_mode` is given,\nmatching templates are ordered first (then universal), so a caller\ncan auto-select the right services contract for an engagement.",
         "operationId": "list_templates_api_contract_templates_get",
         "parameters": [
           {
@@ -7034,6 +7086,28 @@
               "title": "Kind"
             },
             "description": "Filter by agreement type"
+          },
+          {
+            "name": "billing_mode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "hourly",
+                    "fixed"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Preferred billing mode. Doesn't filter \u2014 orders exact matches first, then universal (null-mode) templates, so the caller can take the first result.",
+              "title": "Billing Mode"
+            },
+            "description": "Preferred billing mode. Doesn't filter \u2014 orders exact matches first, then universal (null-mode) templates, so the caller can take the first result."
           },
           {
             "name": "include_inactive",
@@ -9241,6 +9315,31 @@
             "type": "integer",
             "title": "Sort Order",
             "default": 0
+          },
+          "billing_mode": {
+            "type": "string",
+            "enum": [
+              "hourly",
+              "fixed"
+            ],
+            "title": "Billing Mode",
+            "default": "hourly"
+          },
+          "default_fixed_fee": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Fixed Fee"
           }
         },
         "type": "object",
@@ -9286,6 +9385,37 @@
               }
             ],
             "title": "Sort Order"
+          },
+          "billing_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "hourly",
+                  "fixed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Mode"
+          },
+          "default_fixed_fee": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Fixed Fee"
           }
         },
         "type": "object",
@@ -9359,6 +9489,37 @@
               }
             ],
             "title": "Default Hourly Rate"
+          },
+          "billing_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "hourly",
+                  "fixed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Mode"
+          },
+          "fixed_fee": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fixed Fee"
           },
           "lead_consultant_id": {
             "anyOf": [
@@ -13817,6 +13978,21 @@
             "type": "integer",
             "title": "Sort Order",
             "default": 0
+          },
+          "billing_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "hourly",
+                  "fixed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Mode"
           }
         },
         "type": "object",
@@ -13874,6 +14050,21 @@
               }
             ],
             "title": "Sort Order"
+          },
+          "billing_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "hourly",
+                  "fixed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Mode"
           }
         },
         "type": "object",

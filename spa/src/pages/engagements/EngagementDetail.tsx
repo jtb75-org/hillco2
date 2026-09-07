@@ -53,6 +53,8 @@ interface EngagementDetail {
   start_date: string | null;
   target_end_date: string | null;
   default_hourly_rate: string | null;
+  billing_mode: "hourly" | "fixed";
+  fixed_fee: string | null;
   notes: string | null;
   intake_snapshot: IntakeSnapshot | null;
   family: { id: string; household_name: string };
@@ -156,7 +158,10 @@ export function EngagementDetail() {
 
       <IntakeContextCard snapshot={engagement.data.intake_snapshot} />
 
-      <ContractCard engagementId={id!} />
+      <ContractCard
+        engagementId={id!}
+        billingMode={engagement.data.billing_mode}
+      />
 
       <RequirementsCard engagementId={id!} />
 
@@ -165,6 +170,8 @@ export function EngagementDetail() {
       <BillingCard
         engagementId={id!}
         defaultHourlyRate={engagement.data.default_hourly_rate}
+        billingMode={engagement.data.billing_mode}
+        fixedFee={engagement.data.fixed_fee}
       />
 
       <TimeEntriesCard engagementId={id!} />

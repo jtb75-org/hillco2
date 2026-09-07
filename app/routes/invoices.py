@@ -93,7 +93,13 @@ async def _invoice_or_404(conn, invoice_id: UUID):
 
 async def _engagement_or_404(conn, engagement_id: UUID):
     row = await conn.fetchrow(
-        "SELECT id, default_hourly_rate FROM engagements WHERE id = $1 AND deleted_at IS NULL",
+        """
+        SELECT e.id, e.default_hourly_rate, e.billing_mode, e.fixed_fee,
+               et.label AS engagement_type_label
+        FROM engagements e
+        LEFT JOIN engagement_types et ON et.code = e.engagement_type
+        WHERE e.id = $1 AND e.deleted_at IS NULL
+        """,
         engagement_id,
     )
     if not row:
@@ -417,6 +423,62 @@ async def create_invoice(
                 invoice_id, x["id"],
             )
 
+    await _recompute_totals(conn, invoice_id)
+    return await invoice_detail(invoice_id, _user=user, conn=conn)
+
+
+@router.post("/engagements/{engagement_id}/invoices/fixed-fee", status_code=201)
+async def create_fixed_fee_invoice(
+    engagement_id: UUID,
+    body: InvoiceDraftUpdate,
+    user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    """Bill a fixed-bid engagement's fee as a single-line draft invoice.
+
+    Minimal Phase-1 affordance: one `custom` line at the engagement's
+    fixed_fee. No milestone/deposit/drawdown logic yet — that's Phase 2.
+    Rejects hourly engagements and fixed ones with no fee set."""
+    engagement = await _engagement_or_404(conn, engagement_id)
+    if engagement["billing_mode"] != "fixed":
+        raise HTTPException(
+            status_code=400,
+            detail="This engagement is hourly — bill it from time entries and expenses.",
+        )
+    fee = engagement["fixed_fee"]
+    if fee is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Set the engagement's fixed fee before billing it.",
+        )
+
+    issue_date = body.issue_date or date.today()
+    due_date = body.due_date or issue_date + timedelta(days=30)
+    notes = (body.notes or "").strip() or None
+    tax = body.tax if body.tax is not None else Decimal("0")
+
+    invoice_number = await conn.fetchval("SELECT next_invoice_number()")
+    invoice_id = await conn.fetchval(
+        """
+        INSERT INTO invoices (
+          invoice_number, engagement_id, status, issue_date, due_date,
+          subtotal, tax, total, notes, created_by
+        ) VALUES ($1, $2, 'draft', $3, $4, 0, $5, $5, $6, $7)
+        RETURNING id
+        """,
+        invoice_number, engagement_id, issue_date, due_date,
+        tax, notes, user["id"],
+    )
+    label = engagement["engagement_type_label"] or "services"
+    await conn.execute(
+        """
+        INSERT INTO invoice_line_items
+          (invoice_id, sort_order, description, quantity, unit_price,
+           line_total, source_type)
+        VALUES ($1, 0, $2, 1, $3, $3, 'custom')
+        """,
+        invoice_id, f"Fixed fee — {label}", fee,
+    )
     await _recompute_totals(conn, invoice_id)
     return await invoice_detail(invoice_id, _user=user, conn=conn)
 
