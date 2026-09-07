@@ -306,19 +306,30 @@ async def supersede_agreement(
         "UPDATE agreements SET status = 'superseded' WHERE id = $1",
         agreement_id,
     )
+    # Carry the contract itself forward — a supersede should clone the
+    # predecessor's snapshotted body + variable overrides + template link
+    # so the new draft opens as an editable copy, not a blank document.
+    # variables is jsonb (no asyncpg codec → comes back as a JSON string);
+    # normalize to a dict, then re-dump for the ::jsonb insert.
+    pred_vars = pred["variables"]
+    if isinstance(pred_vars, str):
+        pred_vars = json.loads(pred_vars) if pred_vars else {}
     new_row = await conn.fetchrow(
         """
         INSERT INTO agreements (
           engagement_id, type, status, contract_number, amount,
           signed_at, effective_date, expires_at,
-          document_id, notes, supersedes_id, created_by
-        ) VALUES ($1, $2, 'draft', $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          document_id, notes, supersedes_id, created_by,
+          template_id, body_markdown, variables
+        ) VALUES ($1, $2, 'draft', $3, $4, $5, $6, $7, $8, $9, $10, $11,
+                  $12, $13, $14::jsonb)
         RETURNING *
         """,
         pred["engagement_id"], pred["type"], contract_number, body.amount,
         body.signed_at, body.effective_date, body.expires_at,
         body.document_id, (body.notes or "").strip() or None,
         agreement_id, user["id"],
+        pred["template_id"], pred["body_markdown"], json.dumps(pred_vars or {}),
     )
     return dict(new_row)
 

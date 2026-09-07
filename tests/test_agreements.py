@@ -13,6 +13,7 @@ Coverage:
   - Document attachment validates ownership (agreement-only)
   - Hard delete only allowed for draft + not-yet-superseded rows
 """
+import json
 from uuid import uuid4
 
 import asyncpg
@@ -203,6 +204,38 @@ async def test_supersede_chain(authed_client, engagement):
     # Predecessor now superseded
     pred = (await authed_client.get(f"/api/agreements/{pred_id}")).json()
     assert pred["status"] == "superseded"
+
+
+async def test_supersede_clones_body_variables_and_template(authed_client, engagement):
+    """Regression: superseding must carry the contract itself forward —
+    the snapshotted body_markdown, variable overrides, and template link —
+    so the new draft is an editable copy, not a blank document."""
+    templates = (
+        await authed_client.get("/api/contract-templates?kind=services_contract")
+    ).json()
+    template_id = templates[0]["id"]
+
+    pred = (await authed_client.post(
+        f"/api/engagements/{engagement}/agreements",
+        json={
+            "type": "services_contract",
+            "template_id": template_id,
+            "variables": {"governing_state": "Missouri"},
+        },
+    )).json()
+    assert pred["body_markdown"], "template body should snapshot onto the draft"
+    await authed_client.patch(f"/api/agreements/{pred['id']}", json={"status": "active"})
+
+    new_row = (await authed_client.post(
+        f"/api/agreements/{pred['id']}/supersede", json={},
+    )).json()
+
+    assert new_row["template_id"] == template_id
+    assert new_row["body_markdown"] == pred["body_markdown"]
+    new_vars = new_row["variables"]
+    if isinstance(new_vars, str):
+        new_vars = json.loads(new_vars)
+    assert new_vars == {"governing_state": "Missouri"}
 
 
 async def test_supersede_rejects_already_terminal_predecessors(authed_client, engagement):
