@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from ..auth import require_user
 from ..db import get_conn
+from .intakes import _build_intake_snapshot
 
 router = APIRouter(prefix="/api", tags=["engagements"])
 
@@ -46,6 +47,11 @@ class EngagementCreate(BaseModel):
     default_hourly_rate: Decimal | None = None
     lead_consultant_id: UUID | None = None  # defaults to the requester
     notes: str | None = None
+    # When set, this create is an intake conversion: the engagement links
+    # back to the intake, freezes its discovery snapshot, marks the intake
+    # converted, and flips the family to a client. The student must be on
+    # the intake's roster.
+    intake_id: UUID | None = None
 
 
 class EngagementUpdate(BaseModel):
@@ -206,6 +212,26 @@ async def create_engagement(
     await _validate_student_in_family(conn, body.student_id, family_id)
     await _validate_engagement_type(conn, body.engagement_type)
 
+    # Duplicate guard (all creation paths): block a second active engagement
+    # of the same type for this student.
+    dup = await conn.fetchval(
+        """
+        SELECT 1 FROM engagements
+        WHERE family_id = $1 AND student_id = $2 AND engagement_type = $3
+          AND status IN ('in_progress', 'on_hold') AND deleted_at IS NULL
+        LIMIT 1
+        """,
+        family_id, body.student_id, body.engagement_type,
+    )
+    if dup:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"An active {body.engagement_type} engagement already exists "
+                "for this student."
+            ),
+        )
+
     lead_id = body.lead_consultant_id or user["id"]
     notes = (body.notes or "").strip() or None
     # Snapshot the type's billing defaults onto the engagement (a later
@@ -217,21 +243,63 @@ async def create_engagement(
     billing_mode = type_row["billing_mode"] if type_row else "hourly"
     fixed_fee = type_row["default_fixed_fee"] if type_row else None
 
+    # Intake conversion: validate roster, persist the recommendation, and
+    # freeze the discovery snapshot onto the engagement.
+    intake_snapshot = None
+    if body.intake_id is not None:
+        intake = await conn.fetchrow(
+            "SELECT * FROM intakes WHERE id = $1 AND family_id = $2 "
+            "AND deleted_at IS NULL FOR UPDATE",
+            body.intake_id, family_id,
+        )
+        if not intake:
+            raise HTTPException(status_code=400, detail="Intake not found for this family.")
+        student_row = await conn.fetchrow(
+            """
+            SELECT ist.*, p.kind FROM intake_students ist
+            JOIN people p ON p.id = ist.person_id AND p.deleted_at IS NULL
+            WHERE ist.intake_id = $1 AND ist.person_id = $2
+            """,
+            body.intake_id, body.student_id,
+        )
+        if not student_row:
+            raise HTTPException(status_code=400, detail="Student is not on this intake.")
+        await conn.execute(
+            """
+            UPDATE intake_students SET recommended_engagement_type = $3, candidate = TRUE
+            WHERE intake_id = $1 AND person_id = $2
+            """,
+            body.intake_id, body.student_id, body.engagement_type,
+        )
+        srow = dict(student_row)
+        srow["recommended_engagement_type"] = body.engagement_type
+        intake_snapshot = _build_intake_snapshot(dict(intake), srow)
+
     eng_id = await conn.fetchval(
         """
         INSERT INTO engagements (
           family_id, student_id, engagement_type, status,
           start_date, target_end_date,
           default_hourly_rate, lead_consultant_id, notes,
-          billing_mode, fixed_fee
-        ) VALUES ($1, $2, $3, 'in_progress', $4, $5, $6, $7, $8, $9, $10)
+          billing_mode, fixed_fee, intake_id, intake_snapshot
+        ) VALUES ($1, $2, $3, 'in_progress', $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb)
         RETURNING id
         """,
         family_id, body.student_id, body.engagement_type,
         body.start_date, body.target_end_date,
         body.default_hourly_rate, lead_id, notes,
-        billing_mode, fixed_fee,
+        billing_mode, fixed_fee, body.intake_id, intake_snapshot,
     )
+
+    if body.intake_id is not None:
+        await conn.execute(
+            "UPDATE intakes SET converted_at = NOW() WHERE id = $1 AND converted_at IS NULL",
+            body.intake_id,
+        )
+        await conn.execute(
+            "UPDATE families SET lifecycle_stage = 'client' WHERE id = $1",
+            family_id,
+        )
 
     return await engagement_detail(eng_id, _user=user, conn=conn)
 

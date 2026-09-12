@@ -91,13 +91,17 @@ async function convertIntakeToAssessment(page: Page, desiredOutcome: string) {
   await page.keyboard.press("Enter");
   await page.getByTestId("intake-consent-control").click();
 
-  // Per-student: pick the engagement type, then Create. The row then
-  // shows a link to the new engagement — follow it.
+  // Per-student: pick the engagement type, then Create → opens the shared
+  // New-engagement dialog (locked to this student, type preset). Submit it.
   const row = page.locator('[data-testid^="intake-engagement-row-"]').first();
   await row.locator('[data-testid^="intake-engagement-type-"]').getByRole("combobox").click();
-  await page.getByRole("option", { name: "Assessment" }).click();
+  await page.getByRole("option", { name: "Assessment", exact: true }).click();
   await row.locator('[data-testid^="intake-create-engagement-"]').click();
 
+  const dialog = page.getByRole("dialog", { name: /Start engagement/ });
+  await dialog.getByRole("button", { name: "Start engagement" }).click();
+
+  // The row now shows a link to the new engagement — follow it.
   const link = row.locator('[data-testid^="intake-engagement-link-"]');
   await expect(link).toBeVisible();
   await link.click();

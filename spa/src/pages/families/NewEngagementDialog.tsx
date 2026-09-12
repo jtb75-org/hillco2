@@ -48,6 +48,9 @@ export function NewEngagementDialog({
   students,
   onClose,
   onCreated,
+  intakeId,
+  lockStudentId,
+  presetType,
 }: {
   open: boolean;
   familyId: string;
@@ -55,9 +58,15 @@ export function NewEngagementDialog({
   students: StudentChoice[];
   onClose: () => void;
   onCreated: (engagementId: string) => void;
+  // Intake-conversion context. When set, the create links back to the
+  // intake (snapshot + convert + client lifecycle), the student is locked
+  // to the intake row, and the type is preselected from the recommendation.
+  intakeId?: string | null;
+  lockStudentId?: string;
+  presetType?: string | null;
 }) {
-  const [studentId, setStudentId] = useState<string>("");
-  const [engagementType, setEngagementType] = useState<string>("");
+  const [studentId, setStudentId] = useState<string>(lockStudentId ?? "");
+  const [engagementType, setEngagementType] = useState<string>(presetType ?? "");
   const [startDate, setStartDate] = useState<Dayjs | null>(dayjs());
   const [targetEndDate, setTargetEndDate] = useState<Dayjs | null>(null);
   const [rate, setRate] = useState("");
@@ -102,6 +111,7 @@ export function NewEngagementDialog({
               : null,
             default_hourly_rate: rate.trim() || null,
             notes: notes.trim() || null,
+            intake_id: intakeId ?? null,
           } as never,
         },
       );
@@ -147,8 +157,8 @@ export function NewEngagementDialog({
   });
 
   const reset = () => {
-    setStudentId("");
-    setEngagementType("");
+    setStudentId(lockStudentId ?? "");
+    setEngagementType(presetType ?? "");
     setStartDate(dayjs());
     setTargetEndDate(null);
     setRate("");
@@ -178,7 +188,15 @@ export function NewEngagementDialog({
         <DialogTitle>Start engagement for {familyName}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
-            {students.length === 0 ? (
+            {lockStudentId ? (
+              <LabeledField label="Student">
+                <TextField
+                  value={students.find((s) => s.id === lockStudentId)?.name ?? "Student"}
+                  fullWidth
+                  disabled
+                />
+              </LabeledField>
+            ) : students.length === 0 ? (
               <Alert severity="warning">
                 This family has no students yet. Add a student first on the
                 family page, then start an engagement.

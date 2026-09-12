@@ -52,6 +52,7 @@ import type { ParentDrawerTarget } from "../families/ParentDrawer";
 import { StudentDrawer } from "../students/StudentDrawer";
 
 import { FamilyContextCard } from "./FamilyContextCard";
+import { NewEngagementDialog } from "../families/NewEngagementDialog";
 import { FitOutcomeCard } from "./FitOutcomeCard";
 import { IntakeHeaderStrip } from "./IntakeHeaderStrip";
 import { StudentDiscoveryCard } from "./StudentDiscoveryCard";
@@ -181,29 +182,13 @@ export function IntakeForm() {
     onError: (e: Error) => snackbar.show(e.message, "error"),
   });
 
-  const createEngagement = useMutation({
-    mutationFn: async (vars: { personId: string; engagementType: string }) => {
-      if (!id) return;
-      const { error } = await api.POST(
-        "/api/intakes/{intake_id}/students/{person_id}/engagement",
-        {
-          params: { path: { intake_id: id, person_id: vars.personId } },
-          body: { engagement_type: vars.engagementType },
-        },
-      );
-      if (error) {
-        throw new Error(
-          (error as { detail?: string }).detail ?? "Could not create engagement.",
-        );
-      }
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["intakes", id] });
-      qc.invalidateQueries({ queryKey: ["engagements", "list"] });
-      snackbar.show("Engagement created.");
-    },
-    onError: (e: Error) => snackbar.show(e.message, "error"),
-  });
+  // Converting a student to an engagement opens the shared New-engagement
+  // dialog (pre-filled + locked to this intake), so intake conversions and
+  // ad-hoc engagements go through one flow. convertTarget holds the row
+  // being converted.
+  const [convertTarget, setConvertTarget] = useState<
+    { personId: string; type: string } | null
+  >(null);
 
   const remove = useMutation({
     mutationFn: async () => {
@@ -344,9 +329,29 @@ export function IntakeForm() {
           patchStudent.mutate({ personId, body })
         }
         onCreateEngagement={async (personId, engagementType) => {
-          await createEngagement.mutateAsync({ personId, engagementType });
+          setConvertTarget({ personId, type: engagementType });
         }}
       />
+
+      {convertTarget && (
+        <NewEngagementDialog
+          key={convertTarget.personId}
+          open
+          familyId={intake.data.family_id}
+          familyName={family.data?.household_name ?? ""}
+          students={intake.data.students.map((s) => ({ id: s.id, name: s.name }))}
+          lockStudentId={convertTarget.personId}
+          presetType={convertTarget.type || null}
+          intakeId={intake.data.id}
+          onClose={() => setConvertTarget(null)}
+          onCreated={() => {
+            setConvertTarget(null);
+            qc.invalidateQueries({ queryKey: ["intakes", id] });
+            qc.invalidateQueries({ queryKey: ["engagements", "list"] });
+            snackbar.show("Engagement created.");
+          }}
+        />
+      )}
 
       <IntakeNotesSection
         initial={intake.data.notes ?? ""}
