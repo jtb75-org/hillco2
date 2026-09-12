@@ -105,7 +105,7 @@ interface EngagementType {
   description: string | null;
   sort_order: number;
   billing_mode: "hourly" | "fixed";
-  default_fixed_fee: string | null;
+  default_fixed_fee: number | null;
   deleted_at: string | null;
 }
 
@@ -847,14 +847,16 @@ function EditEngagementTypeDialog({
   const [billingMode, setBillingMode] = useState<"hourly" | "fixed">(
     target?.billing_mode ?? "hourly",
   );
-  const [fixedFee, setFixedFee] = useState(target?.default_fixed_fee ?? "");
+  const [fixedFee, setFixedFee] = useState(
+    target?.default_fixed_fee != null ? String(target.default_fixed_fee) : "",
+  );
   // Re-seed local state whenever the dialog opens on a new row.
   useEffect(() => {
     if (target) {
       setLabel(target.label);
       setDescription(target.description ?? "");
       setBillingMode(target.billing_mode);
-      setFixedFee(target.default_fixed_fee ?? "");
+      setFixedFee(target.default_fixed_fee != null ? String(target.default_fixed_fee) : "");
     }
   }, [target]);
   const save = useMutation({

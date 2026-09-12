@@ -952,3 +952,22 @@ test("fixed-bid engagement bills its fixed fee as a one-line invoice", async ({ 
   await expect(page.getByText(/Fixed fee —/)).toBeVisible();
   await expect(page.getByText("$3,200.00").first()).toBeVisible();
 });
+
+test("editing a fixed engagement type opens the dialog without crashing", async ({ page, baseURL }) => {
+  await login(page, baseURL);
+  const suffix = `${Date.now().toString(36)}${Math.floor(Math.random() * 1000)}`;
+  const label = `Fixed Edit ${suffix}`;
+  const resp = await page.context().request.post("/api/engagement-types", {
+    data: { code: `t_${suffix}`, label, billing_mode: "fixed", default_fixed_fee: "1250" },
+  });
+  expect(resp.ok()).toBeTruthy();
+
+  await page.goto("/app/catalog/activities");
+  await page.getByRole("button", { name: new RegExp(`${label} · Fixed`) }).click();
+
+  // Regression: this used to throw (fixedFee.trim on a number) and blank the page.
+  // The dialog opening with the fee seeded as a string proves the fix.
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("spinbutton")).toHaveValue("1250");
+});
