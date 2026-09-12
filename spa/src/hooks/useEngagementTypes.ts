@@ -16,7 +16,10 @@ export interface EngagementType {
  *  engagements, so we don't filter them out here. */
 export function useEngagementTypes() {
   const query = useQuery<EngagementType[], Error>({
-    queryKey: ["engagement-types"],
+    // Distinct key from the live-only pickers (intake, new-engagement) so the
+    // include-deleted list can't clobber their cache — they share the
+    // "engagement-types" prefix, so a plain invalidate still refreshes both.
+    queryKey: ["engagement-types", "all"],
     queryFn: async () => {
       const { data, error } = await api.GET("/api/engagement-types", {
         params: { query: { include_deleted: true } },

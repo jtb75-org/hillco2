@@ -138,9 +138,14 @@ export function CatalogPage() {
   });
 
   const engagementTypes = useQuery<EngagementType[], Error>({
-    queryKey: ["engagement-types"],
+    // The catalog panel shows an Archived section, so it needs soft-deleted
+    // types too. Uses the include-deleted key (shared with useEngagementTypes),
+    // kept separate from the live-only pickers.
+    queryKey: ["engagement-types", "all"],
     queryFn: async () => {
-      const { data, error } = await api.GET("/api/engagement-types", {});
+      const { data, error } = await api.GET("/api/engagement-types", {
+        params: { query: { include_deleted: true } },
+      });
       if (error || !data) throw new Error("Failed to load engagement types.");
       return data as unknown as EngagementType[];
     },
