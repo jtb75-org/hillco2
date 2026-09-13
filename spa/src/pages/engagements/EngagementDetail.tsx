@@ -161,6 +161,7 @@ export function EngagementDetail() {
       <ContractCard
         engagementId={id!}
         billingMode={engagement.data.billing_mode}
+        fixedFee={engagement.data.fixed_fee}
       />
 
       <RequirementsCard engagementId={id!} />

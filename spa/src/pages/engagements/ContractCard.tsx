@@ -166,9 +166,11 @@ function lifecycleOf(a: Agreement): LifecycleState {
 export function ContractCard({
   engagementId,
   billingMode,
+  fixedFee,
 }: {
   engagementId: string;
   billingMode: "hourly" | "fixed";
+  fixedFee: string | null;
 }) {
   const qc = useQueryClient();
   const snackbar = useSnackbar();
@@ -310,6 +312,7 @@ export function ContractCard({
         open={addOpen}
         engagementId={engagementId}
         billingMode={billingMode}
+        fixedFee={fixedFee}
         existingTypes={new Set(
           all.filter((a) => a.status !== "superseded" && a.status !== "expired" && a.status !== "terminated").map((a) => a.type),
         )}
@@ -507,6 +510,7 @@ function AddAgreementDialog({
   open,
   engagementId,
   billingMode,
+  fixedFee,
   existingTypes,
   onClose,
   onCreated,
@@ -514,6 +518,7 @@ function AddAgreementDialog({
   open: boolean;
   engagementId: string;
   billingMode: "hourly" | "fixed";
+  fixedFee: string | null;
   existingTypes: Set<AgreementType>;
   onClose: () => void;
   onCreated: () => void;
@@ -573,6 +578,15 @@ function AddAgreementDialog({
   useEffect(() => {
     setVarInputs({});
   }, [templateId]);
+
+  // Pre-fill Amount from the engagement's snapshotted fixed fee for a
+  // fixed-bid services contract (editable). The backend also defaults the
+  // amount from fixed_fee, but showing it avoids a misleading empty field.
+  useEffect(() => {
+    if (open && billingMode === "fixed" && fixedFee && type === "services_contract") {
+      setAmount((prev) => (prev.trim() === "" ? fixedFee : prev));
+    }
+  }, [open, billingMode, fixedFee, type]);
 
   // Pre-fill sensible defaults for operator-typed variables that are
   // otherwise blank, so a fresh contract starts filled but editable.

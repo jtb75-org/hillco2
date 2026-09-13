@@ -963,7 +963,7 @@ test("fixed-bid engagement bills its fixed fee as a one-line invoice", async ({ 
   await expect(page.getByText("$3,200.00").first()).toBeVisible();
 });
 
-test("fixed-bid new agreement pre-fills the default payment schedule", async ({ page, baseURL }) => {
+test("fixed-bid new agreement pre-fills amount and payment schedule", async ({ page, baseURL }) => {
   await login(page, baseURL);
   const { engagement } = await createFixedEngagementFixture(page);
   await page.goto(`/app/engagements/${engagement.id}`);
@@ -972,6 +972,8 @@ test("fixed-bid new agreement pre-fills the default payment schedule", async ({ 
   const dialog = page.getByRole("dialog", { name: "New agreement" });
   // Fixed engagement auto-selects the fixed-fee template (shown read-only).
   await expect(dialog.getByTestId("agreement-template-name")).toContainText("Fixed-fee");
+  // Amount pre-fills from the engagement's snapshotted fixed fee.
+  await expect(dialog.getByLabel("Amount")).toHaveValue("3200");
   // Payment Schedule is operator-typed but seeded with a sensible default.
   await expect(dialog.getByLabel("Payment Schedule")).toHaveValue(
     "50% on signing, 50% on completion",
