@@ -447,9 +447,11 @@ async def test_email_invoice_sends_pdf_records_audit_and_flips_status(
     # Capture send_email call args; skip the real SMTP socket.
     sent_calls: list[dict] = []
 
-    def fake_send_email(*, to, subject, body_text, cc, bcc, attachments, reply_to=None):
+    def fake_send_email(*, to, subject, body_text, body_html=None, cc, bcc,
+                        attachments, reply_to=None):
         sent_calls.append({
             "to": to, "subject": subject, "body_text": body_text,
+            "body_html": body_html,
             "cc": list(cc) if cc else [], "bcc": list(bcc) if bcc else [],
             "attachments": [(name, mime, len(data)) for name, mime, data in attachments],
         })
@@ -482,6 +484,10 @@ async def test_email_invoice_sends_pdf_records_audit_and_flips_status(
     assert name.endswith(".pdf")
     assert mime == "pdf"
     assert size > 0
+    # Branded HTML letterhead alongside the plain-text body.
+    html = sent_calls[0]["body_html"]
+    assert html and "HILL" in html
+    assert invoice["invoice_number"] in html
 
     # Second call: explicit to override, custom subject; status stays
     # sent, but a second audit row appears.

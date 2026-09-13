@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 from ..auth import require_user
 from ..db import get_conn
-from ..email import EmailSendError, send_email
+from ..email import EmailSendError, render_letterhead_email, send_email
 
 # weasyprint and ..pdf are lazy-imported inside the PDF endpoint so the
 # rest of the app (and the test suite on macOS) don't pay the
@@ -802,6 +802,12 @@ async def email_invoice(
         f"Total: ${invoice['total']:.2f}.\n\n"
         f"Thank you.\n"
     )
+    # Wrap the (possibly operator-edited) message in the HillCo letterhead.
+    body_html = render_letterhead_email(
+        heading=f"Invoice {invoice['invoice_number']}",
+        paragraphs=[p.strip() for p in body_text.split("\n\n") if p.strip()],
+        footer_note=f"Invoice {invoice['invoice_number']} is attached as a PDF.",
+    )
 
     pdf_bytes = await _render_invoice_pdf(conn, invoice)
 
@@ -812,6 +818,7 @@ async def email_invoice(
             bcc=body.bcc,
             subject=subject,
             body_text=body_text,
+            body_html=body_html,
             attachments=[
                 (f"{invoice['invoice_number']}.pdf", "pdf", pdf_bytes),
             ],
