@@ -620,6 +620,19 @@ function AddAgreementDialog({
     sourceMissing.length === 0 &&
     overrideMissing.every((v) => (varInputs[v] ?? "").trim() !== "");
 
+  // What's *actually* still unfilled, accounting for inline values the
+  // operator has typed or that were pre-filled — so the warning reflects
+  // the real gap, not the server's stateless view. Source-backed vars
+  // always count (they can only be resolved at their source).
+  const stillMissing = missing.filter((v) =>
+    (hints[v] ?? "agreement-override") === "agreement-override"
+      ? (varInputs[v] ?? "").trim() === ""
+      : true,
+  );
+  const stillMissingHasSource = stillMissing.some(
+    (v) => (hints[v] ?? "agreement-override") !== "agreement-override",
+  );
+
   const reset = () => {
     setType("services_contract");
     setAmount("");
@@ -782,11 +795,20 @@ function AddAgreementDialog({
                 </Alert>
               ) : (
                 <Stack spacing={1.25}>
-                  <Alert severity="warning" variant="outlined">
-                    {missing.length} variable{missing.length === 1 ? "" : "s"} need a value
-                    before this contract can be created. Fix at the source so future
-                    contracts auto-fill too.
-                  </Alert>
+                  {stillMissing.length === 0 ? (
+                    <Alert severity="success" variant="outlined">
+                      All variables have a value — ready to create the draft.
+                    </Alert>
+                  ) : (
+                    <Alert severity="warning" variant="outlined">
+                      {stillMissing.length === 1 ? "1 variable needs" : `${stillMissing.length} variables need`}{" "}
+                      a value before this contract can be created:{" "}
+                      <Box component="span" sx={{ fontWeight: 600 }}>
+                        {stillMissing.map(prettyVariable).join(", ")}
+                      </Box>
+                      .{stillMissingHasSource && " Fix at the source so future contracts auto-fill too."}
+                    </Alert>
+                  )}
                   <Stack spacing={1}>
                     {missing.map((v) => {
                       const hint = hints[v] ?? "agreement-override";

@@ -975,9 +975,21 @@ test("fixed-bid new agreement pre-fills amount and payment schedule", async ({ p
   // Amount pre-fills from the engagement's snapshotted fixed fee.
   await expect(dialog.getByLabel("Amount")).toHaveValue("3200");
   // Payment Schedule is operator-typed but seeded with a sensible default.
-  await expect(dialog.getByLabel("Payment Schedule")).toHaveValue(
-    "50% on signing, 50% on completion",
-  );
+  const paySched = dialog.getByLabel("Payment Schedule");
+  await expect(paySched).toHaveValue("50% on signing, 50% on completion");
+
+  // The warning names the actual gap (a source-backed field here), not just a
+  // count — and doesn't list Payment Schedule, since it's pre-filled.
+  const warn = dialog.getByRole("alert");
+  await expect(warn).toContainText(/1 variable needs a value/i);
+  await expect(warn).toContainText("Client Address");
+  await expect(warn).not.toContainText("Payment Schedule");
+
+  // Clearing the pre-filled field adds it to the named gap.
+  await paySched.fill("");
+  await expect(warn).toContainText(/2 variables need a value/i);
+  await expect(warn).toContainText("Payment Schedule");
+  await expect(warn).toContainText("Client Address");
 });
 
 test("editing a fixed engagement type opens the dialog without crashing", async ({ page, baseURL }) => {
