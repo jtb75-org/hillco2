@@ -5,9 +5,16 @@ auto-selection by mode, and the minimal fixed-fee invoice affordance.
 Everything creates its own engagement types with unique codes so it never
 mutates the shared baseline types other tests depend on.
 """
+import json
 from uuid import uuid4
 
 import pytest
+
+
+def _vars(agreement: dict) -> dict:
+    """agreements return `variables` as a JSON string over the wire."""
+    v = agreement["variables"]
+    return json.loads(v) if isinstance(v, str) else v
 
 
 @pytest.fixture
@@ -218,3 +225,61 @@ async def test_time_explicit_billable_honored_on_fixed(authed_client, family_wit
     )
     assert r.status_code == 201, r.text
     assert r.json()["billable"] is True
+
+
+# ---- dynamic scope-of-services -------------------------------------------
+
+async def test_agreement_freezes_engagement_scope(authed_client, family_with_student):
+    """A services contract snapshots the engagement's activities into the
+    scope_of_services variable at create time, phase-grouped as markdown."""
+    eng = await _engagement_of_type(authed_client, family_with_student, "fixed", "3000")
+    for title, desc in [
+        ("Records review", "Read IEPs and evaluations"),
+        ("School tour", None),
+    ]:
+        r = await authed_client.post(
+            f"/api/engagements/{eng['id']}/tasks",
+            json={"title": title, "description": desc},
+        )
+        assert r.status_code == 201, r.text
+
+    ag = (await authed_client.post(
+        f"/api/engagements/{eng['id']}/agreements",
+        json={"type": "services_contract"},
+    )).json()
+    scope = _vars(ag)["scope_of_services"]
+    assert "- **Records review** — Read IEPs and evaluations" in scope
+    assert "- **School tour**" in scope
+    # No description → no dangling em-dash.
+    assert "School tour** —" not in scope
+
+
+async def test_agreement_scope_empty_when_no_activities(authed_client, family_with_student):
+    eng = await _engagement_of_type(authed_client, family_with_student, "fixed", "3000")
+    ag = (await authed_client.post(
+        f"/api/engagements/{eng['id']}/agreements",
+        json={"type": "services_contract"},
+    )).json()
+    assert "No activities" in _vars(ag)["scope_of_services"]
+
+
+async def test_agreement_scope_frozen_against_later_task_changes(
+    authed_client, family_with_student
+):
+    """Scope is snapshotted at create — adding activities afterward must
+    not retroactively change an existing agreement's frozen scope."""
+    eng = await _engagement_of_type(authed_client, family_with_student, "fixed", "3000")
+    await authed_client.post(
+        f"/api/engagements/{eng['id']}/tasks", json={"title": "Original"},
+    )
+    ag = (await authed_client.post(
+        f"/api/engagements/{eng['id']}/agreements",
+        json={"type": "services_contract"},
+    )).json()
+    await authed_client.post(
+        f"/api/engagements/{eng['id']}/tasks", json={"title": "Added later"},
+    )
+    fresh = (await authed_client.get(f"/api/agreements/{ag['id']}")).json()
+    vars_ = _vars(fresh)
+    assert "Original" in vars_["scope_of_services"]
+    assert "Added later" not in vars_["scope_of_services"]

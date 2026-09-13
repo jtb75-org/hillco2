@@ -235,7 +235,14 @@ async def test_supersede_clones_body_variables_and_template(authed_client, engag
     new_vars = new_row["variables"]
     if isinstance(new_vars, str):
         new_vars = json.loads(new_vars)
-    assert new_vars == {"governing_state": "Missouri"}
+    pred_vars = pred["variables"]
+    if isinstance(pred_vars, str):
+        pred_vars = json.loads(pred_vars)
+    # Supersede clones whatever the predecessor froze — the operator's
+    # override plus the scope_of_services snapshot taken at create time.
+    assert new_vars == pred_vars
+    assert new_vars["governing_state"] == "Missouri"
+    assert "scope_of_services" in new_vars
 
 
 async def test_supersede_rejects_already_terminal_predecessors(authed_client, engagement):

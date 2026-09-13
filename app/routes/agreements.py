@@ -213,6 +213,15 @@ async def create_agreement(
             )
         body_markdown = tpl["body_markdown"]
 
+    # Freeze the scope-of-services list (the engagement's activities) onto the
+    # agreement so a signed contract's scope never drifts if activities change
+    # later. Operator-supplied variables win. Only services contracts carry it.
+    variables = dict(body.variables or {})
+    if body.type == "services_contract":
+        variables.setdefault(
+            "scope_of_services", await _build_scope_markdown(conn, engagement_id)
+        )
+
     row = await conn.fetchrow(
         """
         INSERT INTO agreements (
@@ -230,7 +239,7 @@ async def create_agreement(
         body.signed_at, body.effective_date, body.expires_at,
         body.document_id, (body.notes or "").strip() or None, user["id"],
         body.template_id, body_markdown,
-        json.dumps(body.variables or {}),
+        json.dumps(variables),
     )
     return dict(row)
 
@@ -619,7 +628,41 @@ async def _build_default_context(conn, agreement: dict) -> dict[str, str]:
             ctx["payment_terms_days"] = str(org["payment_terms_days"])
         if org["expense_approval_threshold"] is not None:
             ctx["expense_approval_threshold"] = str(org["expense_approval_threshold"])
+
+    # Scope of services: the engagement's activity list, grouped by phase.
+    # Frozen onto the agreement's variables at creation; recomputed here so
+    # the pre-creation preview shows it filled.
+    if eng:
+        ctx["scope_of_services"] = await _build_scope_markdown(conn, eng["id"])
     return ctx
+
+
+async def _build_scope_markdown(conn, engagement_id) -> str:
+    """Render the engagement's activities as a phase-grouped markdown list
+    for the contract's Scope of Services section."""
+    rows = await conn.fetch(
+        """
+        SELECT t.title, t.description,
+               COALESCE(cp.title, 'Other') AS phase_title,
+               COALESCE(cp.sort_order, 999999) AS phase_sort
+        FROM engagement_tasks t
+        LEFT JOIN catalog_phases cp ON cp.id = t.phase_id
+        WHERE t.engagement_id = $1
+        ORDER BY phase_sort, phase_title, t.sort_order, t.title
+        """,
+        engagement_id,
+    )
+    if not rows:
+        return "_No activities have been added to this engagement yet._"
+    lines: list[str] = []
+    current = None
+    for r in rows:
+        if r["phase_title"] != current:
+            current = r["phase_title"]
+            lines.append(f"\n**{current}**\n")
+        desc = (r["description"] or "").strip()
+        lines.append(f"- **{r['title']}**" + (f" — {desc}" if desc else ""))
+    return "\n".join(lines).strip()
 
 
 async def build_render_context(
