@@ -344,11 +344,12 @@ export function IntakeForm() {
           presetType={convertTarget.type || null}
           intakeId={intake.data.id}
           onClose={() => setConvertTarget(null)}
-          onCreated={() => {
+          onCreated={(engagementId) => {
             setConvertTarget(null);
             qc.invalidateQueries({ queryKey: ["intakes", id] });
             qc.invalidateQueries({ queryKey: ["engagements", "list"] });
             snackbar.show("Engagement created.");
+            navigate(`/engagements/${engagementId}`);
           }}
         />
       )}

@@ -447,8 +447,14 @@ async def seed_catalog_for_engagement(
         """,
         engagement_type, service_item_ids,
     )
+    created_ids = await _insert_task_snapshots(conn, engagement_id, items, user_id)
+    return {"matched_applicable": len(items), "created_ids": created_ids}
 
-    created_ids: list[UUID] = []
+
+async def _insert_task_snapshots(conn, engagement_id, items, user_id) -> list:
+    """Snapshot catalog service-item rows into engagement_tasks, skipping any
+    already present for this engagement (idempotent per service_item)."""
+    created_ids: list = []
     for s in items:
         existing = await conn.fetchval(
             """
@@ -479,7 +485,29 @@ async def seed_catalog_for_engagement(
             s["sort_order"], user_id, s["default_activity_kind"],
         )
         created_ids.append(new_id)
-    return {"matched_applicable": len(items), "created_ids": created_ids}
+    return created_ids
+
+
+async def snapshot_catalog_items(conn, engagement_id, service_item_ids, user_id) -> list:
+    """Snapshot the given catalog service items onto an engagement, regardless
+    of whether they're associated with the engagement's type. Used by the
+    picklist (a tailored engagement can pull in any catalog activity)."""
+    if not service_item_ids:
+        return []
+    items = await conn.fetch(
+        """
+        SELECT si.id, si.phase_id, si.title, si.description, si.sort_order,
+               si.default_est_hours, si.default_billable,
+               si.default_deliverable, si.default_owner_role,
+               si.default_activity_kind
+        FROM service_items si
+        JOIN catalog_phases cp ON cp.id = si.phase_id AND cp.deleted_at IS NULL
+        WHERE si.deleted_at IS NULL AND si.id = ANY($1::uuid[])
+        ORDER BY cp.sort_order, si.sort_order
+        """,
+        service_item_ids,
+    )
+    return await _insert_task_snapshots(conn, engagement_id, items, user_id)
 
 
 @router.post("/engagements/{engagement_id}/tasks/bulk-from-catalog", status_code=201)
@@ -505,6 +533,30 @@ async def bulk_from_catalog(
         "matched_applicable": result["matched_applicable"],
         "created": len(result["created_ids"]),
         "task_ids": [str(i) for i in result["created_ids"]],
+    }
+
+
+@router.post("/engagements/{engagement_id}/tasks/from-catalog-items", status_code=201)
+async def add_catalog_items(
+    engagement_id: UUID,
+    body: BulkFromCatalog,
+    user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    """Snapshot the chosen catalog activities onto the engagement regardless of
+    engagement-type association — powers the picklist, so a tailored engagement
+    can pull in any catalog activity. Idempotent per (engagement, service_item)."""
+    await _engagement_or_404(conn, engagement_id)
+    created = await snapshot_catalog_items(
+        conn,
+        engagement_id=engagement_id,
+        service_item_ids=body.service_item_ids,
+        user_id=user["id"],
+    )
+    return {
+        "requested": len(body.service_item_ids),
+        "created": len(created),
+        "task_ids": [str(i) for i in created],
     }
 
 

@@ -3290,6 +3290,58 @@
         }
       }
     },
+    "/api/engagements/{engagement_id}/tasks/from-catalog-items": {
+      "post": {
+        "tags": [
+          "engagement_tasks"
+        ],
+        "summary": "Add Catalog Items",
+        "description": "Snapshot the chosen catalog activities onto the engagement regardless of\nengagement-type association \u2014 powers the picklist, so a tailored engagement\ncan pull in any catalog activity. Idempotent per (engagement, service_item).",
+        "operationId": "add_catalog_items_api_engagements__engagement_id__tasks_from_catalog_items_post",
+        "parameters": [
+          {
+            "name": "engagement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Engagement Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkFromCatalog"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/tasks/{task_id}": {
       "patch": {
         "tags": [

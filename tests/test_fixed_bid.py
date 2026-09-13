@@ -330,3 +330,38 @@ async def test_fixed_fee_voided_invoice_frees_the_balance(authed_client, family_
         f"/api/engagements/{eng['id']}/invoices/fixed-fee", json={"amount": "1000"},
     )
     assert again.status_code == 201, again.text
+
+
+# ---- picklist: add arbitrary catalog activities (type-agnostic) -----------
+
+async def test_from_catalog_items_adds_regardless_of_type(
+    authed_client, family_with_student
+):
+    """The picklist adds chosen catalog activities to an engagement even when
+    they aren't associated with the engagement's type (e.g. a tailored one),
+    and is idempotent."""
+    # A tailored (hourly) engagement whose type has no catalog associations.
+    eng = await _engagement_of_type(authed_client, family_with_student, "hourly")
+
+    # Use an existing seeded catalog activity (not associated with this type).
+    items = (await authed_client.get("/api/catalog/items")).json()
+    assert items, "expected seeded catalog activities"
+    item = items[0]
+
+    r = await authed_client.post(
+        f"/api/engagements/{eng['id']}/tasks/from-catalog-items",
+        json={"service_item_ids": [item["id"]]},
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["created"] == 1
+
+    tasks = (await authed_client.get(f"/api/engagements/{eng['id']}/tasks")).json()
+    assert any(t["title"] == item["title"] for t in tasks)
+
+    # Idempotent — adding the same item again creates nothing.
+    again = await authed_client.post(
+        f"/api/engagements/{eng['id']}/tasks/from-catalog-items",
+        json={"service_item_ids": [item["id"]]},
+    )
+    assert again.status_code == 201, again.text
+    assert again.json()["created"] == 0

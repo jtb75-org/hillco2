@@ -101,10 +101,7 @@ async function convertIntakeToAssessment(page: Page, desiredOutcome: string) {
   const dialog = page.getByRole("dialog", { name: /Start engagement/ });
   await dialog.getByRole("button", { name: "Start engagement" }).click();
 
-  // The row now shows a link to the new engagement — follow it.
-  const link = row.locator('[data-testid^="intake-engagement-link-"]');
-  await expect(link).toBeVisible();
-  await link.click();
+  // Creating an engagement from an intake now navigates straight to it.
   await expect(page).toHaveURL(/\/app\/engagements\/[0-9a-f-]+$/);
 }
 
@@ -1118,6 +1115,29 @@ test("fixed engagement header shows an editable fixed fee + no-contract warning"
   expect(resp.status()).toBe(200);
   await page.reload();
   await expect(page.getByLabel("Fixed fee")).toHaveValue("4000");
+});
+
+test("catalog picklist adds activities to an engagement", async ({ page, baseURL }) => {
+  await login(page, baseURL);
+  const { engagement } = await createInvoiceFixture(page); // hourly engagement, no activities
+  await page.goto(`/app/engagements/${engagement.id}`);
+
+  await page.getByRole("button", { name: "Add activity" }).click();
+  await page.getByRole("menuitem", { name: /Add from catalog/ }).click();
+  const dialog = page.getByRole("dialog", { name: "Add activities from catalog" });
+  await expect(dialog).toBeVisible();
+
+  // Pick the first catalog activity and add it.
+  await dialog.getByRole("checkbox").first().check();
+  const [resp] = await Promise.all([
+    page.waitForResponse(
+      (r) => r.url().includes("/tasks/from-catalog-items") && r.request().method() === "POST",
+    ),
+    dialog.getByRole("button", { name: /Add \d+ activit/ }).click(),
+  ]);
+  expect(resp.status(), await resp.text()).toBe(201);
+  await expect(dialog).toBeHidden();
+  await expect(page.getByText(/activit(y|ies) added/i)).toBeVisible();
 });
 
 test("editing a fixed engagement type opens the dialog without crashing", async ({ page, baseURL }) => {

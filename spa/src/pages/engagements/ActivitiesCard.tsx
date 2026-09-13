@@ -3,13 +3,17 @@ import {
   Accordion,
   AccordionDetails,
   AccordionSummary,
+  Alert,
   Box,
   Button,
+  Checkbox,
   Chip,
+  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
+  Divider,
   FormControlLabel,
   IconButton,
   Menu,
@@ -116,6 +120,7 @@ export function ActivitiesCard({
   const snackbar = useSnackbar();
   const [showSkipped, setShowSkipped] = useState(false);
   const [addOpen, setAddOpen] = useState<"task" | "visit" | "recommendation" | null>(null);
+  const [picklistOpen, setPicklistOpen] = useState(false);
   const [addMenuAnchor, setAddMenuAnchor] = useState<HTMLElement | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [logTimeFor, setLogTimeFor] = useState<ActivityRow | null>(null);
@@ -335,10 +340,18 @@ export function ActivitiesCard({
             <MenuItem
               onClick={() => {
                 setAddMenuAnchor(null);
+                setPicklistOpen(true);
+              }}
+            >
+              Add from catalog…
+            </MenuItem>
+            <MenuItem
+              onClick={() => {
+                setAddMenuAnchor(null);
                 setAddOpen("task");
               }}
             >
-              Bespoke task
+              Bespoke activity
             </MenuItem>
             <MenuItem
               onClick={() => {
@@ -467,6 +480,19 @@ export function ActivitiesCard({
         onCreated={() => {
           setAddOpen(null);
           invalidate();
+        }}
+      />
+      <CatalogPicklistDialog
+        open={picklistOpen}
+        engagementId={engagementId}
+        existingServiceItemIds={
+          new Set(rows.map((r) => r.service_item_id).filter(Boolean) as string[])
+        }
+        onClose={() => setPicklistOpen(false)}
+        onAdded={(n) => {
+          setPicklistOpen(false);
+          invalidate();
+          snackbar.show(n === 1 ? "1 activity added" : `${n} activities added`);
         }}
       />
       <AddSchoolVisitDialog
@@ -1135,6 +1161,200 @@ function LogTimeForTaskDialog({
           disabled={!hours || Number(hours) <= 0 || create.isPending}
         >
           {create.isPending ? "Logging…" : "Log"}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+interface CatalogItem {
+  id: string;
+  title: string;
+  description: string | null;
+  phase_id: string | null;
+  phase_title: string | null;
+  phase_sort_order: number | null;
+}
+
+/**
+ * Picklist of every catalog activity, grouped by phase, to add onto an
+ * engagement — regardless of engagement-type association (a tailored
+ * engagement can pull in anything). Items already on the engagement are shown
+ * checked + disabled.
+ */
+function CatalogPicklistDialog({
+  open,
+  engagementId,
+  existingServiceItemIds,
+  onClose,
+  onAdded,
+}: {
+  open: boolean;
+  engagementId: string;
+  existingServiceItemIds: Set<string>;
+  onClose: () => void;
+  onAdded: (count: number) => void;
+}) {
+  const snackbar = useSnackbar();
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [filter, setFilter] = useState("");
+
+  useEffect(() => {
+    if (open) {
+      setSelected(new Set());
+      setFilter("");
+    }
+  }, [open]);
+
+  const items = useQuery<CatalogItem[], Error>({
+    queryKey: ["catalog", "items", "all"],
+    enabled: open,
+    queryFn: async () => {
+      const res = await fetch("/api/catalog/items", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load catalog activities.");
+      return res.json();
+    },
+  });
+
+  const groups = useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    const rows = (items.data ?? []).filter(
+      (i) =>
+        !q ||
+        i.title.toLowerCase().includes(q) ||
+        (i.description ?? "").toLowerCase().includes(q),
+    );
+    const byPhase = new Map<string, { title: string; sort: number; items: CatalogItem[] }>();
+    for (const i of rows) {
+      const key = i.phase_id ?? "none";
+      if (!byPhase.has(key)) {
+        byPhase.set(key, {
+          title: i.phase_title ?? "Other",
+          sort: i.phase_sort_order ?? 999999,
+          items: [],
+        });
+      }
+      byPhase.get(key)!.items.push(i);
+    }
+    return [...byPhase.values()].sort((a, b) => a.sort - b.sort);
+  }, [items.data, filter]);
+
+  const toggle = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const add = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(
+        `/api/engagements/${engagementId}/tasks/from-catalog-items`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ service_item_ids: Array.from(selected) }),
+        },
+      );
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error((j as { detail?: string }).detail ?? "Failed to add activities.");
+      }
+      return (await res.json()) as { created: number };
+    },
+    onSuccess: (r) => onAdded(r.created),
+    onError: (e: Error) => snackbar.show(e.message, "error"),
+  });
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>Add activities from catalog</DialogTitle>
+      <DialogContent dividers>
+        <TextField
+          size="small"
+          fullWidth
+          placeholder="Filter activities…"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          sx={{ mb: 1.5 }}
+        />
+        {items.isPending ? (
+          <Box sx={{ display: "flex", justifyContent: "center", py: 3 }}>
+            <CircularProgress size={24} />
+          </Box>
+        ) : items.error ? (
+          <Alert severity="error">{items.error.message}</Alert>
+        ) : groups.length === 0 ? (
+          <Typography variant="body2" color="text.disabled">
+            No catalog activities match.
+          </Typography>
+        ) : (
+          <Stack spacing={1.5}>
+            {groups.map((g) => (
+              <Box key={g.title}>
+                <Typography
+                  variant="caption"
+                  sx={{ textTransform: "uppercase", letterSpacing: 0.5, color: "text.secondary" }}
+                >
+                  {g.title}
+                </Typography>
+                <Divider sx={{ mb: 0.5 }} />
+                {g.items.map((i) => {
+                  const already = existingServiceItemIds.has(i.id);
+                  return (
+                    <FormControlLabel
+                      key={i.id}
+                      sx={{ display: "flex", alignItems: "flex-start", ml: 0, py: 0.25 }}
+                      control={
+                        <Checkbox
+                          size="small"
+                          checked={already || selected.has(i.id)}
+                          disabled={already}
+                          onChange={() => toggle(i.id)}
+                          sx={{ pt: 0.25 }}
+                        />
+                      }
+                      label={
+                        <Box>
+                          <Typography variant="body2">
+                            {i.title}
+                            {already && (
+                              <Typography component="span" variant="caption" color="text.disabled">
+                                {" "}· already added
+                              </Typography>
+                            )}
+                          </Typography>
+                          {i.description && (
+                            <Typography variant="caption" color="text.secondary">
+                              {i.description}
+                            </Typography>
+                          )}
+                        </Box>
+                      }
+                    />
+                  );
+                })}
+              </Box>
+            ))}
+          </Stack>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose} disabled={add.isPending}>
+          Cancel
+        </Button>
+        <Button
+          variant="contained"
+          disabled={selected.size === 0 || add.isPending}
+          onClick={() => add.mutate()}
+        >
+          {add.isPending
+            ? "Adding…"
+            : selected.size === 0
+              ? "Add activities"
+              : `Add ${selected.size} ${selected.size === 1 ? "activity" : "activities"}`}
         </Button>
       </DialogActions>
     </Dialog>
