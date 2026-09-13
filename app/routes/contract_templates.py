@@ -33,6 +33,7 @@ VARIABLE_HINTS: dict[str, str] = {
     "consultant_phone":   "lead_consultant",
     "consultant_address": "lead_consultant_or_firm_settings",
     # Firm-wide
+    "consultant_company":            "firm_settings",
     "governing_state":               "firm_settings",
     "billing_increment_minutes":     "firm_settings",
     "invoice_frequency":             "firm_settings",
@@ -57,6 +58,13 @@ VARIABLE_HINTS: dict[str, str] = {
     # Student
     "patient_full_name": "student",
     "patient_dob":       "student",
+    # Medical-release parent/guardian block — sourced from the family's
+    # billing/primary guardian (the minor patient shares the household).
+    "parent_guardian_name":         "family",
+    "parent_guardian_relationship": "family",
+    "patient_address":              "family",
+    "patient_city_state_zip":       "family",
+    "patient_phone":                "family",
 }
 
 

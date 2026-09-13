@@ -404,3 +404,63 @@ async def test_client_name_does_not_double_family_suffix(db_pool, test_user):
 
     assert ctx_family["client_name"] == "the Rivera Family"
     assert ctx_plain["client_name"] == "the Rivera family"
+
+
+async def test_medical_release_autofills_guardian_and_firm(db_pool, test_user):
+    """The medical-release parent/guardian + patient address block sources from
+    the family's billing/primary guardian; consultant_company from the firm."""
+    from app.routes.agreements import build_render_context  # noqa: PLC0415
+
+    async with db_pool.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute(
+                "SELECT set_config('app.user_id', $1, true)", str(test_user["id"])
+            )
+            family_id = await conn.fetchval(
+                "INSERT INTO families (household_name) VALUES ($1) RETURNING id",
+                f"MedRel-{uuid4()}",
+            )
+            student_id = await conn.fetchval(
+                "INSERT INTO people (kind, first_name, last_name) "
+                "VALUES ('student', 'Pat', 'Kid') RETURNING id"
+            )
+            await conn.execute(
+                "INSERT INTO family_students (family_id, person_id) VALUES ($1,$2)",
+                family_id, student_id,
+            )
+            guardian_id = await conn.fetchval(
+                """
+                INSERT INTO people (kind, first_name, last_name, phone,
+                                    street1, city, state, postal_code)
+                VALUES ('other','Gwen','Guardian','555-0100',
+                        '42 Oak St','Springfield','IL','62704')
+                RETURNING id
+                """
+            )
+            await conn.execute(
+                """
+                INSERT INTO family_guardians
+                    (family_id, person_id, relationship, is_primary_contact, is_billing_contact)
+                VALUES ($1,$2,'mom',TRUE,TRUE)
+                """,
+                family_id, guardian_id,
+            )
+            eng_id = await conn.fetchval(
+                """
+                INSERT INTO engagements (family_id, student_id, engagement_type, status, lead_consultant_id)
+                VALUES ($1,$2,'assessment','in_progress',$3) RETURNING id
+                """,
+                family_id, student_id, test_user["id"],
+            )
+            await conn.execute(
+                "UPDATE org_settings SET firm_name = 'Test Firm' WHERE id = 1"
+            )
+        ctx = await build_render_context(conn, eng_id)
+
+    assert ctx["patient_full_name"] == "Pat Kid"
+    assert ctx["patient_address"] == "42 Oak St"
+    assert ctx["patient_city_state_zip"] == "Springfield, IL 62704"
+    assert ctx["patient_phone"] == "555-0100"
+    assert ctx["parent_guardian_name"] == "Gwen Guardian"
+    assert ctx["parent_guardian_relationship"] == "mom"
+    assert ctx["consultant_company"] == "Test Firm"

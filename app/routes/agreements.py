@@ -580,6 +580,61 @@ def _compose_address(
     return composed or None
 
 
+def _street_line(street1: str | None, street2: str | None) -> str | None:
+    """Just the street portion of an address (for templates that put
+    city/state/zip on their own line)."""
+    line = ", ".join(x for x in [street1, street2] if x and x.strip())
+    return line or None
+
+
+def _city_state_zip(city: str | None, state: str | None, postal: str | None) -> str | None:
+    """'City, State ZIP' with graceful handling of missing parts."""
+    left = ", ".join(x for x in [city, state] if x and x.strip())
+    if left and postal:
+        return f"{left} {postal}"
+    return left or (postal or None)
+
+
+async def _primary_guardian(conn, family_id) -> dict | None:
+    """The family's billing-flagged guardian (falling back to primary, then
+    any), with the fields the medical-release template needs. Address prefers
+    the person's billing_* block, falling back to their mailing address."""
+    if family_id is None:
+        return None
+    row = await conn.fetchrow(
+        """
+        SELECT p.first_name, p.last_name, p.phone, fg.relationship,
+               p.street1, p.street2, p.city, p.state, p.postal_code,
+               p.billing_street1, p.billing_street2, p.billing_city,
+               p.billing_state, p.billing_postal_code
+        FROM family_guardians fg
+        JOIN people p ON p.id = fg.person_id AND p.deleted_at IS NULL
+        WHERE fg.family_id = $1
+        ORDER BY fg.is_billing_contact DESC, fg.is_primary_contact DESC,
+                 p.last_name NULLS LAST, p.first_name
+        LIMIT 1
+        """,
+        family_id,
+    )
+    if row is None:
+        return None
+    use_billing = bool(row["billing_street1"] or row["billing_city"])
+    if use_billing:
+        street = _street_line(row["billing_street1"], row["billing_street2"])
+        csz = _city_state_zip(row["billing_city"], row["billing_state"], row["billing_postal_code"])
+    else:
+        street = _street_line(row["street1"], row["street2"])
+        csz = _city_state_zip(row["city"], row["state"], row["postal_code"])
+    name = " ".join(x for x in [row["first_name"], row["last_name"]] if x and x.strip()).strip()
+    return {
+        "name": name or None,
+        "phone": row["phone"],
+        "relationship": row["relationship"],
+        "street": street,
+        "city_state_zip": csz,
+    }
+
+
 async def _client_address_for_family(conn, family_id: UUID) -> str | None:
     """Compose {{client_address}} from the family's billing-flagged
     guardian, falling back to the primary-flagged guardian, then any
@@ -702,6 +757,23 @@ async def _build_default_context(conn, agreement: dict) -> dict[str, str]:
         if client_addr:
             ctx["client_address"] = client_addr
 
+    # Parent/guardian block for the medical-records release: pull the patient's
+    # address/phone and the guardian's name + relationship from the family's
+    # billing/primary guardian (the minor patient shares the household address).
+    if eng and eng["family_id"]:
+        guardian = await _primary_guardian(conn, eng["family_id"])
+        if guardian:
+            if guardian["name"]:
+                ctx["parent_guardian_name"] = guardian["name"]
+            if guardian["relationship"]:
+                ctx["parent_guardian_relationship"] = guardian["relationship"]
+            if guardian["street"]:
+                ctx["patient_address"] = guardian["street"]
+            if guardian["city_state_zip"]:
+                ctx["patient_city_state_zip"] = guardian["city_state_zip"]
+            if guardian["phone"]:
+                ctx["patient_phone"] = guardian["phone"]
+
     # Money / dates
     if eng and eng["default_hourly_rate"] is not None:
         ctx["hourly_rate"] = str(eng["default_hourly_rate"])
@@ -739,6 +811,9 @@ async def _build_default_context(conn, agreement: dict) -> dict[str, str]:
         # consultant didn't fill in their own.
         if firm_addr and "consultant_address" not in ctx:
             ctx["consultant_address"] = firm_addr
+        # Medical-release "Company/Organization" line.
+        if org["firm_name"]:
+            ctx["consultant_company"] = org["firm_name"]
         if org["governing_state"]:
             ctx["governing_state"] = org["governing_state"]
         if org["billing_increment_minutes"] is not None:
