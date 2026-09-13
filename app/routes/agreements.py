@@ -690,9 +690,13 @@ async def _build_default_context(conn, agreement: dict) -> dict[str, str]:
         if consultant_addr:
             ctx["consultant_address"] = consultant_addr
 
-    # Client / family
+    # Client / family. Household names often already end in "Family"
+    # (e.g. "Rivera Family"), so only append "family" when they don't —
+    # avoids "the Rivera Family family".
     if eng and eng["family_name"]:
-        ctx["client_name"] = f"the {eng['family_name']} family"
+        name = eng["family_name"].strip()
+        suffix = "" if name.lower().endswith("family") else " family"
+        ctx["client_name"] = f"the {name}{suffix}"
     if eng and eng["family_id"]:
         client_addr = await _client_address_for_family(conn, eng["family_id"])
         if client_addr:

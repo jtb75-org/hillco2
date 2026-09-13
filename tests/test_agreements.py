@@ -365,3 +365,42 @@ async def test_agreements_has_audit_and_updated_at_triggers(db_pool):
         }
     assert "agreements_set_updated_at" in triggers
     assert "agreements_audit" in triggers
+
+
+# ---- client_name composition --------------------------------------------
+
+async def _engagement_for_household(conn, test_user, name: str):
+    await conn.execute("SELECT set_config('app.user_id', $1, true)", str(test_user["id"]))
+    family_id = await conn.fetchval(
+        "INSERT INTO families (household_name) VALUES ($1) RETURNING id", name,
+    )
+    student_id = await conn.fetchval(
+        "INSERT INTO people (kind, first_name) VALUES ('student', 'Kid') RETURNING id"
+    )
+    await conn.execute(
+        "INSERT INTO family_students (family_id, person_id) VALUES ($1, $2)",
+        family_id, student_id,
+    )
+    return await conn.fetchval(
+        """
+        INSERT INTO engagements (family_id, student_id, engagement_type, status, lead_consultant_id)
+        VALUES ($1, $2, 'assessment', 'in_progress', $3) RETURNING id
+        """,
+        family_id, student_id, test_user["id"],
+    )
+
+
+async def test_client_name_does_not_double_family_suffix(db_pool, test_user):
+    """A household already named "... Family" must not render as
+    "the X Family family"; a plain surname still gets "the X family"."""
+    from app.routes.agreements import build_render_context  # noqa: PLC0415
+
+    async with db_pool.acquire() as conn:
+        async with conn.transaction():
+            eng_family = await _engagement_for_household(conn, test_user, "Rivera Family")
+            eng_plain = await _engagement_for_household(conn, test_user, "Rivera")
+        ctx_family = await build_render_context(conn, eng_family)
+        ctx_plain = await build_render_context(conn, eng_plain)
+
+    assert ctx_family["client_name"] == "the Rivera Family"
+    assert ctx_plain["client_name"] == "the Rivera family"
