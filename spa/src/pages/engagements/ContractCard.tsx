@@ -119,6 +119,13 @@ function prettyVariable(name: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+// Sensible starting values for operator-typed contract variables. The New
+// Agreement dialog seeds these into the inline fields, pre-filled but fully
+// editable per contract.
+const VARIABLE_DEFAULTS: Record<string, string> = {
+  payment_schedule: "50% on signing, 50% on completion",
+};
+
 type LifecycleState =
   | "drafted"
   | "sent"
@@ -566,6 +573,26 @@ function AddAgreementDialog({
   useEffect(() => {
     setVarInputs({});
   }, [templateId]);
+
+  // Pre-fill sensible defaults for operator-typed variables that are
+  // otherwise blank, so a fresh contract starts filled but editable.
+  // Only seeds keys the operator hasn't touched.
+  const missingKey = (renderContext.data?.missing ?? []).join(",");
+  useEffect(() => {
+    const miss = renderContext.data?.missing ?? [];
+    setVarInputs((prev) => {
+      let next = prev;
+      for (const [k, def] of Object.entries(VARIABLE_DEFAULTS)) {
+        if (miss.includes(k) && !(prev[k] ?? "").trim()) {
+          if (next === prev) next = { ...prev };
+          next[k] = def;
+        }
+      }
+      return next;
+    });
+    // missingKey captures the set of missing vars; re-seed when it changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [missingKey]);
 
   const missing = renderContext.data?.missing ?? [];
   const hints = renderContext.data?.hints ?? {};
