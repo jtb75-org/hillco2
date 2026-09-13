@@ -15,6 +15,12 @@ SMTP_PORT ?= 1025
 export SMTP_HOST
 export SMTP_PORT
 
+# Signing/email links must point at the SPA, not the API. In prod they share a
+# host so request.base_url works; locally the SPA is on a separate port, so
+# point links there (matches the Vite dev server default).
+PUBLIC_BASE_URL ?= http://localhost:5173
+export PUBLIC_BASE_URL
+
 .PHONY: help dev-deps dev-deps-down dev-deps-reset migrate dev-api dev-spa seed lint test
 
 help: ## Show this help
