@@ -40,7 +40,13 @@ interface TimeEntry {
   task_title: string | null;
 }
 
-export function TimeEntriesCard({ engagementId }: { engagementId: string }) {
+export function TimeEntriesCard({
+  engagementId,
+  billingMode,
+}: {
+  engagementId: string;
+  billingMode: "hourly" | "fixed";
+}) {
   const qc = useQueryClient();
   const snackbar = useSnackbar();
   const [addOpen, setAddOpen] = useState(false);
@@ -136,6 +142,7 @@ export function TimeEntriesCard({ engagementId }: { engagementId: string }) {
       <AddTimeEntryDialog
         open={addOpen}
         engagementId={engagementId}
+        billingMode={billingMode}
         onClose={() => setAddOpen(false)}
         onCreated={() => {
           setAddOpen(false);
@@ -268,27 +275,32 @@ function TimeEntryRow({
 function AddTimeEntryDialog({
   open,
   engagementId,
+  billingMode,
   onClose,
   onCreated,
 }: {
   open: boolean;
   engagementId: string;
+  billingMode: "hourly" | "fixed";
   onClose: () => void;
   onCreated: () => void;
 }) {
   const snackbar = useSnackbar();
+  // Fixed-bid engagements bill a flat fee, so time defaults to non-billable
+  // (cost tracking only); hourly defaults to billable.
+  const defaultBillable = billingMode !== "fixed";
   const [workDate, setWorkDate] = useState<string>(
     new Date().toISOString().slice(0, 10),
   );
   const [hours, setHours] = useState("");
   const [description, setDescription] = useState("");
-  const [billable, setBillable] = useState(true);
+  const [billable, setBillable] = useState(defaultBillable);
 
   const reset = () => {
     setWorkDate(new Date().toISOString().slice(0, 10));
     setHours("");
     setDescription("");
-    setBillable(true);
+    setBillable(defaultBillable);
   };
 
   const create = useMutation({

@@ -165,7 +165,7 @@ export function EngagementDetail() {
 
       <RequirementsCard engagementId={id!} />
 
-      <ActivitiesCard engagementId={id!} />
+      <ActivitiesCard engagementId={id!} billingMode={engagement.data.billing_mode} />
 
       <BillingCard
         engagementId={id!}
@@ -174,7 +174,7 @@ export function EngagementDetail() {
         fixedFee={engagement.data.fixed_fee}
       />
 
-      <TimeEntriesCard engagementId={id!} />
+      <TimeEntriesCard engagementId={id!} billingMode={engagement.data.billing_mode} />
 
       <ExpensesCard engagementId={id!} />
 

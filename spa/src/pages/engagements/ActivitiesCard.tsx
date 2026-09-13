@@ -105,7 +105,13 @@ const KIND_LABEL: Record<ActivityKind, string> = {
   school_recommendation: "Recommendation",
 };
 
-export function ActivitiesCard({ engagementId }: { engagementId: string }) {
+export function ActivitiesCard({
+  engagementId,
+  billingMode,
+}: {
+  engagementId: string;
+  billingMode: "hourly" | "fixed";
+}) {
   const qc = useQueryClient();
   const snackbar = useSnackbar();
   const [showSkipped, setShowSkipped] = useState(false);
@@ -453,6 +459,7 @@ export function ActivitiesCard({ engagementId }: { engagementId: string }) {
       <AddActivityDialog
         open={addOpen === "task"}
         engagementId={engagementId}
+        billingMode={billingMode}
         nextSortOrder={
           (rows[rows.length - 1]?.sort_order ?? 0) + 10
         }
@@ -483,6 +490,7 @@ export function ActivitiesCard({ engagementId }: { engagementId: string }) {
 
       <LogTimeForTaskDialog
         engagementId={engagementId}
+        billingMode={billingMode}
         activity={logTimeFor}
         phaseTitle={
           logTimeFor
@@ -870,25 +878,30 @@ function RowMenu({
 function AddActivityDialog({
   open,
   engagementId,
+  billingMode,
   nextSortOrder,
   onClose,
   onCreated,
 }: {
   open: boolean;
   engagementId: string;
+  billingMode: "hourly" | "fixed";
   nextSortOrder: number;
   onClose: () => void;
   onCreated: () => void;
 }) {
   const snackbar = useSnackbar();
+  // Fixed-bid engagements don't bill hourly, so new activities default
+  // non-billable (time logged against them is cost-tracking only).
+  const defaultBillable = billingMode !== "fixed";
   const [title, setTitle] = useState("");
   const [notes, setNotes] = useState("");
-  const [billable, setBillable] = useState(true);
+  const [billable, setBillable] = useState(defaultBillable);
 
   const reset = () => {
     setTitle("");
     setNotes("");
-    setBillable(true);
+    setBillable(defaultBillable);
   };
 
   const create = useMutation({
@@ -981,12 +994,14 @@ function AddActivityDialog({
 
 function LogTimeForTaskDialog({
   engagementId,
+  billingMode,
   activity,
   phaseTitle,
   onClose,
   onLogged,
 }: {
   engagementId: string;
+  billingMode: "hourly" | "fixed";
   activity: ActivityRow | null;
   phaseTitle: string | null;
   onClose: () => void;
@@ -1013,7 +1028,9 @@ function LogTimeForTaskDialog({
     setDescription(
       phaseTitle ? `${phaseTitle}: ${activity.title}` : activity.title,
     );
-    setBillable(activity.billable);
+    // Fixed-bid engagements bill a flat fee, so logged time is non-billable
+    // regardless of the activity's flag; hourly follows the activity.
+    setBillable(billingMode === "fixed" ? false : activity.billable);
     setLastSeed(seedKey);
   }
 

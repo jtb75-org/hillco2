@@ -17,7 +17,10 @@ class TimeEntryCreate(BaseModel):
     work_date: date | None = None  # defaults to today
     hours: Decimal = Field(..., gt=0)
     description: str | None = None
-    billable: bool = True
+    # None → default by engagement billing mode: hourly bills the client so
+    # time is billable; fixed-bid bills a flat fee, so time is logged for
+    # internal cost/margin tracking only (non-billable).
+    billable: bool | None = None
     hourly_rate: Decimal | None = None
     user_id: UUID | None = None  # who did the work; defaults to the requester
     # Optional link to the engagement task this time was spent on. NULL
@@ -40,7 +43,8 @@ class TimeEntryUpdate(BaseModel):
 
 async def _engagement_or_404(conn, engagement_id: UUID):
     row = await conn.fetchrow(
-        "SELECT id, default_hourly_rate FROM engagements WHERE id = $1 AND deleted_at IS NULL",
+        "SELECT id, default_hourly_rate, billing_mode FROM engagements "
+        "WHERE id = $1 AND deleted_at IS NULL",
         engagement_id,
     )
     if not row:
@@ -103,10 +107,13 @@ async def add_time_entry(
     user=Depends(require_user),
     conn=Depends(get_conn),
 ):
-    await _engagement_or_404(conn, engagement_id)
+    eng = await _engagement_or_404(conn, engagement_id)
     work_date = body.work_date or date.today()
     description = (body.description or "").strip() or None
     worked_user_id = await _resolve_active_user(conn, body.user_id, user["id"])
+    # Fixed-bid engagements: time is cost-tracking only, so default it
+    # non-billable (never flows into a client invoice). Honor an explicit value.
+    billable = body.billable if body.billable is not None else (eng["billing_mode"] != "fixed")
 
     if body.engagement_task_id is not None:
         task_eng_id = await conn.fetchval(
@@ -132,7 +139,7 @@ async def add_time_entry(
                   engagement_task_id, created_at, updated_at
         """,
         engagement_id, worked_user_id, work_date, body.hours,
-        description, body.billable, body.hourly_rate,
+        description, billable, body.hourly_rate,
         body.engagement_task_id,
     )
     return dict(row)

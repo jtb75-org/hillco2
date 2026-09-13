@@ -180,3 +180,41 @@ async def test_fixed_fee_invoice_rejects_hourly_engagement(authed_client, family
         f"/api/engagements/{eng['id']}/invoices/fixed-fee", json={},
     )
     assert r.status_code == 400, r.text
+
+
+# ---- time logging on fixed vs hourly -------------------------------------
+
+async def _engagement_of_type(authed_client, fam, billing_mode, fee=None):
+    t = await _new_type(authed_client, billing_mode=billing_mode, fee=fee)
+    return (await authed_client.post(
+        f"/api/families/{fam['family_id']}/engagements",
+        json={"student_id": fam["student_id"], "engagement_type": t["code"]},
+    )).json()
+
+
+async def test_time_on_fixed_engagement_defaults_nonbillable(authed_client, family_with_student):
+    eng = await _engagement_of_type(authed_client, family_with_student, "fixed", "3000")
+    r = await authed_client.post(
+        f"/api/engagements/{eng['id']}/time-entries", json={"hours": "1.5"},
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["billable"] is False
+
+
+async def test_time_on_hourly_engagement_defaults_billable(authed_client, family_with_student):
+    eng = await _engagement_of_type(authed_client, family_with_student, "hourly")
+    r = await authed_client.post(
+        f"/api/engagements/{eng['id']}/time-entries", json={"hours": "1.5"},
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["billable"] is True
+
+
+async def test_time_explicit_billable_honored_on_fixed(authed_client, family_with_student):
+    eng = await _engagement_of_type(authed_client, family_with_student, "fixed", "3000")
+    r = await authed_client.post(
+        f"/api/engagements/{eng['id']}/time-entries",
+        json={"hours": "1.0", "billable": True},
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["billable"] is True
