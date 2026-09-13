@@ -144,9 +144,6 @@ export function EngagementDetail() {
             >
               {engagement.data.family.household_name}
             </MuiLink>
-            <Typography color="text.primary">
-              {labelForType(engagement.data.engagement_type)}
-            </Typography>
           </>
         }
         actions={<EngagementActionsMenu engagement={engagement.data} />}

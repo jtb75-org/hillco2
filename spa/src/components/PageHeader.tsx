@@ -1,5 +1,5 @@
 import { Box, Breadcrumbs, Stack, Typography } from "@mui/material";
-import type { ReactNode } from "react";
+import { Fragment, isValidElement, type ReactNode } from "react";
 
 interface PageHeaderProps {
   title: ReactNode;
@@ -9,6 +9,13 @@ interface PageHeaderProps {
 }
 
 export function PageHeader({ title, subtitle, breadcrumbs, actions }: PageHeaderProps) {
+  // MUI Breadcrumbs only inserts separators between its *direct* children.
+  // Callers pass crumbs wrapped in a Fragment, which counts as one child (no
+  // separators, so crumbs jam together) — unwrap it to the child array.
+  const crumbItems =
+    isValidElement(breadcrumbs) && breadcrumbs.type === Fragment
+      ? (breadcrumbs.props as { children?: ReactNode }).children
+      : breadcrumbs;
   return (
     <Stack spacing={1.25}>
       {breadcrumbs && (
@@ -19,7 +26,7 @@ export function PageHeader({ title, subtitle, breadcrumbs, actions }: PageHeader
             "& .MuiBreadcrumbs-separator": { mx: 0.75 },
           }}
         >
-          {breadcrumbs}
+          {crumbItems}
         </Breadcrumbs>
       )}
       <Stack
