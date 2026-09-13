@@ -132,7 +132,9 @@ async def get_signing_pdf(token: str):
         rendered_md = strip_wet_signatures(await render_agreement_markdown(conn, dict(row)))
         sigs = await _stored_signatures_for_cert(conn, row["id"])
         extra = signature_certificate_html(sigs) if sigs else ""
-        pdf = agreement_pdf_bytes(rendered_md, extra_html=extra)
+        pdf = agreement_pdf_bytes(
+            rendered_md, extra_html=extra, contract_number=row.get("contract_number"),
+        )
     name = row.get("contract_number") or f"agreement-{str(row['id'])[:8]}"
     return Response(
         content=pdf,
@@ -245,7 +247,10 @@ async def submit_signature(token: str, body: SignSubmission, request: Request):
                         s["user_agent"], s["signed_at"],
                     )
                 cert = signature_certificate_html([firm_sig, client_sig])
-                pdf = agreement_pdf_bytes(rendered_md, extra_html=cert)
+                pdf = agreement_pdf_bytes(
+                    rendered_md, extra_html=cert,
+                    contract_number=row.get("contract_number"),
+                )
                 contract_no = row.get("contract_number") or f"agreement-{str(row['id'])[:8]}"
                 doc = await store_document_bytes(
                     conn,

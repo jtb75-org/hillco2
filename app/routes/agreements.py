@@ -903,13 +903,20 @@ def _substitute(body: str, ctx: dict[str, Any]) -> str:
     return _VARIABLE_RE.sub(_repl, body or "")
 
 
-def _markdown_to_html(body: str, *, extra_html: str = "") -> str:
-    """Light markdown → HTML wrapped in a print-friendly stylesheet for
-    WeasyPrint. The stylesheet is intentionally narrow (just typography
-    + page margins) so the agreement looks like a legal document.
+def _markdown_to_html(
+    body: str,
+    *,
+    extra_html: str = "",
+    contract_number: str | None = None,
+    firm_name: str = "HillCo Educational Consulting",
+) -> str:
+    """Markdown → branded, print-ready HTML for WeasyPrint. Adds a running
+    HillCo letterhead header + footer (page numbers) and the brand palette.
 
     `extra_html` is appended after the rendered body — used to bolt the
     signature-certificate page onto a signed copy."""
+    from html import escape  # noqa: PLC0415
+
     from markdown import markdown  # noqa: PLC0415
 
     body_html = markdown(
@@ -917,32 +924,72 @@ def _markdown_to_html(body: str, *, extra_html: str = "") -> str:
         extensions=["extra", "sane_lists"],
         output_format="html5",
     )
+    header_right = escape(contract_number) if contract_number else ""
+    footer_left = escape(firm_name)
     return f"""<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <title>Agreement</title>
 <style>
-  @page {{ size: Letter; margin: 0.75in; }}
+  @page {{
+    size: Letter;
+    margin: 1.15in 0.85in 0.95in 0.85in;
+    @top-center {{ content: element(docHeader); vertical-align: bottom; }}
+    @bottom-left {{
+      content: "{footer_left}";
+      font-family: "Helvetica Neue", "Arial", sans-serif;
+      font-size: 8pt; color: #9aa3b2;
+    }}
+    @bottom-right {{
+      content: "Page " counter(page) " of " counter(pages);
+      font-family: "Helvetica Neue", "Arial", sans-serif;
+      font-size: 8pt; color: #9aa3b2;
+    }}
+  }}
+  /* Running letterhead — repeats on every page via @top-center. */
+  .doc-header {{
+    position: running(docHeader);
+    width: 6.8in;  /* Letter (8.5in) minus 0.85in side margins → full content width */
+    border-bottom: 1.5px solid #08428d;
+    padding-bottom: 5pt;
+  }}
+  .doc-header table {{ width: 100%; border-collapse: collapse; }}
+  .doc-header td {{ vertical-align: bottom; }}
+  .doc-header .wm {{ font-family: "Helvetica Neue", "Arial", sans-serif; }}
+  .doc-header .wm-name {{ font-size: 15pt; font-weight: 800; letter-spacing: .5px; }}
+  .doc-header .wm-name .hill {{ color: #08428d; }}
+  .doc-header .wm-name .co {{ color: #5fa0ee; }}
+  .doc-header .wm-sub {{
+    font-size: 6.5pt; font-weight: 400; letter-spacing: 2.5px; color: #6b7280;
+    display: block; margin-top: 1pt;
+  }}
+  .doc-header .doc-ref {{
+    font-family: "Helvetica Neue", "Arial", sans-serif;
+    font-size: 8.5pt; color: #6b7280; text-align: right;
+  }}
   body {{
     font-family: "Georgia", "Times New Roman", serif;
     font-size: 11pt;
     line-height: 1.5;
-    color: #111;
+    color: #1f2937;
   }}
-  h1, h2, h3 {{ font-family: "Helvetica Neue", "Arial", sans-serif; }}
-  h1 {{ font-size: 14pt; margin-top: 1.4em; }}
-  h2 {{ font-size: 12pt; margin-top: 1em; }}
-  h3 {{ font-size: 11pt; margin-top: 0.8em; }}
-  hr {{ border: none; border-top: 1px solid #999; margin: 1.5em 0; }}
+  h1, h2, h3 {{ font-family: "Helvetica Neue", "Arial", sans-serif; color: #08428d; }}
+  h1 {{ font-size: 16pt; margin: 0 0 0.2em; letter-spacing: .2px; }}
+  h2 {{
+    font-size: 12pt; margin-top: 1.4em; padding-bottom: 3pt;
+    border-bottom: 1px solid #dbe4f3;
+  }}
+  h3 {{ font-size: 10.5pt; margin-top: 1em; color: #073a7b; }}
+  hr {{ border: none; border-top: 1px solid #e5e9f0; margin: 1.4em 0; }}
   ul, ol {{ padding-left: 1.4em; }}
   li {{ margin-bottom: 0.15em; }}
   strong {{ font-weight: 700; }}
   code {{ font-family: monospace; }}
   .sig-cert {{ page-break-before: always; }}
-  .sig-cert h2 {{ font-size: 13pt; border-bottom: 1px solid #999; padding-bottom: 4pt; }}
-  .sig-block {{ margin: 1.2em 0; padding: 0.8em 1em; border: 1px solid #ccc; }}
-  .sig-block .sig-name {{ font-size: 20pt; font-family: "Segoe Script", "Snell Roundhand", cursive; }}
+  .sig-cert h2 {{ font-size: 13pt; border-bottom: 1.5px solid #08428d; padding-bottom: 4pt; }}
+  .sig-block {{ margin: 1.2em 0; padding: 0.8em 1em; border: 1px solid #dbe4f3; border-radius: 3pt; }}
+  .sig-block .sig-name {{ font-size: 20pt; font-family: "Segoe Script", "Snell Roundhand", cursive; color: #08428d; }}
   .sig-block img.sig-img {{ max-height: 80px; }}
   .sig-meta {{ font-family: "Helvetica Neue", "Arial", sans-serif; font-size: 8.5pt; color: #444; border-collapse: collapse; margin-top: 6pt; }}
   .sig-meta th {{ text-align: left; vertical-align: top; font-weight: 600; width: 110px; padding: 1pt 10pt 1pt 0; white-space: nowrap; }}
@@ -950,6 +997,15 @@ def _markdown_to_html(body: str, *, extra_html: str = "") -> str:
 </style>
 </head>
 <body>
+<div class="doc-header">
+  <table><tr>
+    <td class="wm">
+      <span class="wm-name"><span class="hill">HILL</span><span class="co">CO</span></span>
+      <span class="wm-sub">EDUCATIONAL CONSULTING</span>
+    </td>
+    <td class="doc-ref">{header_right}</td>
+  </tr></table>
+</div>
 {body_html}
 {extra_html}
 </body>
@@ -988,13 +1044,20 @@ async def render_agreement_markdown(conn, agreement: dict) -> str:
     return _substitute(body, ctx)
 
 
-def agreement_pdf_bytes(rendered_md: str, *, extra_html: str = "") -> bytes:
-    """Render already-substituted markdown to PDF bytes."""
+def agreement_pdf_bytes(
+    rendered_md: str,
+    *,
+    extra_html: str = "",
+    contract_number: str | None = None,
+) -> bytes:
+    """Render already-substituted markdown to branded PDF bytes."""
     from weasyprint import HTML  # noqa: PLC0415
 
     from ..pdf import safe_url_fetcher  # noqa: PLC0415
 
-    html = _markdown_to_html(rendered_md, extra_html=extra_html)
+    html = _markdown_to_html(
+        rendered_md, extra_html=extra_html, contract_number=contract_number
+    )
     return HTML(string=html, url_fetcher=safe_url_fetcher).write_pdf()
 
 
@@ -1118,7 +1181,10 @@ async def render_agreement_pdf(
     if sigs:
         rendered_md = strip_wet_signatures(rendered_md)
         extra_html = signature_certificate_html(sigs)
-    pdf_bytes = agreement_pdf_bytes(rendered_md, extra_html=extra_html)
+    pdf_bytes = agreement_pdf_bytes(
+        rendered_md, extra_html=extra_html,
+        contract_number=agreement.get("contract_number"),
+    )
     filename = agreement.get("contract_number") or f"agreement-{str(agreement_id)[:8]}"
     return Response(
         content=pdf_bytes,
