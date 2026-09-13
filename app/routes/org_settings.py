@@ -25,6 +25,7 @@ class OrgSettingsUpdate(BaseModel):
     firm_state: str | None = None
     firm_postal_code: str | None = None
     firm_country: str | None = None
+    firm_phone: str | None = None
     governing_state: str | None = None
     billing_increment_minutes: int | None = Field(default=None, ge=1, le=240)
     invoice_frequency: str | None = None

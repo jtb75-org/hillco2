@@ -30,7 +30,7 @@ VARIABLE_HINTS: dict[str, str] = {
     # Lead consultant's people record
     "consultant_name":    "lead_consultant",
     "consultant_email":   "lead_consultant",
-    "consultant_phone":   "lead_consultant",
+    "consultant_phone":   "lead_consultant_or_firm_settings",
     "consultant_address": "lead_consultant_or_firm_settings",
     # Firm-wide
     "consultant_company":            "firm_settings",
@@ -65,7 +65,37 @@ VARIABLE_HINTS: dict[str, str] = {
     "patient_address":              "family",
     "patient_city_state_zip":       "family",
     "patient_phone":                "family",
+    # Signer-provided: the releasing provider (the office that HOLDS the
+    # records), the records date range, and the expiration. HillCo doesn't
+    # have these — the parent/guardian fills them in on the signing page.
+    "releasing_provider_name":            "signer",
+    "releasing_provider_address":         "signer",
+    "releasing_provider_city_state_zip":  "signer",
+    "releasing_provider_phone":           "signer",
+    "releasing_provider_fax":             "signer",
+    "records_date_from":                  "signer",
+    "records_date_to":                    "signer",
+    "expiration_specific_date":           "signer",
+    "expiration_other_event":             "signer",
 }
+
+# Variables the signing party fills in on the public signing page (not the
+# operator). These never block draft creation. Derived from the hints above
+# so the two stay in sync.
+SIGNER_VARIABLES: frozenset[str] = frozenset(
+    name for name, hint in VARIABLE_HINTS.items() if hint == "signer"
+)
+
+# Signer fields rendered as date inputs on the signing page; the rest are text.
+SIGNER_DATE_VARIABLES: frozenset[str] = frozenset(
+    {"records_date_from", "records_date_to", "expiration_specific_date"}
+)
+
+
+def variable_label(name: str) -> str:
+    """Human label for a variable name (e.g. 'releasing_provider_name' ->
+    'Releasing Provider Name')."""
+    return name.replace("_", " ").title()
 
 
 AgreementType = Literal["services_contract", "medical_release"]

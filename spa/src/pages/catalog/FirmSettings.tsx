@@ -21,6 +21,7 @@ interface OrgSettings {
   firm_state: string | null;
   firm_postal_code: string | null;
   firm_country: string | null;
+  firm_phone: string | null;
   governing_state: string | null;
   billing_increment_minutes: number | null;
   invoice_frequency: string | null;
@@ -36,6 +37,7 @@ const EMPTY: OrgSettings = {
   firm_state: null,
   firm_postal_code: null,
   firm_country: null,
+  firm_phone: null,
   governing_state: null,
   billing_increment_minutes: null,
   invoice_frequency: null,
@@ -112,6 +114,14 @@ export function CatalogFirmSettings() {
             placeholder="HillCo Educational Consulting"
             value={draft.firm_name ?? ""}
             onChange={text("firm_name")}
+          />
+          <TextField
+            label="Phone"
+            size="small"
+            placeholder="(555) 555-1234"
+            helperText="Used on contracts when the lead consultant has no phone set."
+            value={draft.firm_phone ?? ""}
+            onChange={text("firm_phone")}
           />
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
             <TextField

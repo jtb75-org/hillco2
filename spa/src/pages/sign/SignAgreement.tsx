@@ -20,6 +20,8 @@ import {
 
 const NAVY = "#08428d";
 
+type ClientField = { name: string; label: string; type: "text" | "date" };
+
 type SigningView = {
   contract_number: string | null;
   client_name: string | null;
@@ -28,6 +30,7 @@ type SigningView = {
   status: string;
   signed: boolean;
   consent_text: string;
+  client_fields: ClientField[];
 };
 
 export function SignAgreement() {
@@ -145,10 +148,12 @@ function SigningForm({
   const [tab, setTab] = useState<"typed" | "drawn">("typed");
   const [typed, setTyped] = useState("");
   const [consent, setConsent] = useState(false);
+  const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const drawnRef = useRef(false);
+  const clientFields = view.client_fields ?? [];
 
   const canSubmit =
     name.trim() !== "" &&
@@ -165,6 +170,12 @@ function SigningForm({
         method: tab,
         consent,
       };
+      const fv = Object.fromEntries(
+        Object.entries(fieldValues)
+          .map(([k, v]) => [k, v.trim()])
+          .filter(([, v]) => v !== ""),
+      );
+      if (Object.keys(fv).length > 0) payload.field_values = fv;
       if (tab === "typed") {
         payload.signature_text = typed.trim();
       } else {
@@ -216,6 +227,34 @@ function SigningForm({
               dangerouslySetInnerHTML={{ __html: view.body_html }}
             />
           </Paper>
+
+          {clientFields.length > 0 && (
+            <Paper variant="outlined" sx={{ p: { xs: 2, md: 3 } }}>
+              <Typography variant="h6" sx={{ color: NAVY }}>
+                Details to complete
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Please provide the following. These will be filled into the
+                agreement you're signing.
+              </Typography>
+              <Stack spacing={2}>
+                {clientFields.map((f) => (
+                  <TextField
+                    key={f.name}
+                    label={f.label}
+                    type={f.type === "date" ? "date" : "text"}
+                    size="small"
+                    fullWidth
+                    value={fieldValues[f.name] ?? ""}
+                    onChange={(e) =>
+                      setFieldValues((prev) => ({ ...prev, [f.name]: e.target.value }))
+                    }
+                    InputLabelProps={f.type === "date" ? { shrink: true } : undefined}
+                  />
+                ))}
+              </Stack>
+            </Paper>
+          )}
 
           <Paper variant="outlined" sx={{ p: { xs: 2, md: 3 } }}>
             <Typography variant="h6" sx={{ color: NAVY }}>

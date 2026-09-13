@@ -8,6 +8,7 @@ trail), generate the signed PDF (contract + signature-certificate page), attach
 it to the agreement, flip the agreement to active, and email the completed
 document to both parties.
 """
+import json
 from datetime import UTC, datetime
 
 import asyncpg
@@ -24,6 +25,12 @@ from .agreements import (
     markdown_to_fragment,
     render_agreement_markdown,
     signature_certificate_html,
+)
+from .contract_templates import (
+    SIGNER_DATE_VARIABLES,
+    SIGNER_VARIABLES,
+    _extract_variables,
+    variable_label,
 )
 from .documents import store_document_bytes
 
@@ -48,6 +55,23 @@ class SignSubmission(BaseModel):
     signature_text: str | None = Field(default=None, max_length=200)
     signature_data_uri: str | None = None
     consent: bool = False
+    # Signer-provided variable values (e.g. releasing provider, records dates).
+    # Only keys in SIGNER_VARIABLES are honored; everything else is ignored.
+    field_values: dict[str, str] | None = None
+
+
+def _client_fields(body_markdown: str, merged_ctx: dict) -> list[dict]:
+    """Signer-fillable variables the contract still needs, in document order."""
+    detected = _extract_variables(body_markdown or "")
+    fields: list[dict] = []
+    for v in detected:
+        if v in SIGNER_VARIABLES and not (merged_ctx.get(v) or "").strip():
+            fields.append({
+                "name": v,
+                "label": variable_label(v),
+                "type": "date" if v in SIGNER_DATE_VARIABLES else "text",
+            })
+    return fields
 
 
 def _client_ip(request: Request) -> str | None:
@@ -75,6 +99,10 @@ async def get_signing_view(token: str):
         if not row.get("body_markdown"):
             raise HTTPException(status_code=400, detail="This agreement has no contract to sign.")
         ctx = await _build_default_context(conn, dict(row))
+        overrides = row["variables"] or {}
+        if isinstance(overrides, str):
+            overrides = json.loads(overrides) if overrides else {}
+        merged = {**ctx, **overrides}
         rendered_md = await render_agreement_markdown(conn, dict(row))
         signed = row["status"] == "active"
         return {
@@ -85,6 +113,8 @@ async def get_signing_view(token: str):
             "status": row["status"],
             "signed": signed,
             "consent_text": CONSENT_TEXT,
+            # Fields the signer must complete before signing (empty when none).
+            "client_fields": [] if signed else _client_fields(row.get("body_markdown"), merged),
         }
 
 
@@ -133,6 +163,20 @@ async def submit_signature(token: str, body: SignSubmission, request: Request):
                 raise HTTPException(status_code=400, detail="Invalid drawn signature.")
             if len(uri) > MAX_SIGNATURE_DATA_URI:
                 raise HTTPException(status_code=413, detail="Signature image is too large.")
+
+        # Merge signer-provided field values (releasing provider, records
+        # dates, expiration) into the agreement's variables — only whitelisted
+        # signer keys are honored, so a client can't set amount/fee/etc.
+        current_vars = row["variables"] or {}
+        if isinstance(current_vars, str):
+            current_vars = json.loads(current_vars) if current_vars else {}
+        extra_vars = {
+            k: v.strip()
+            for k, v in (body.field_values or {}).items()
+            if k in SIGNER_VARIABLES and isinstance(v, str) and v.strip()
+        }
+        merged_vars = {**current_vars, **extra_vars}
+        row = {**dict(row), "variables": merged_vars}
 
         eng = await conn.fetchrow(
             "SELECT lead_consultant_id FROM engagements WHERE id = $1",
@@ -211,10 +255,11 @@ async def submit_signature(token: str, body: SignSubmission, request: Request):
                     UPDATE agreements
                     SET status = 'active',
                         signed_at = CURRENT_DATE,
-                        document_id = $2
+                        document_id = $2,
+                        variables = $3::jsonb
                     WHERE id = $1
                     """,
-                    row["id"], doc["id"],
+                    row["id"], doc["id"], json.dumps(merged_vars),
                 )
         except asyncpg.UniqueViolationError as exc:
             raise HTTPException(

@@ -658,14 +658,20 @@ function AddAgreementDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [missingKey]);
 
-  const missing = renderContext.data?.missing ?? [];
+  const allMissing = renderContext.data?.missing ?? [];
   const hints = renderContext.data?.hints ?? {};
+  const hintOf = (v: string) => hints[v] ?? "agreement-override";
+  // "signer" variables (e.g. the releasing provider on a medical release) are
+  // filled by the client on the signing page — they never block the operator's
+  // draft creation, so drop them from the required set entirely.
+  const signerMissing = allMissing.filter((v) => hintOf(v) === "signer");
+  const missing = allMissing.filter((v) => hintOf(v) !== "signer");
   // Two-bucket gate: variables with a known source must be resolved
   // at that source (the dialog auto-refetches on window focus, so
   // tabbing back after fixing it picks up the new value). Variables
   // with no source ("agreement-override") still need an inline value.
-  const overrideMissing = missing.filter((v) => (hints[v] ?? "agreement-override") === "agreement-override");
-  const sourceMissing = missing.filter((v) => (hints[v] ?? "agreement-override") !== "agreement-override");
+  const overrideMissing = missing.filter((v) => hintOf(v) === "agreement-override");
+  const sourceMissing = missing.filter((v) => hintOf(v) !== "agreement-override");
   const allMissingFilled =
     sourceMissing.length === 0 &&
     overrideMissing.every((v) => (varInputs[v] ?? "").trim() !== "");
@@ -675,12 +681,12 @@ function AddAgreementDialog({
   // the real gap, not the server's stateless view. Source-backed vars
   // always count (they can only be resolved at their source).
   const stillMissing = missing.filter((v) =>
-    (hints[v] ?? "agreement-override") === "agreement-override"
+    hintOf(v) === "agreement-override"
       ? (varInputs[v] ?? "").trim() === ""
       : true,
   );
   const stillMissingHasSource = stillMissing.some(
-    (v) => (hints[v] ?? "agreement-override") !== "agreement-override",
+    (v) => hintOf(v) !== "agreement-override",
   );
 
   const reset = () => {
@@ -837,11 +843,21 @@ function AddAgreementDialog({
             onChange={(e) => setNotes(e.target.value)}
           />
           {templateId && renderContext.data && (
-            <Box>
+            <Stack spacing={1.25}>
+              {signerMissing.length > 0 && (
+                <Alert severity="info" variant="outlined" data-testid="signer-fields-note">
+                  The client will complete these when they sign:{" "}
+                  <Box component="span" sx={{ fontWeight: 600 }}>
+                    {signerMissing.map(prettyVariable).join(", ")}
+                  </Box>
+                  .
+                </Alert>
+              )}
               {missing.length === 0 ? (
                 <Alert severity="success" variant="outlined">
-                  All {renderContext.data.detected.length} variables auto-fill from
-                  this engagement's data — no fillins needed.
+                  {signerMissing.length > 0
+                    ? "Nothing for you to fill in — ready to create the draft."
+                    : `All ${renderContext.data.detected.length} variables auto-fill from this engagement's data — no fillins needed.`}
                 </Alert>
               ) : (
                 <Stack spacing={1.25}>
@@ -930,7 +946,7 @@ function AddAgreementDialog({
                   </Stack>
                 </Stack>
               )}
-            </Box>
+            </Stack>
           )}
         </Stack>
       </DialogContent>

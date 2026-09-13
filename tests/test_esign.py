@@ -246,3 +246,61 @@ async def test_rotated_nonce_invalidates_old_link(authed_client, client, db_pool
     # Re-send rotates the nonce → the old link no longer resolves.
     await authed_client.post(f"/api/agreements/{s['agreement_id']}/send-for-signature")
     assert (await client.get(f"/api/sign/{old_token}")).status_code == 404
+
+
+# ---- signer-filled fields (medical release) --------------------------------
+
+async def _medrel_agreement(authed_client, engagement_id):
+    templates = (await authed_client.get(
+        "/api/contract-templates?kind=medical_release"
+    )).json()
+    return (await authed_client.post(
+        f"/api/engagements/{engagement_id}/agreements",
+        json={"type": "medical_release", "template_id": templates[0]["id"]},
+    )).json()
+
+
+async def test_medical_release_exposes_signer_fields(authed_client, client, db_pool):
+    s = await _signable(authed_client)
+    ag = await _medrel_agreement(authed_client, s["engagement_id"])
+    await authed_client.post(f"/api/agreements/{ag['id']}/send-for-signature")
+    token = make_signing_token(ag["id"], await _nonce(db_pool, ag["id"]))
+
+    view = (await client.get(f"/api/sign/{token}")).json()
+    names = [f["name"] for f in view["client_fields"]]
+    # Releasing provider + records dates are client-filled, not operator/source.
+    assert "releasing_provider_name" in names
+    assert "records_date_from" in names
+    # A date field is typed for a date input.
+    from_field = next(f for f in view["client_fields"] if f["name"] == "records_date_from")
+    assert from_field["type"] == "date"
+
+
+async def test_signer_submits_field_values(authed_client, client, db_pool):
+    s = await _signable(authed_client)
+    ag = await _medrel_agreement(authed_client, s["engagement_id"])
+    await authed_client.post(f"/api/agreements/{ag['id']}/send-for-signature")
+    token = make_signing_token(ag["id"], await _nonce(db_pool, ag["id"]))
+
+    r = await client.post(
+        f"/api/sign/{token}",
+        json={
+            "signer_name": "Bill Payer", "method": "typed",
+            "signature_text": "Bill Payer", "consent": True,
+            "field_values": {
+                "releasing_provider_name": "Dr. Smith Clinic",
+                "records_date_from": "2020-01-01",
+                # Not a signer variable → must be ignored (security).
+                "fixed_fee": "999999",
+            },
+        },
+    )
+    assert r.status_code == 200, r.text
+
+    async with db_pool.acquire() as conn:
+        raw = await conn.fetchval("SELECT variables FROM agreements WHERE id = $1", ag["id"])
+    import json as _json
+    vars_ = _json.loads(raw) if isinstance(raw, str) else raw
+    assert vars_["releasing_provider_name"] == "Dr. Smith Clinic"
+    assert vars_["records_date_from"] == "2020-01-01"
+    assert "fixed_fee" not in vars_  # whitelisted keys only

@@ -11231,6 +11231,17 @@
             ],
             "title": "Firm Country"
           },
+          "firm_phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Firm Phone"
+          },
           "governing_state": {
             "anyOf": [
               {
@@ -13274,6 +13285,20 @@
             "type": "boolean",
             "title": "Consent",
             "default": false
+          },
+          "field_values": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field Values"
           }
         },
         "type": "object",

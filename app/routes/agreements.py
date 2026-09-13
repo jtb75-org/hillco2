@@ -814,6 +814,10 @@ async def _build_default_context(conn, agreement: dict) -> dict[str, str]:
         # Medical-release "Company/Organization" line.
         if org["firm_name"]:
             ctx["consultant_company"] = org["firm_name"]
+        # consultant_phone falls back to the firm phone when the lead
+        # consultant's own phone is unset.
+        if org["firm_phone"] and "consultant_phone" not in ctx:
+            ctx["consultant_phone"] = org["firm_phone"]
         if org["governing_state"]:
             ctx["governing_state"] = org["governing_state"]
         if org["billing_increment_minutes"] is not None:
