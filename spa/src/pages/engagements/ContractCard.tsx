@@ -10,6 +10,7 @@ import {
   DialogTitle,
   Divider,
   IconButton,
+  Link,
   MenuItem,
   Select,
   Stack,
@@ -515,6 +516,10 @@ function AddAgreementDialog({
   const [amount, setAmount] = useState("");
   const [notes, setNotes] = useState("");
   const [templateId, setTemplateId] = useState<string>("");
+  // The billing mode already determines the right template, so it's
+  // auto-selected and shown read-only. This reveals the dropdown for the
+  // rare override (a different template, or Blank).
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [varInputs, setVarInputs] = useState<Record<string, string>>({});
   const alreadyHasActive = existingTypes.has(type);
 
@@ -579,6 +584,7 @@ function AddAgreementDialog({
     setAmount("");
     setNotes("");
     setTemplateId("");
+    setShowTemplatePicker(false);
     setVarInputs({});
   };
 
@@ -634,6 +640,7 @@ function AddAgreementDialog({
             onChange={(e) => {
               setType(e.target.value as AgreementType);
               setTemplateId("");
+              setShowTemplatePicker(false);
             }}
           >
             <MenuItem value="services_contract">Services contract</MenuItem>
@@ -647,23 +654,51 @@ function AddAgreementDialog({
             >
               Template
             </Typography>
-            <Select
-              data-testid="agreement-template-select"
-              size="small"
-              fullWidth
-              value={templateId}
-              onChange={(e) => setTemplateId(e.target.value)}
-              displayEmpty
-            >
-              <MenuItem value="">
-                <em>Blank (no template)</em>
-              </MenuItem>
-              {(templates.data ?? []).map((t) => (
-                <MenuItem key={t.id} value={t.id}>
-                  {t.name}
+            {showTemplatePicker ? (
+              <Select
+                data-testid="agreement-template-select"
+                size="small"
+                fullWidth
+                value={templateId}
+                onChange={(e) => setTemplateId(e.target.value)}
+                displayEmpty
+              >
+                <MenuItem value="">
+                  <em>Blank (no template)</em>
                 </MenuItem>
-              ))}
-            </Select>
+                {(templates.data ?? []).map((t) => (
+                  <MenuItem key={t.id} value={t.id}>
+                    {t.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            ) : (
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "baseline",
+                  gap: 1,
+                  flexWrap: "wrap",
+                }}
+              >
+                <Typography variant="body2" data-testid="agreement-template-name">
+                  {templateId
+                    ? (templates.data ?? []).find((t) => t.id === templateId)?.name ??
+                      "Selected template"
+                    : "Blank (no template)"}
+                </Typography>
+                <Link
+                  component="button"
+                  type="button"
+                  variant="caption"
+                  underline="hover"
+                  onClick={() => setShowTemplatePicker(true)}
+                  data-testid="agreement-template-change"
+                >
+                  Change
+                </Link>
+              </Box>
+            )}
             {templates.data && templates.data.length === 0 && (
               <Typography variant="caption" color="text.disabled" sx={{ display: "block", mt: 0.5 }}>
                 No templates configured for this type. Manage them in

@@ -571,6 +571,12 @@ test.describe.serial("contract template agreements", () => {
 
     await page.getByRole("button", { name: "New agreement" }).click();
     const dialog = page.getByRole("dialog", { name: "New agreement" });
+    // The right template auto-selects by billing mode and is shown read-only.
+    await expect(dialog.getByTestId("agreement-template-name")).toHaveText(
+      SERVICES_TEMPLATE_NAME,
+    );
+    // Reveal the dropdown to explicitly pick the Standard (hourly) template.
+    await dialog.getByTestId("agreement-template-change").click();
     await dialog.getByTestId("agreement-template-select").getByRole("combobox").click();
     await expect(page.getByRole("option", { name: SERVICES_TEMPLATE_NAME })).toBeVisible();
     await page.getByRole("option", { name: SERVICES_TEMPLATE_NAME }).click();
