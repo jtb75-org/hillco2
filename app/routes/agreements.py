@@ -956,6 +956,18 @@ def _markdown_to_html(body: str, *, extra_html: str = "") -> str:
 </html>"""
 
 
+ESIGN_CUT_MARKER = "<!-- esign-cut -->"
+
+
+def strip_wet_signatures(md: str) -> str:
+    """Drop the template's wet-ink signature block (everything from the
+    <!-- esign-cut --> marker) for an e-signed copy, which carries the
+    Signature Certificate page instead. No marker → returned unchanged."""
+    if not md or ESIGN_CUT_MARKER not in md:
+        return md
+    return md.split(ESIGN_CUT_MARKER, 1)[0].rstrip() + "\n"
+
+
 def markdown_to_fragment(md: str) -> str:
     """Render markdown to an HTML fragment (no page wrapper) for on-screen
     display of the contract on the public signing page."""
@@ -1090,10 +1102,12 @@ async def render_agreement_pdf(
         )
 
     rendered_md = await render_agreement_markdown(conn, dict(agreement))
-    # A signed agreement carries its signature-certificate page.
+    # A signed agreement carries its signature-certificate page instead of the
+    # template's wet-ink signature block.
     extra_html = ""
     sigs = await _stored_signatures_for_cert(conn, agreement_id)
     if sigs:
+        rendered_md = strip_wet_signatures(rendered_md)
         extra_html = signature_certificate_html(sigs)
     pdf_bytes = agreement_pdf_bytes(rendered_md, extra_html=extra_html)
     filename = agreement.get("contract_number") or f"agreement-{str(agreement_id)[:8]}"

@@ -25,6 +25,7 @@ from .agreements import (
     markdown_to_fragment,
     render_agreement_markdown,
     signature_certificate_html,
+    strip_wet_signatures,
 )
 from .contract_templates import (
     SIGNER_DATE_VARIABLES,
@@ -103,7 +104,8 @@ async def get_signing_view(token: str):
         if isinstance(overrides, str):
             overrides = json.loads(overrides) if overrides else {}
         merged = {**ctx, **overrides}
-        rendered_md = await render_agreement_markdown(conn, dict(row))
+        # The client e-signs here, so drop the template's wet-ink signature block.
+        rendered_md = strip_wet_signatures(await render_agreement_markdown(conn, dict(row)))
         signed = row["status"] == "active"
         return {
             "contract_number": row.get("contract_number"),
@@ -124,7 +126,7 @@ async def get_signing_pdf(token: str):
 
     async with request_conn() as conn:
         row = await _agreement_for_token(conn, token)
-        rendered_md = await render_agreement_markdown(conn, dict(row))
+        rendered_md = strip_wet_signatures(await render_agreement_markdown(conn, dict(row)))
         sigs = await _stored_signatures_for_cert(conn, row["id"])
         extra = signature_certificate_html(sigs) if sigs else ""
         pdf = agreement_pdf_bytes(rendered_md, extra_html=extra)
@@ -187,7 +189,9 @@ async def submit_signature(token: str, body: SignSubmission, request: Request):
         firm_name = ctx.get("consultant_name") or "HillCo Educational Consulting"
         client_email = await _billing_recipient(conn, row["engagement_id"])
 
-        rendered_md = await render_agreement_markdown(conn, dict(row))
+        # Strip the wet-ink signature block — the signed copy carries the
+        # certificate page instead — and hash the actual document being signed.
+        rendered_md = strip_wet_signatures(await render_agreement_markdown(conn, dict(row)))
         doc_hash = document_sha256(rendered_md)
         now = datetime.now(UTC)
         ip = _client_ip(request)

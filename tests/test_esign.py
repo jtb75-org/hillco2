@@ -274,6 +274,18 @@ async def test_medical_release_exposes_signer_fields(authed_client, client, db_p
     # A date field is typed for a date input.
     from_field = next(f for f in view["client_fields"] if f["name"] == "records_date_from")
     assert from_field["type"] == "date"
+    # The wet-ink signature block is trimmed on the e-sign view.
+    assert "Witness (Optional)" not in view["body_html"]
+    assert "Parent / Legal Guardian" not in view["body_html"]
+
+
+def test_strip_wet_signatures():
+    from app.routes.agreements import strip_wet_signatures
+    kept = strip_wet_signatures("Intro\n\n<!-- esign-cut -->\n\n# SIGNATURES\nSignature: __")
+    assert "SIGNATURES" not in kept
+    assert kept.strip() == "Intro"
+    # No marker → returned unchanged.
+    assert strip_wet_signatures("no marker here") == "no marker here"
 
 
 async def test_signer_submits_field_values(authed_client, client, db_pool):
