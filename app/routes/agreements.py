@@ -891,14 +891,14 @@ async def build_render_context(
 
 
 def _substitute(body: str, ctx: dict[str, Any]) -> str:
-    """Replace {{var}} with ctx[var] string. Unknown variables stay
-    as {{var}} so the rendered PDF makes them visible — easier to spot
-    what's not filled than a silent blank."""
+    """Replace {{var}} with ctx[var]. An unfilled variable renders as a blank
+    fill-in line (not the raw {{var}}) so drafts look like proper forms — the
+    New Agreement dialog's variable checklist is what surfaces unfilled fields
+    to the operator, not the PDF."""
 
     def _repl(m: re.Match[str]) -> str:
-        key = m.group(1)
-        val = ctx.get(key)
-        return str(val) if val not in (None, "") else m.group(0)
+        val = ctx.get(m.group(1))
+        return str(val) if val not in (None, "") else "__________"
 
     return _VARIABLE_RE.sub(_repl, body or "")
 

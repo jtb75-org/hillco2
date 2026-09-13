@@ -6,6 +6,15 @@
 DATABASE_URL ?= postgresql://hillco2:localdev@localhost:15434/hillco2
 export DATABASE_URL
 
+# Point the dev API at the local MailHog catcher (docker-compose.dev.yml) so
+# invoice + e-signature emails send locally and are viewable at
+# http://localhost:8025 — the prod relay is cluster-internal and unreachable
+# from a laptop.
+SMTP_HOST ?= localhost
+SMTP_PORT ?= 1025
+export SMTP_HOST
+export SMTP_PORT
+
 .PHONY: help dev-deps dev-deps-down dev-deps-reset migrate dev-api dev-spa seed lint test
 
 help: ## Show this help

@@ -26,5 +26,18 @@ services:
       timeout: 3s
       retries: 10
 
+  # Local mail catcher — the prod SMTP relay is cluster-internal and
+  # unreachable from a laptop, so point the dev API at this instead
+  # (SMTP_HOST=localhost SMTP_PORT=1025; make dev-api sets these). View
+  # captured mail (invoice + e-signature emails) at http://localhost:8025.
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    container_name: hillco2-mailhog
+    ports:
+      - "1025:1025"   # SMTP
+      - "8025:8025"   # web UI
+    logging:
+      driver: none    # MailHog is chatty on every connection
+
 volumes:
   pgdata:
