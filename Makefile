@@ -21,6 +21,12 @@ export SMTP_PORT
 PUBLIC_BASE_URL ?= http://localhost:5173
 export PUBLIC_BASE_URL
 
+# Dev mode: expose /docs + openapi (for `npm run update-openapi`) and enable the
+# local filesystem object store fallback (no S3 needed) so document storage —
+# e.g. the generated signed-agreement PDF — works locally.
+EXPOSE_DOCS ?= true
+export EXPOSE_DOCS
+
 .PHONY: help dev-deps dev-deps-down dev-deps-reset migrate dev-api dev-spa seed lint test
 
 help: ## Show this help
