@@ -6,14 +6,19 @@ from uuid import uuid4
 import pytest
 
 import app.email as email_mod
+import app.routes.signing as signing_mod
 from app import s3
 from app.signing import make_signing_token, read_signing_token
 
 
 @pytest.fixture(autouse=True)
 def _no_side_effects(monkeypatch):
-    """Stub outbound email + S3 so the flow is hermetic."""
+    """Stub outbound email + S3 + PDF render so the flow is hermetic (CI has no
+    WeasyPrint system libs; the real render path is covered by the e2e
+    contract-PDF tests)."""
     sent: list[dict] = []
+
+    monkeypatch.setattr(signing_mod, "agreement_pdf_bytes", lambda *a, **k: b"%PDF-1.4 fake")
 
     # Mirror the real send_email signature so a wrong kwarg (e.g. html=) fails
     # here too, not only in e2e.
