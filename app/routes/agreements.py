@@ -428,7 +428,11 @@ async def send_agreement_for_signature(
     Rotates the signing nonce (so any previously sent link is invalidated),
     stamps sent_at / signing_sent_at, and keeps status='draft' until the
     client actually signs. Only draft agreements can be sent."""
-    from ..email import EmailSendError, send_email  # noqa: PLC0415
+    from ..email import (  # noqa: PLC0415
+        EmailSendError,
+        render_letterhead_email,
+        send_email,
+    )
     from ..signing import make_signing_token  # noqa: PLC0415
 
     row = await _agreement_or_404(conn, agreement_id)
@@ -480,6 +484,20 @@ async def send_agreement_for_signature(
                 "This link is unique to you and expires in 30 days. If you'd prefer "
                 "to sign on paper instead, just reply to this email.\n\n"
                 "— HillCo Educational Consulting"
+            ),
+            body_html=render_letterhead_email(
+                heading="Your agreement is ready to sign",
+                paragraphs=[
+                    f"Your educational consulting services agreement ({contract_no}) "
+                    "is ready for your review and electronic signature.",
+                    "Click the button below to open the secure signing page, review "
+                    "the agreement, and sign online.",
+                ],
+                button=("Review & sign your agreement", link),
+                footer_note=(
+                    "This link is unique to you and expires in 30 days. If you'd "
+                    "prefer to sign on paper instead, just reply to this email."
+                ),
             ),
         )
     except EmailSendError as exc:

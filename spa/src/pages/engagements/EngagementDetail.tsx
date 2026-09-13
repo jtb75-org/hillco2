@@ -225,16 +225,27 @@ function EngagementActionsMenu({ engagement }: { engagement: EngagementDetail })
       }
     },
     onSuccess: () => {
-      // Drop the now-gone engagement from every list that references
-      // it. The intake list also re-derives its "Converted" badge from
-      // converted_at, which the backend cleared if this was the
-      // intake's last engagement — so it needs to refetch too.
-      qc.removeQueries({ queryKey: ["engagements", engagement.id] });
-      qc.invalidateQueries({ queryKey: ["engagements"] });
-      qc.invalidateQueries({ queryKey: ["families"] });
-      qc.invalidateQueries({ queryKey: ["intakes"] });
       snackbar.show("Engagement deleted");
+      // Leave the detail page first so its child cards unmount before any
+      // cache changes could make them refetch.
       navigate("/engagements");
+      // Refresh the lists that reference this engagement — the engagements
+      // list, its family, and intakes (the "Converted" badge re-derives from
+      // converted_at, which the backend clears if this was the intake's last
+      // engagement). Crucially, never touch the deleted engagement's OWN
+      // detail/child queries (["engagements", id, ...]) — invalidating those
+      // while the cards are still mounted refetches them against the now-gone
+      // id and 404s in the console.
+      qc.invalidateQueries({
+        predicate: (q) => {
+          const [root, second] = q.queryKey as unknown[];
+          if (root === "families" || root === "intakes") return true;
+          return root === "engagements" && second !== engagement.id;
+        },
+      });
+      // No removeQueries here: on an actively-rendered query it forces a
+      // refetch (→ 404s against the deleted id). The deleted engagement's
+      // cache goes inactive on unmount and is garbage-collected.
     },
     onError: (e: Error) => snackbar.show(e.message, "error"),
   });

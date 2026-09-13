@@ -108,7 +108,11 @@ async def get_signing_pdf(token: str):
 
 @router.post("/sign/{token}")
 async def submit_signature(token: str, body: SignSubmission, request: Request):
-    from ..email import EmailSendError, send_email  # noqa: PLC0415
+    from ..email import (  # noqa: PLC0415
+        EmailSendError,
+        render_letterhead_email,
+        send_email,
+    )
 
     async with request_conn() as conn:
         row = await _agreement_for_token(conn, token)
@@ -236,6 +240,14 @@ async def submit_signature(token: str, body: SignSubmission, request: Request):
                     f"Thank you — {contract_no} has been signed electronically. "
                     "The fully executed agreement is attached for your records.\n\n"
                     "— HillCo Educational Consulting"
+                ),
+                body_html=render_letterhead_email(
+                    heading="Your agreement is signed",
+                    paragraphs=[
+                        f"Thank you — {contract_no} has been signed electronically.",
+                        "The fully executed agreement is attached to this email for "
+                        "your records.",
+                    ],
                 ),
                 attachments=[(f"{contract_no}-signed.pdf", "pdf", pdf)],
             )

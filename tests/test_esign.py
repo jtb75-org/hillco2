@@ -22,10 +22,11 @@ def _no_side_effects(monkeypatch):
 
     # Mirror the real send_email signature so a wrong kwarg (e.g. html=) fails
     # here too, not only in e2e.
-    def fake_send_email(*, to, subject, body_text, cc=None, bcc=None,
-                        reply_to=None, attachments=()):
+    def fake_send_email(*, to, subject, body_text, body_html=None, cc=None,
+                        bcc=None, reply_to=None, attachments=()):
         sent.append({"to": to, "subject": subject, "body_text": body_text,
-                     "cc": cc, "attachments": list(attachments)})
+                     "body_html": body_html, "cc": cc,
+                     "attachments": list(attachments)})
         return "msg-id"
 
     monkeypatch.setattr(email_mod, "send_email", fake_send_email)
@@ -102,7 +103,11 @@ async def test_send_for_signature_sets_nonce_and_emails(authed_client, db_pool, 
     assert r.status_code == 200, r.text
     assert r.json()["sent_to"] == s["guardian_email"]
     assert await _nonce(db_pool, s["agreement_id"]) is not None
-    assert _no_side_effects and "/app/sign/" in _no_side_effects[0]["body_text"]
+    msg = _no_side_effects[0]
+    assert "/app/sign/" in msg["body_text"]
+    # Branded HTML letterhead with the signing link.
+    assert msg["body_html"] and "HILL" in msg["body_html"]
+    assert "/app/sign/" in msg["body_html"]
 
 
 async def test_send_for_signature_requires_client_email(authed_client):
