@@ -208,6 +208,25 @@ export function ContractCard({
     onError: (e: Error) => snackbar.show(e.message, "error"),
   });
 
+  const sendForSignature = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/agreements/${id}/send-for-signature`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error((j as { detail?: string }).detail ?? "Could not send for signature.");
+      }
+      return res.json() as Promise<{ sent_to: string }>;
+    },
+    onSuccess: (data) => {
+      invalidate();
+      snackbar.show(`Signing link sent to ${data.sent_to}`, "success");
+    },
+    onError: (e: Error) => snackbar.show(e.message, "error"),
+  });
+
   const uploadSigned = useMutation({
     mutationFn: async ({ id, file }: { id: string; file: File }) => {
       const form = new FormData();
@@ -293,10 +312,16 @@ export function ContractCard({
                 <AgreementRow
                   agreement={current}
                   onMarkSent={() => markSent.mutate(current.id)}
+                  onSendForSignature={() => sendForSignature.mutate(current.id)}
                   onUploadSigned={(file) => uploadSigned.mutate({ id: current.id, file })}
                   onRemove={() => remove.mutate(current.id)}
                   onEditBody={() => setEditBodyFor(current)}
-                  busy={markSent.isPending || uploadSigned.isPending || remove.isPending}
+                  busy={
+                    markSent.isPending ||
+                    sendForSignature.isPending ||
+                    uploadSigned.isPending ||
+                    remove.isPending
+                  }
                 />
               ) : (
                 <Typography variant="body2" color="text.disabled" sx={{ ml: 0.5 }}>
@@ -349,6 +374,7 @@ function byCreatedDesc(a: Agreement, b: Agreement) {
 function AgreementRow({
   agreement,
   onMarkSent,
+  onSendForSignature,
   onUploadSigned,
   onRemove,
   onEditBody,
@@ -356,6 +382,7 @@ function AgreementRow({
 }: {
   agreement: Agreement;
   onMarkSent: () => void;
+  onSendForSignature: () => void;
   onUploadSigned: (file: File) => void;
   onRemove: () => void;
   onEditBody: () => void;
@@ -417,13 +444,25 @@ function AgreementRow({
         )}
         {state === "drafted" && (
           <>
+            {agreement.body_markdown !== null && (
+              <Button
+                size="small"
+                variant="contained"
+                data-testid={`agreement-send-esign-${agreement.id}`}
+                startIcon={<SendOutlinedIcon fontSize="small" />}
+                onClick={onSendForSignature}
+                disabled={busy}
+              >
+                Send for signature
+              </Button>
+            )}
             <Button
               size="small"
-              startIcon={<SendOutlinedIcon fontSize="small" />}
               onClick={onMarkSent}
               disabled={busy}
+              sx={{ color: "text.secondary" }}
             >
-              Mark sent
+              Mark sent manually
             </Button>
             <IconButton
               size="small"
@@ -438,6 +477,15 @@ function AgreementRow({
         )}
         {state === "sent" && (
           <>
+            <Button
+              size="small"
+              startIcon={<SendOutlinedIcon fontSize="small" />}
+              onClick={onSendForSignature}
+              disabled={busy}
+              sx={{ color: "text.secondary" }}
+            >
+              Resend link
+            </Button>
             <Button
               size="small"
               variant="contained"

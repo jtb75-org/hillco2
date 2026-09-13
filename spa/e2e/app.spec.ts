@@ -1034,6 +1034,40 @@ test("fixed-bid new agreement creates a draft with the pre-filled amount", async
   await expect(row.getByText("Drafted")).toBeVisible();
 });
 
+test("a draft agreement can be sent for e-signature", async ({ page, baseURL }) => {
+  await login(page, baseURL);
+  const { engagement } = await createFixedEngagementFixture(page, "3200.00", {
+    withBillingAddress: true,
+  });
+  await page.goto(`/app/engagements/${engagement.id}`);
+  await page.getByRole("button", { name: "New agreement" }).click();
+  const dialog = page.getByRole("dialog", { name: "New agreement" });
+  await expect(dialog.getByText(/ready to create the draft/i)).toBeVisible();
+  await dialog.getByRole("button", { name: "Create draft" }).click();
+  await expect(dialog).toBeHidden();
+
+  const row = page.locator('[data-agreement-type="services_contract"]').first();
+  const [resp] = await Promise.all([
+    page.waitForResponse((r) => r.url().includes("/send-for-signature")),
+    row.getByRole("button", { name: "Send for signature" }).click(),
+  ]);
+  expect(resp.status(), await resp.text()).toBe(200);
+  // Email goes to the e2e SMTP sink; the row flips to awaiting-signature.
+  await expect(row.getByText("Sent — awaiting signature")).toBeVisible();
+});
+
+test("public signing page is reachable without login", async ({ page }) => {
+  // No login() — the /sign route lives outside the auth gate. An invalid token
+  // still renders the public page (with a friendly error), proving the route
+  // is public and not behind the app shell.
+  await page.goto("/app/sign/not-a-valid-token");
+  await expect(
+    page.getByText(/invalid or has expired|could not be opened/i),
+  ).toBeVisible();
+  // The authenticated app shell (left nav) must not be present here.
+  await expect(page.getByRole("link", { name: "Engagements" })).toHaveCount(0);
+});
+
 test("editing a fixed engagement type opens the dialog without crashing", async ({ page, baseURL }) => {
   await login(page, baseURL);
   const suffix = `${Date.now().toString(36)}${Math.floor(Math.random() * 1000)}`;

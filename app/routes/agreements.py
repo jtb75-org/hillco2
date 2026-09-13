@@ -17,7 +17,7 @@ from decimal import Decimal
 from typing import Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
 
@@ -391,6 +391,105 @@ async def mark_agreement_sent(
     return dict(updated)
 
 
+async def _billing_recipient(conn, engagement_id: UUID) -> str | None:
+    """The family's billing contact email, falling back to primary, then any
+    guardian with an email — same precedence as invoice send."""
+    return await conn.fetchval(
+        """
+        SELECT p.email
+        FROM engagements e
+        JOIN family_guardians fg ON fg.family_id = e.family_id
+        JOIN people p ON p.id = fg.person_id AND p.deleted_at IS NULL
+        WHERE e.id = $1 AND p.email IS NOT NULL AND p.email <> ''
+        ORDER BY fg.is_billing_contact DESC, fg.is_primary_contact DESC,
+                 p.last_name NULLS LAST, p.first_name
+        LIMIT 1
+        """,
+        engagement_id,
+    )
+
+
+def _public_base_url(request) -> str:
+    from ..config import settings  # noqa: PLC0415
+
+    base = settings.public_base_url or str(request.base_url)
+    return base.rstrip("/")
+
+
+@router.post("/agreements/{agreement_id}/send-for-signature")
+async def send_agreement_for_signature(
+    agreement_id: UUID,
+    request: Request,
+    _user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    """Email the client a tokenized link to review and e-sign the agreement.
+
+    Rotates the signing nonce (so any previously sent link is invalidated),
+    stamps sent_at / signing_sent_at, and keeps status='draft' until the
+    client actually signs. Only draft agreements can be sent."""
+    from ..email import EmailSendError, send_email  # noqa: PLC0415
+    from ..signing import make_signing_token  # noqa: PLC0415
+
+    row = await _agreement_or_404(conn, agreement_id)
+    if row["status"] != "draft":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot send for signature an agreement in status '{row['status']}'.",
+        )
+    if not row.get("body_markdown"):
+        raise HTTPException(
+            status_code=400,
+            detail="Agreement has no contract body to sign. Pick a template first.",
+        )
+    recipient = await _billing_recipient(conn, row["engagement_id"])
+    if not recipient:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "No client email on file. Add an email to the family's billing "
+                "or primary contact, then send again."
+            ),
+        )
+
+    updated = await conn.fetchrow(
+        """
+        UPDATE agreements
+        SET signing_nonce = gen_random_uuid(),
+            signing_sent_at = NOW(),
+            sent_at = NOW()
+        WHERE id = $1
+        RETURNING *
+        """,
+        agreement_id,
+    )
+    token = make_signing_token(agreement_id, updated["signing_nonce"])
+    link = f"{_public_base_url(request)}/app/sign/{token}"
+    contract_no = updated.get("contract_number") or "your agreement"
+
+    try:
+        send_email(
+            to=recipient,
+            subject=f"Please review and sign {contract_no}",
+            body_text=(
+                "Hello,\n\n"
+                f"Your educational consulting services agreement ({contract_no}) "
+                "is ready for your review and electronic signature. Open the secure "
+                "link below to review and sign:\n\n"
+                f"{link}\n\n"
+                "This link is unique to you and expires in 30 days. If you'd prefer "
+                "to sign on paper instead, just reply to this email.\n\n"
+                "— HillCo Educational Consulting"
+            ),
+        )
+    except EmailSendError as exc:
+        raise HTTPException(
+            status_code=502, detail="Could not send the signing email; try again."
+        ) from exc
+
+    return {"sent_to": recipient, "signing_sent_at": updated["signing_sent_at"]}
+
+
 @router.post("/agreements/{agreement_id}/upload-signed", status_code=201)
 async def upload_signed_agreement(
     agreement_id: UUID,
@@ -703,10 +802,13 @@ def _substitute(body: str, ctx: dict[str, Any]) -> str:
     return _VARIABLE_RE.sub(_repl, body or "")
 
 
-def _markdown_to_html(body: str) -> str:
+def _markdown_to_html(body: str, *, extra_html: str = "") -> str:
     """Light markdown → HTML wrapped in a print-friendly stylesheet for
     WeasyPrint. The stylesheet is intentionally narrow (just typography
-    + page margins) so the agreement looks like a legal document."""
+    + page margins) so the agreement looks like a legal document.
+
+    `extra_html` is appended after the rendered body — used to bolt the
+    signature-certificate page onto a signed copy."""
     from markdown import markdown  # noqa: PLC0415
 
     body_html = markdown(
@@ -736,12 +838,131 @@ def _markdown_to_html(body: str) -> str:
   li {{ margin-bottom: 0.15em; }}
   strong {{ font-weight: 700; }}
   code {{ font-family: monospace; }}
+  .sig-cert {{ page-break-before: always; }}
+  .sig-cert h2 {{ font-size: 13pt; border-bottom: 1px solid #999; padding-bottom: 4pt; }}
+  .sig-block {{ margin: 1.2em 0; padding: 0.8em 1em; border: 1px solid #ccc; }}
+  .sig-block .sig-name {{ font-size: 20pt; font-family: "Segoe Script", "Snell Roundhand", cursive; }}
+  .sig-block img.sig-img {{ max-height: 80px; }}
+  .sig-meta {{ font-family: "Helvetica Neue", "Arial", sans-serif; font-size: 8.5pt; color: #444; }}
+  .sig-meta dt {{ float: left; width: 130px; font-weight: 600; clear: left; }}
+  .sig-meta dd {{ margin: 0 0 2pt 140px; word-break: break-all; }}
 </style>
 </head>
 <body>
 {body_html}
+{extra_html}
 </body>
 </html>"""
+
+
+def markdown_to_fragment(md: str) -> str:
+    """Render markdown to an HTML fragment (no page wrapper) for on-screen
+    display of the contract on the public signing page."""
+    from markdown import markdown  # noqa: PLC0415
+
+    return markdown(md or "", extensions=["extra", "sane_lists"], output_format="html5")
+
+
+async def render_agreement_markdown(conn, agreement: dict) -> str:
+    """Substitute an agreement's variables into its body_markdown, using the
+    engagement-derived defaults merged under the operator's overrides."""
+    body = agreement.get("body_markdown") or ""
+    defaults = await _build_default_context(conn, dict(agreement))
+    overrides = agreement.get("variables") or {}
+    if isinstance(overrides, str):
+        overrides = json.loads(overrides) if overrides else {}
+    ctx = {**defaults, **overrides}
+    return _substitute(body, ctx)
+
+
+def agreement_pdf_bytes(rendered_md: str, *, extra_html: str = "") -> bytes:
+    """Render already-substituted markdown to PDF bytes."""
+    from weasyprint import HTML  # noqa: PLC0415
+
+    from ..pdf import safe_url_fetcher  # noqa: PLC0415
+
+    html = _markdown_to_html(rendered_md, extra_html=extra_html)
+    return HTML(string=html, url_fetcher=safe_url_fetcher).write_pdf()
+
+
+def _esc(value: Any) -> str:
+    """Minimal HTML escaping for values interpolated into the certificate."""
+    from html import escape  # noqa: PLC0415
+
+    return escape("" if value is None else str(value))
+
+
+def signature_certificate_html(signatures: list[dict]) -> str:
+    """Build the ESIGN/UETA audit page appended to a signed contract PDF.
+
+    Each `signatures` entry is a dict with: signer_role, signer_name,
+    signer_email, method, signature_text or signature_data_uri, signed_at
+    (datetime), ip_address, user_agent, document_sha256, consent_text.
+    """
+    if not signatures:
+        return ""
+    blocks: list[str] = []
+    for s in signatures:
+        if s.get("method") == "drawn" and s.get("signature_data_uri"):
+            mark = f'<img class="sig-img" src="{_esc(s["signature_data_uri"])}" alt="signature">'
+        else:
+            mark = f'<div class="sig-name">{_esc(s.get("signature_text") or s.get("signer_name"))}</div>'
+        signed_at = s.get("signed_at")
+        signed_str = (
+            signed_at.strftime("%Y-%m-%d %H:%M:%S UTC")
+            if isinstance(signed_at, datetime)
+            else _esc(signed_at)
+        )
+        role = "Firm" if s.get("signer_role") == "firm" else "Client"
+        blocks.append(
+            f"""
+    <div class="sig-block">
+      <div style="font-size:9pt;text-transform:uppercase;letter-spacing:.08em;color:#666;">{role} signature</div>
+      {mark}
+      <dl class="sig-meta">
+        <dt>Signer</dt><dd>{_esc(s.get("signer_name"))}{(" &lt;" + _esc(s.get("signer_email")) + "&gt;") if s.get("signer_email") else ""}</dd>
+        <dt>Method</dt><dd>Electronic ({_esc(s.get("method"))})</dd>
+        <dt>Signed at</dt><dd>{signed_str}</dd>
+        <dt>IP address</dt><dd>{_esc(s.get("ip_address"))}</dd>
+        <dt>Device</dt><dd>{_esc(s.get("user_agent"))}</dd>
+        <dt>Document hash</dt><dd>SHA-256 {_esc(s.get("document_sha256"))}</dd>
+      </dl>
+    </div>"""
+        )
+    consent = _esc(
+        signatures[0].get("consent_text")
+        or "The parties consented to sign this agreement electronically."
+    )
+    return f"""
+  <section class="sig-cert">
+    <h2>Signature Certificate</h2>
+    <p style="font-size:9.5pt;color:#333;">
+      This agreement was executed electronically. Each signature below was
+      captured with the signer's name, timestamp, network address, and a
+      SHA-256 hash of the exact document text agreed to, and is legally binding
+      under the U.S. ESIGN Act and the Uniform Electronic Transactions Act
+      (UETA). Consent statement: <em>{consent}</em>
+    </p>
+    {"".join(blocks)}
+  </section>"""
+
+
+async def _stored_signatures_for_cert(conn, agreement_id) -> list[dict]:
+    """Load persisted signatures shaped for signature_certificate_html.
+    A drawn signature's PNG is stored inline as a data: URI in
+    signature_image_key, so no external fetch is needed at render time."""
+    rows = await conn.fetch(
+        """
+        SELECT signer_role, signer_name, signer_email, method,
+               signature_text, signature_image_key AS signature_data_uri,
+               consent_text, document_sha256, ip_address, user_agent, signed_at
+        FROM agreement_signatures
+        WHERE agreement_id = $1
+        ORDER BY signed_at
+        """,
+        agreement_id,
+    )
+    return [dict(r) for r in rows]
 
 
 @router.get("/agreements/{agreement_id}/pdf")
@@ -767,20 +988,13 @@ async def render_agreement_pdf(
             ),
         )
 
-    defaults = await _build_default_context(conn, dict(agreement))
-    overrides = agreement.get("variables") or {}
-    if isinstance(overrides, str):
-        overrides = json.loads(overrides) if overrides else {}
-    ctx = {**defaults, **overrides}
-
-    rendered_md = _substitute(body, ctx)
-    html = _markdown_to_html(rendered_md)
-
-    from weasyprint import HTML  # noqa: PLC0415
-
-    from ..pdf import safe_url_fetcher  # noqa: PLC0415
-
-    pdf_bytes = HTML(string=html, url_fetcher=safe_url_fetcher).write_pdf()
+    rendered_md = await render_agreement_markdown(conn, dict(agreement))
+    # A signed agreement carries its signature-certificate page.
+    extra_html = ""
+    sigs = await _stored_signatures_for_cert(conn, agreement_id)
+    if sigs:
+        extra_html = signature_certificate_html(sigs)
+    pdf_bytes = agreement_pdf_bytes(rendered_md, extra_html=extra_html)
     filename = agreement.get("contract_number") or f"agreement-{str(agreement_id)[:8]}"
     return Response(
         content=pdf_bytes,

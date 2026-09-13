@@ -6900,6 +6900,48 @@
         }
       }
     },
+    "/api/agreements/{agreement_id}/send-for-signature": {
+      "post": {
+        "tags": [
+          "agreements"
+        ],
+        "summary": "Send Agreement For Signature",
+        "description": "Email the client a tokenized link to review and e-sign the agreement.\n\nRotates the signing nonce (so any previously sent link is invalidated),\nstamps sent_at / signing_sent_at, and keeps status='draft' until the\nclient actually signs. Only draft agreements can be sent.",
+        "operationId": "send_agreement_for_signature_api_agreements__agreement_id__send_for_signature_post",
+        "parameters": [
+          {
+            "name": "agreement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Agreement Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/agreements/{agreement_id}/upload-signed": {
       "post": {
         "tags": [
@@ -6969,6 +7011,134 @@
               "type": "string",
               "format": "uuid",
               "title": "Agreement Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sign/{token}": {
+      "get": {
+        "tags": [
+          "signing"
+        ],
+        "summary": "Get Signing View",
+        "operationId": "get_signing_view_api_sign__token__get",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "signing"
+        ],
+        "summary": "Submit Signature",
+        "operationId": "submit_signature_api_sign__token__post",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignSubmission"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sign/{token}/pdf": {
+      "get": {
+        "tags": [
+          "signing"
+        ],
+        "summary": "Get Signing Pdf",
+        "operationId": "get_signing_pdf_api_sign__token__pdf_get",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Token"
             }
           }
         ],
@@ -13064,6 +13234,55 @@
         "type": "object",
         "title": "SchoolUpdate"
       },
+      "SignSubmission": {
+        "properties": {
+          "signer_name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Signer Name"
+          },
+          "method": {
+            "type": "string",
+            "pattern": "^(typed|drawn)$",
+            "title": "Method"
+          },
+          "signature_text": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signature Text"
+          },
+          "signature_data_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signature Data Uri"
+          },
+          "consent": {
+            "type": "boolean",
+            "title": "Consent",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "signer_name",
+          "method"
+        ],
+        "title": "SignSubmission"
+      },
       "StatusUpdate": {
         "properties": {
           "status": {
@@ -14046,9 +14265,15 @@
             "title": "Description"
           },
           "billable": {
-            "type": "boolean",
-            "title": "Billable",
-            "default": true
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billable"
           },
           "hourly_rate": {
             "anyOf": [

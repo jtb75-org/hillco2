@@ -377,6 +377,42 @@ async def store_uploaded_document(
     return dict(row)
 
 
+async def store_document_bytes(
+    conn,
+    *,
+    owner_type: str,
+    owner_id: UUID,
+    kind: str,
+    filename: str,
+    content_type: str,
+    data: bytes,
+    uploaded_by: UUID | None,
+) -> dict:
+    """Insert a documents row from in-memory bytes (e.g. a server-generated
+    signed PDF), uploading to S3. Caller must have verified the owner."""
+    import io  # noqa: PLC0415
+
+    filename = _safe_filename(filename)
+    doc_id = uuid4()
+    key = _s3_key(owner_type, owner_id, doc_id, filename)
+    s3.put(key, io.BytesIO(data), content_type=content_type)
+    row = await conn.fetchrow(
+        """
+        INSERT INTO documents (
+          id, owner_type, owner_id, kind, filename, content_type,
+          byte_size, s3_key, uploaded_by
+        ) VALUES (
+          $1, $2::document_owner_type, $3, $4::document_kind, $5, $6, $7, $8, $9
+        )
+        RETURNING id, owner_type, owner_id, kind, filename, content_type,
+                  byte_size, uploaded_by, created_at, updated_at
+        """,
+        doc_id, owner_type, owner_id, kind, filename, content_type,
+        len(data), key, uploaded_by,
+    )
+    return dict(row)
+
+
 @router.post("/documents/upload", status_code=201)
 async def upload_document(
     owner_type: OwnerType = Form(...),

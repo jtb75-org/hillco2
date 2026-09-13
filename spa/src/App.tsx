@@ -1,5 +1,5 @@
 import { Alert, Box, Button, CircularProgress, Stack, Typography } from "@mui/material";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Outlet, Route, Routes } from "react-router-dom";
 
 import { AppShell } from "./layout/AppShell";
 import { AuthProvider, redirectToLogin, useAuth } from "./auth";
@@ -24,6 +24,7 @@ import { CatalogFirmSettings } from "./pages/catalog/FirmSettings";
 import { SchoolsList } from "./pages/schools/SchoolsList";
 import { IntakeForm } from "./pages/intake/IntakeForm";
 import { IntakesList } from "./pages/intake/IntakesList";
+import { SignAgreement } from "./pages/sign/SignAgreement";
 import { StudentDetail } from "./pages/students/StudentDetail";
 
 // Friendly copy for the `?login_error=...` codes the auth callback
@@ -90,8 +91,18 @@ function AdminGate({ children }: { children: React.ReactNode }) {
 export function App() {
   return (
     <AuthProvider>
-      <AuthGate>
-        <Routes>
+      <Routes>
+        {/* Public, no-login route: clients open their tokenized signing
+            link here. Lives OUTSIDE AuthGate so no sign-in is required. */}
+        <Route path="/sign/:token" element={<SignAgreement />} />
+        {/* Everything else is gated behind Google sign-in. */}
+        <Route
+          element={
+            <AuthGate>
+              <Outlet />
+            </AuthGate>
+          }
+        >
           {/* All paths here are relative to the BrowserRouter basename
               "/app" — `/dashboard` in route config = `/app/dashboard` in
               the browser URL bar. Landing lives at `/` of the host,
@@ -133,8 +144,8 @@ export function App() {
             </Route>
             <Route path="*" element={<NotFound />} />
           </Route>
-        </Routes>
-      </AuthGate>
+        </Route>
+      </Routes>
     </AuthProvider>
   );
 }

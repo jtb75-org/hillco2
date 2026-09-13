@@ -40,6 +40,7 @@ from .routes import people as people_routes
 from .routes import recommendations as recommendations_routes
 from .routes import school_visits as school_visits_routes
 from .routes import schools as schools_routes
+from .routes import signing as signing_routes
 from .routes import students as students_routes
 from .routes import time_entries as time_entries_routes
 
@@ -202,6 +203,7 @@ app.include_router(invoices_routes.router)
 app.include_router(dashboard_routes.router)
 app.include_router(admin_routes.router)
 app.include_router(agreements_routes.router)
+app.include_router(signing_routes.router)
 app.include_router(contract_templates_routes.router)
 app.include_router(org_settings_routes.router)
 app.include_router(feature_flags_routes.router)

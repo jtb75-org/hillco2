@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     # in dev to point at the Vite dev server (e.g., http://localhost:5173).
     cors_allow_origins: str = ""
 
+    # Public base URL used to build absolute links in outbound email (e.g. the
+    # e-signature link). Empty → derive from the incoming request's host, which
+    # is correct in production where the SPA and API share the ingress host.
+    public_base_url: str = ""
+
     # SMTP relay for transactional email (invoice send). Defaults target
     # the cluster's Postfix-on-SES relay, which trusts cluster-internal
     # traffic and allows ng20.org as a sender. No auth required from
