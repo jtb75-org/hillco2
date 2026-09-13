@@ -19,6 +19,7 @@ import {
 import AddIcon from "@mui/icons-material/Add";
 import PictureAsPdfOutlinedIcon from "@mui/icons-material/PictureAsPdfOutlined";
 import dayjs from "dayjs";
+import { useQuery } from "@tanstack/react-query";
 import { Link as RouterLink, useNavigate } from "react-router-dom";
 
 import { InvoiceStatusChip } from "../invoices/InvoiceStatusChip";
@@ -54,6 +55,22 @@ export function BillingCard({
   const isFixed = billingMode === "fixed";
   const uninvoiced = useUninvoicedForEngagement(engagementId);
   const invoices = useEngagementInvoices(engagementId);
+  // Shares the cache key with ContractCard, so this doesn't add a request.
+  const agreements = useQuery<Array<{ type: string; status: string }>, Error>({
+    queryKey: ["engagements", engagementId, "agreements"],
+    queryFn: async () => {
+      const res = await fetch(`/api/engagements/${engagementId}/agreements`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to load agreements.");
+      return res.json();
+    },
+  });
+  // Soft billing guard: warn (don't block) when there's no signed contract.
+  const hasSignedContract = (agreements.data ?? []).some(
+    (a) => a.type === "services_contract" && a.status === "active",
+  );
+  const showNoContractWarning = agreements.isSuccess && !hasSignedContract;
   const createInvoice = useCreateInvoice(engagementId);
   const createFixedFee = useCreateFixedFeeInvoice(engagementId);
   const [selectedTimeIds, setSelectedTimeIds] = useState<Set<string>>(new Set());
@@ -159,6 +176,13 @@ export function BillingCard({
       }
     >
       <Stack spacing={2} sx={{ p: 2.5 }}>
+        {showNoContractWarning && (
+          <Alert severity="warning" variant="outlined" data-testid="no-contract-warning">
+            No signed services contract on file for this engagement. You can
+            still bill, but consider sending one for signature first.
+          </Alert>
+        )}
+
         {!isFixed && uninvoiced.error && (
           <Alert
             severity="error"

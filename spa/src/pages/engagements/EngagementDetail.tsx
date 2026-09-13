@@ -386,7 +386,7 @@ function HeaderStrip({ engagement }: { engagement: EngagementDetail }) {
               ? dayjs(engagement.target_end_date).format("MMM D, YYYY")
               : "—"}
           </Value>
-          <Label>Rate</Label>
+          <Label>{engagement.billing_mode === "fixed" ? "Fixed fee" : "Rate"}</Label>
           <Value>
             <RateEditor engagement={engagement} />
           </Value>
@@ -415,7 +415,8 @@ function HeaderStrip({ engagement }: { engagement: EngagementDetail }) {
 function RateEditor({ engagement }: { engagement: EngagementDetail }) {
   const qc = useQueryClient();
   const snackbar = useSnackbar();
-  const initial = engagement.default_hourly_rate ?? "";
+  const isFixed = engagement.billing_mode === "fixed";
+  const initial = (isFixed ? engagement.fixed_fee : engagement.default_hourly_rate) ?? "";
   const [draft, setDraft] = useState<string>(initial);
   useEffect(() => {
     setDraft(initial);
@@ -427,11 +428,13 @@ function RateEditor({ engagement }: { engagement: EngagementDetail }) {
         "/api/engagements/{engagement_id}",
         {
           params: { path: { engagement_id: engagement.id } },
-          body: { default_hourly_rate: value } as never,
+          body: (isFixed
+            ? { fixed_fee: value }
+            : { default_hourly_rate: value }) as never,
         },
       );
       if (error) {
-        const msg = (error as { detail?: string }).detail ?? "Rate update failed.";
+        const msg = (error as { detail?: string }).detail ?? "Update failed.";
         throw new Error(msg);
       }
     },
@@ -454,7 +457,11 @@ function RateEditor({ engagement }: { engagement: EngagementDetail }) {
         const original = initial === "" ? null : String(initial);
         if (next !== original) patch.mutate(next);
       }}
-      inputProps={{ step: "0.01", min: 0, "aria-label": "Hourly rate" }}
+      inputProps={{
+        step: "0.01",
+        min: 0,
+        "aria-label": isFixed ? "Fixed fee" : "Hourly rate",
+      }}
       InputProps={{
         disableUnderline: !patch.isPending && draft === initial,
         startAdornment: (
@@ -462,7 +469,7 @@ function RateEditor({ engagement }: { engagement: EngagementDetail }) {
             $
           </InputAdornment>
         ),
-        endAdornment: (
+        endAdornment: isFixed ? undefined : (
           <InputAdornment position="end" sx={{ ml: 0.25, color: "text.secondary" }}>
             /hr
           </InputAdornment>

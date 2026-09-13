@@ -1068,6 +1068,36 @@ test("public signing page is reachable without login", async ({ page }) => {
   await expect(page.getByRole("link", { name: "Engagements" })).toHaveCount(0);
 });
 
+test("fixed engagement header shows an editable fixed fee + no-contract warning", async ({ page, baseURL }) => {
+  await login(page, baseURL);
+  const { engagement } = await createFixedEngagementFixture(page, "3200.00");
+  await page.goto(`/app/engagements/${engagement.id}`);
+
+  // Header labels the row "Fixed fee" (not the hourly "Rate"/"$— /hr").
+  await expect(page.getByText("Fixed fee", { exact: true })).toBeVisible();
+  const feeInput = page.getByLabel("Fixed fee");
+  await expect(feeInput).toHaveValue("3200");
+
+  // Billing card warns there's no signed contract (soft guard: still billable).
+  await expect(page.getByTestId("no-contract-warning")).toBeVisible();
+
+  // Editing the fixed fee persists.
+  const [resp] = await Promise.all([
+    page.waitForResponse(
+      (r) =>
+        r.url().includes(`/api/engagements/${engagement.id}`) &&
+        r.request().method() === "PATCH",
+    ),
+    (async () => {
+      await feeInput.fill("4000");
+      await feeInput.press("Tab");
+    })(),
+  ]);
+  expect(resp.status()).toBe(200);
+  await page.reload();
+  await expect(page.getByLabel("Fixed fee")).toHaveValue("4000");
+});
+
 test("editing a fixed engagement type opens the dialog without crashing", async ({ page, baseURL }) => {
   await login(page, baseURL);
   const suffix = `${Date.now().toString(36)}${Math.floor(Math.random() * 1000)}`;
