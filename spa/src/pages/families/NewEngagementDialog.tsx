@@ -32,6 +32,8 @@ interface EngagementTypeOption {
   code: string;
   label: string;
   description: string | null;
+  billing_mode: "hourly" | "fixed";
+  default_fixed_fee: number | null;
   deleted_at: string | null;
 }
 
@@ -174,7 +176,9 @@ export function NewEngagementDialog({
   };
 
   const liveTypes = engagementTypes.data ?? [];
-  const hint = liveTypes.find((t) => t.code === engagementType)?.description ?? undefined;
+  const selectedType = liveTypes.find((t) => t.code === engagementType);
+  const hint = selectedType?.description ?? undefined;
+  const isFixed = selectedType?.billing_mode === "fixed";
   const submitDisabled = create.isPending || !studentId || !engagementType;
 
   return (
@@ -253,22 +257,44 @@ export function NewEngagementDialog({
               </LabeledField>
             </Stack>
 
-            <LabeledField label="Hourly rate (optional)">
-              <TextField
-                value={rate}
-                onChange={(e) => setRate(e.target.value)}
-                fullWidth
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">$</InputAdornment>
-                  ),
-                  endAdornment: (
-                    <InputAdornment position="end">/hr</InputAdornment>
-                  ),
-                }}
-                placeholder="e.g. 200"
-              />
-            </LabeledField>
+            {isFixed ? (
+              <LabeledField
+                label="Fixed fee"
+                helperText="From the package. Adjust per engagement on its page if needed."
+              >
+                <TextField
+                  value={
+                    selectedType?.default_fixed_fee != null
+                      ? String(selectedType.default_fixed_fee)
+                      : "—"
+                  }
+                  fullWidth
+                  disabled
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">$</InputAdornment>
+                    ),
+                  }}
+                />
+              </LabeledField>
+            ) : (
+              <LabeledField label="Hourly rate (optional)">
+                <TextField
+                  value={rate}
+                  onChange={(e) => setRate(e.target.value)}
+                  fullWidth
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">$</InputAdornment>
+                    ),
+                    endAdornment: (
+                      <InputAdornment position="end">/hr</InputAdornment>
+                    ),
+                  }}
+                  placeholder="e.g. 200"
+                />
+              </LabeledField>
+            )}
 
             <LabeledField label="Notes (optional)">
               <TextField
