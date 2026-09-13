@@ -584,7 +584,9 @@ function AddAgreementDialog({
   // amount from fixed_fee, but showing it avoids a misleading empty field.
   useEffect(() => {
     if (open && billingMode === "fixed" && fixedFee && type === "services_contract") {
-      setAmount((prev) => (prev.trim() === "" ? fixedFee : prev));
+      // fixed_fee comes over the wire as a JSON number despite the string type;
+      // coerce so the Amount state stays a string (setAmount / .trim() rely on it).
+      setAmount((prev) => (prev.trim() === "" ? String(fixedFee) : prev));
     }
   }, [open, billingMode, fixedFee, type]);
 
@@ -650,7 +652,7 @@ function AddAgreementDialog({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           type,
-          amount: amount.trim() || null,
+          amount: String(amount).trim() || null,
           notes: notes.trim() || null,
           template_id: templateId || null,
           variables: Object.fromEntries(

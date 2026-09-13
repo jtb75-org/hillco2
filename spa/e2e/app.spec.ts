@@ -917,7 +917,11 @@ test("intake disposition-reason field respects the feature flag", async ({ page,
   await expect(field).toBeVisible();
 });
 
-async function createFixedEngagementFixture(page: Page, fee = "3200.00") {
+async function createFixedEngagementFixture(
+  page: Page,
+  fee = "3200.00",
+  opts: { withBillingAddress?: boolean } = {},
+) {
   const suffix = `${Date.now().toString(36)}${Math.floor(Math.random() * 1000)}`;
   const typeResp = await page.context().request.post("/api/engagement-types", {
     data: {
@@ -935,6 +939,22 @@ async function createFixedEngagementFixture(page: Page, fee = "3200.00") {
       data: { household_name: `E2E Fixed Household ${suffix}` },
     })
   ).json();
+  if (opts.withBillingAddress) {
+    // A billing-flagged guardian with an address makes client_address auto-fill,
+    // so the fixed contract has no remaining gaps and Create draft is enabled.
+    await page.context().request.post(`/api/families/${family.id}/parents`, {
+      data: {
+        first_name: "Billing",
+        last_name: `Guardian ${suffix}`,
+        email: `billing-${suffix}@example.test`,
+        role: "guardian",
+        is_primary_contact: true,
+        is_billing_contact: true,
+        street1: "1 Main St",
+        postal_code: "62701",
+      },
+    });
+  }
   const student = await (
     await page.context().request.post(`/api/families/${family.id}/students`, {
       data: { first_name: "Fixed", last_name: `Student ${suffix}`, current_grade: "10" },
@@ -990,6 +1010,28 @@ test("fixed-bid new agreement pre-fills amount and payment schedule", async ({ p
   await expect(warn).toContainText(/2 variables need a value/i);
   await expect(warn).toContainText("Payment Schedule");
   await expect(warn).toContainText("Client Address");
+});
+
+test("fixed-bid new agreement creates a draft with the pre-filled amount", async ({ page, baseURL }) => {
+  await login(page, baseURL);
+  // Billing address present → client_address auto-fills, no remaining gaps.
+  const { engagement } = await createFixedEngagementFixture(page, "3200.00", {
+    withBillingAddress: true,
+  });
+  await page.goto(`/app/engagements/${engagement.id}`);
+
+  await page.getByRole("button", { name: "New agreement" }).click();
+  const dialog = page.getByRole("dialog", { name: "New agreement" });
+  await expect(dialog.getByText(/ready to create the draft/i)).toBeVisible();
+  await expect(dialog.getByLabel("Amount")).toHaveValue("3200");
+
+  // Regression: the pre-filled Amount arrived as a number, so amount.trim()
+  // threw "amount.trim is not a function" on submit. Create must succeed.
+  await dialog.getByRole("button", { name: "Create draft" }).click();
+  await expect(dialog).toBeHidden();
+
+  const row = page.locator('[data-agreement-type="services_contract"]').first();
+  await expect(row.getByText("Drafted")).toBeVisible();
 });
 
 test("editing a fixed engagement type opens the dialog without crashing", async ({ page, baseURL }) => {
