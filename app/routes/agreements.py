@@ -944,9 +944,9 @@ def _markdown_to_html(body: str, *, extra_html: str = "") -> str:
   .sig-block {{ margin: 1.2em 0; padding: 0.8em 1em; border: 1px solid #ccc; }}
   .sig-block .sig-name {{ font-size: 20pt; font-family: "Segoe Script", "Snell Roundhand", cursive; }}
   .sig-block img.sig-img {{ max-height: 80px; }}
-  .sig-meta {{ font-family: "Helvetica Neue", "Arial", sans-serif; font-size: 8.5pt; color: #444; }}
-  .sig-meta dt {{ float: left; width: 130px; font-weight: 600; clear: left; }}
-  .sig-meta dd {{ margin: 0 0 2pt 140px; word-break: break-all; }}
+  .sig-meta {{ font-family: "Helvetica Neue", "Arial", sans-serif; font-size: 8.5pt; color: #444; border-collapse: collapse; margin-top: 6pt; }}
+  .sig-meta th {{ text-align: left; vertical-align: top; font-weight: 600; width: 110px; padding: 1pt 10pt 1pt 0; white-space: nowrap; }}
+  .sig-meta td {{ vertical-align: top; word-break: break-all; padding: 1pt 0; }}
 </style>
 </head>
 <body>
@@ -1027,19 +1027,28 @@ def signature_certificate_html(signatures: list[dict]) -> str:
             else _esc(signed_at)
         )
         role = "Firm" if s.get("signer_role") == "firm" else "Client"
+        signer = _esc(s.get("signer_name"))
+        if s.get("signer_email"):
+            signer += " &lt;" + _esc(s.get("signer_email")) + "&gt;"
+        # (label, value) — rows with an empty value are dropped so a firm
+        # signature (no IP / device) doesn't leave misaligned blank rows.
+        meta = [
+            ("Signer", signer),
+            ("Method", f"Electronic ({_esc(s.get('method'))})"),
+            ("Signed at", signed_str),
+            ("IP address", _esc(s["ip_address"]) if s.get("ip_address") else ""),
+            ("Device", _esc(s["user_agent"]) if s.get("user_agent") else ""),
+            ("Document hash", f"SHA-256 {_esc(s.get('document_sha256'))}"),
+        ]
+        rows = "".join(
+            f"<tr><th>{label}</th><td>{value}</td></tr>" for label, value in meta if value
+        )
         blocks.append(
             f"""
     <div class="sig-block">
       <div style="font-size:9pt;text-transform:uppercase;letter-spacing:.08em;color:#666;">{role} signature</div>
       {mark}
-      <dl class="sig-meta">
-        <dt>Signer</dt><dd>{_esc(s.get("signer_name"))}{(" &lt;" + _esc(s.get("signer_email")) + "&gt;") if s.get("signer_email") else ""}</dd>
-        <dt>Method</dt><dd>Electronic ({_esc(s.get("method"))})</dd>
-        <dt>Signed at</dt><dd>{signed_str}</dd>
-        <dt>IP address</dt><dd>{_esc(s.get("ip_address"))}</dd>
-        <dt>Device</dt><dd>{_esc(s.get("user_agent"))}</dd>
-        <dt>Document hash</dt><dd>SHA-256 {_esc(s.get("document_sha256"))}</dd>
-      </dl>
+      <table class="sig-meta">{rows}</table>
     </div>"""
         )
     consent = _esc(
