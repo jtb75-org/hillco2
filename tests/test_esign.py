@@ -274,6 +274,11 @@ async def test_medical_release_exposes_signer_fields(authed_client, client, db_p
     # A date field is typed for a date input.
     from_field = next(f for f in view["client_fields"] if f["name"] == "records_date_from")
     assert from_field["type"] == "date"
+    # Expiration is a single custom-choice field (not two free-text fields).
+    exp = next(f for f in view["client_fields"] if f["name"] == "expiration")
+    assert exp["type"] == "expiration"
+    assert "expiration_specific_date" not in names
+    assert "expiration_other_event" not in names
     # The wet-ink signature block is trimmed on the e-sign view.
     assert "Witness (Optional)" not in view["body_html"]
     assert "Parent / Legal Guardian" not in view["body_html"]
@@ -302,6 +307,7 @@ async def test_signer_submits_field_values(authed_client, client, db_pool):
             "field_values": {
                 "releasing_provider_name": "Dr. Smith Clinic",
                 "records_date_from": "2020-01-01",
+                "expiration": "Specific date: 2027-01-01",
                 # Not a signer variable → must be ignored (security).
                 "fixed_fee": "999999",
             },
@@ -315,4 +321,5 @@ async def test_signer_submits_field_values(authed_client, client, db_pool):
     vars_ = _json.loads(raw) if isinstance(raw, str) else raw
     assert vars_["releasing_provider_name"] == "Dr. Smith Clinic"
     assert vars_["records_date_from"] == "2020-01-01"
+    assert vars_["expiration"] == "Specific date: 2027-01-01"
     assert "fixed_fee" not in vars_  # whitelisted keys only

@@ -75,8 +75,9 @@ VARIABLE_HINTS: dict[str, str] = {
     "releasing_provider_fax":             "signer",
     "records_date_from":                  "signer",
     "records_date_to":                    "signer",
-    "expiration_specific_date":           "signer",
-    "expiration_other_event":             "signer",
+    # Single expiration choice (one year / completion / specific date / other),
+    # composed by the signing page into one line.
+    "expiration":                         "signer",
 }
 
 # Variables the signing party fills in on the public signing page (not the
@@ -88,8 +89,11 @@ SIGNER_VARIABLES: frozenset[str] = frozenset(
 
 # Signer fields rendered as date inputs on the signing page; the rest are text.
 SIGNER_DATE_VARIABLES: frozenset[str] = frozenset(
-    {"records_date_from", "records_date_to", "expiration_specific_date"}
+    {"records_date_from", "records_date_to"}
 )
+
+# Signer fields that render as a custom control on the signing page.
+SIGNER_CHOICE_VARIABLES: frozenset[str] = frozenset({"expiration"})
 
 
 def variable_label(name: str) -> str:

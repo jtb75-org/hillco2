@@ -8,9 +8,13 @@ import {
   CircularProgress,
   Container,
   Divider,
+  FormControl,
   FormControlLabel,
+  FormLabel,
   Link,
   Paper,
+  Radio,
+  RadioGroup,
   Stack,
   Tab,
   Tabs,
@@ -20,7 +24,7 @@ import {
 
 const NAVY = "#08428d";
 
-type ClientField = { name: string; label: string; type: "text" | "date" };
+type ClientField = { name: string; label: string; type: string };
 
 type SigningView = {
   contract_number: string | null;
@@ -238,20 +242,29 @@ function SigningForm({
                 agreement you're signing.
               </Typography>
               <Stack spacing={2}>
-                {clientFields.map((f) => (
-                  <TextField
-                    key={f.name}
-                    label={f.label}
-                    type={f.type === "date" ? "date" : "text"}
-                    size="small"
-                    fullWidth
-                    value={fieldValues[f.name] ?? ""}
-                    onChange={(e) =>
-                      setFieldValues((prev) => ({ ...prev, [f.name]: e.target.value }))
-                    }
-                    InputLabelProps={f.type === "date" ? { shrink: true } : undefined}
-                  />
-                ))}
+                {clientFields.map((f) =>
+                  f.type === "expiration" ? (
+                    <ExpirationField
+                      key={f.name}
+                      onChange={(v) =>
+                        setFieldValues((prev) => ({ ...prev, [f.name]: v }))
+                      }
+                    />
+                  ) : (
+                    <TextField
+                      key={f.name}
+                      label={f.label}
+                      type={f.type === "date" ? "date" : "text"}
+                      size="small"
+                      fullWidth
+                      value={fieldValues[f.name] ?? ""}
+                      onChange={(e) =>
+                        setFieldValues((prev) => ({ ...prev, [f.name]: e.target.value }))
+                      }
+                      InputLabelProps={f.type === "date" ? { shrink: true } : undefined}
+                    />
+                  ),
+                )}
               </Stack>
             </Paper>
           )}
@@ -404,5 +417,82 @@ function SignaturePad({
         Clear
       </Button>
     </Box>
+  );
+}
+
+const NAVY_LOCAL = "#08428d";
+
+function ExpirationField({ onChange }: { onChange: (value: string) => void }) {
+  const [choice, setChoice] = useState("");
+  const [specificDate, setSpecificDate] = useState("");
+  const [otherEvent, setOtherEvent] = useState("");
+
+  // Compose the single expiration line and push it up whenever inputs change.
+  useEffect(() => {
+    let value = "";
+    if (choice === "one_year") value = "One year from the signature date";
+    else if (choice === "completion") value = "Completion of consulting services";
+    else if (choice === "specific") value = specificDate ? `Specific date: ${specificDate}` : "";
+    else if (choice === "other") value = otherEvent.trim() ? `Other: ${otherEvent.trim()}` : "";
+    onChange(value);
+    // onChange identity is stable enough for this local form.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [choice, specificDate, otherEvent]);
+
+  return (
+    <FormControl>
+      <FormLabel sx={{ color: NAVY_LOCAL, fontSize: 14, mb: 0.5 }}>
+        This authorization remains valid until
+      </FormLabel>
+      <RadioGroup value={choice} onChange={(e) => setChoice(e.target.value)}>
+        <FormControlLabel
+          value="one_year"
+          control={<Radio size="small" />}
+          label="One year from the signature date"
+        />
+        <FormControlLabel
+          value="completion"
+          control={<Radio size="small" />}
+          label="Completion of consulting services"
+        />
+        <FormControlLabel
+          value="specific"
+          control={<Radio size="small" />}
+          label={
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
+              <span>A specific date:</span>
+              <TextField
+                type="date"
+                size="small"
+                value={specificDate}
+                onChange={(e) => {
+                  setSpecificDate(e.target.value);
+                  setChoice("specific");
+                }}
+                InputLabelProps={{ shrink: true }}
+              />
+            </Box>
+          }
+        />
+        <FormControlLabel
+          value="other"
+          control={<Radio size="small" />}
+          label={
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
+              <span>Other event:</span>
+              <TextField
+                size="small"
+                placeholder="e.g. completion of enrollment"
+                value={otherEvent}
+                onChange={(e) => {
+                  setOtherEvent(e.target.value);
+                  setChoice("other");
+                }}
+              />
+            </Box>
+          }
+        />
+      </RadioGroup>
+    </FormControl>
   );
 }

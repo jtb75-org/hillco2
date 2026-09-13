@@ -28,6 +28,7 @@ from .agreements import (
     strip_wet_signatures,
 )
 from .contract_templates import (
+    SIGNER_CHOICE_VARIABLES,
     SIGNER_DATE_VARIABLES,
     SIGNER_VARIABLES,
     _extract_variables,
@@ -67,11 +68,13 @@ def _client_fields(body_markdown: str, merged_ctx: dict) -> list[dict]:
     fields: list[dict] = []
     for v in detected:
         if v in SIGNER_VARIABLES and not (merged_ctx.get(v) or "").strip():
-            fields.append({
-                "name": v,
-                "label": variable_label(v),
-                "type": "date" if v in SIGNER_DATE_VARIABLES else "text",
-            })
+            if v in SIGNER_CHOICE_VARIABLES:
+                field_type = v  # e.g. "expiration" — a custom control
+            elif v in SIGNER_DATE_VARIABLES:
+                field_type = "date"
+            else:
+                field_type = "text"
+            fields.append({"name": v, "label": variable_label(v), "type": field_type})
     return fields
 
 
