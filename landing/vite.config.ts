@@ -14,6 +14,9 @@ export default defineConfig(({ mode }) => ({
   },
   server: {
     port: 5174,
+    // LAN DNS name for the dev box — Vite blocks unrecognized Host headers,
+    // so remote previews at http://local-hillco.ng20.org:<port> need it here.
+    allowedHosts: ["local-hillco.ng20.org"],
     proxy: {
       "/api": {
         target: API_BASE,
