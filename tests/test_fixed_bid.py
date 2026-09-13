@@ -283,3 +283,50 @@ async def test_agreement_scope_frozen_against_later_task_changes(
     vars_ = _vars(fresh)
     assert "Original" in vars_["scope_of_services"]
     assert "Added later" not in vars_["scope_of_services"]
+
+
+# ---- partial fixed-fee billing (drawdown) ---------------------------------
+
+async def test_fixed_fee_partial_then_balance(authed_client, family_with_student):
+    eng = await _engagement_of_type(authed_client, family_with_student, "fixed", "1000")
+
+    # 50% deposit.
+    dep = (await authed_client.post(
+        f"/api/engagements/{eng['id']}/invoices/fixed-fee", json={"amount": "400"},
+    )).json()
+    assert float(dep["total"]) == 400.0
+
+    # Balance (amount omitted → bill the remaining 600).
+    bal = (await authed_client.post(
+        f"/api/engagements/{eng['id']}/invoices/fixed-fee", json={},
+    )).json()
+    assert float(bal["total"]) == 600.0
+
+    # Fully invoiced now → further billing is refused.
+    r = await authed_client.post(
+        f"/api/engagements/{eng['id']}/invoices/fixed-fee", json={},
+    )
+    assert r.status_code == 400
+    assert "fully invoiced" in r.json()["detail"].lower()
+
+
+async def test_fixed_fee_overbill_rejected(authed_client, family_with_student):
+    eng = await _engagement_of_type(authed_client, family_with_student, "fixed", "1000")
+    r = await authed_client.post(
+        f"/api/engagements/{eng['id']}/invoices/fixed-fee", json={"amount": "1500"},
+    )
+    assert r.status_code == 400
+    assert "exceeds" in r.json()["detail"].lower()
+
+
+async def test_fixed_fee_voided_invoice_frees_the_balance(authed_client, family_with_student):
+    eng = await _engagement_of_type(authed_client, family_with_student, "fixed", "1000")
+    inv = (await authed_client.post(
+        f"/api/engagements/{eng['id']}/invoices/fixed-fee", json={"amount": "1000"},
+    )).json()
+    # Void it → the full fee should be billable again.
+    await authed_client.post(f"/api/invoices/{inv['id']}/void", json={})
+    again = await authed_client.post(
+        f"/api/engagements/{eng['id']}/invoices/fixed-fee", json={"amount": "1000"},
+    )
+    assert again.status_code == 201, again.text

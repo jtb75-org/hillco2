@@ -48,6 +48,13 @@ class InvoiceDraftUpdate(BaseModel):
     notes: str | None = None
 
 
+class FixedFeeInvoiceRequest(InvoiceDraftUpdate):
+    # Portion of the fixed fee to bill on this invoice (e.g. a 50% deposit).
+    # Omitted → bill the full remaining balance. Cannot exceed the remaining
+    # balance (fixed fee minus what's already been invoiced).
+    amount: Decimal | None = Field(default=None, gt=0)
+
+
 class CustomLineItem(BaseModel):
     description: str = Field(..., min_length=1)
     quantity: Decimal = Field(default=Decimal("1"), gt=0)
@@ -427,18 +434,32 @@ async def create_invoice(
     return await invoice_detail(invoice_id, _user=user, conn=conn)
 
 
+async def _fixed_fee_invoiced_to_date(conn, engagement_id: UUID) -> Decimal:
+    """Total already invoiced against a fixed-fee engagement (all non-void
+    invoices — drafts included, so two open drafts can't exceed the fee)."""
+    return await conn.fetchval(
+        """
+        SELECT COALESCE(SUM(total), 0)::numeric
+        FROM invoices
+        WHERE engagement_id = $1 AND status <> 'void'
+        """,
+        engagement_id,
+    )
+
+
 @router.post("/engagements/{engagement_id}/invoices/fixed-fee", status_code=201)
 async def create_fixed_fee_invoice(
     engagement_id: UUID,
-    body: InvoiceDraftUpdate,
+    body: FixedFeeInvoiceRequest,
     user=Depends(require_user),
     conn=Depends(get_conn),
 ):
     """Bill a fixed-bid engagement's fee as a single-line draft invoice.
 
-    Minimal Phase-1 affordance: one `custom` line at the engagement's
-    fixed_fee. No milestone/deposit/drawdown logic yet — that's Phase 2.
-    Rejects hourly engagements and fixed ones with no fee set."""
+    Supports partial billing with drawdown: `amount` bills a portion (e.g. a
+    50% deposit) and defaults to the remaining balance. The sum across an
+    engagement's invoices can't exceed the fixed fee. Rejects hourly
+    engagements and fixed ones with no fee set."""
     engagement = await _engagement_or_404(conn, engagement_id)
     if engagement["billing_mode"] != "fixed":
         raise HTTPException(
@@ -451,6 +472,24 @@ async def create_fixed_fee_invoice(
             status_code=400,
             detail="Set the engagement's fixed fee before billing it.",
         )
+
+    invoiced = await _fixed_fee_invoiced_to_date(conn, engagement_id)
+    remaining = Decimal(fee) - Decimal(invoiced)
+    if remaining <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="This engagement's fixed fee is already fully invoiced.",
+        )
+    amount = body.amount if body.amount is not None else remaining
+    if amount > remaining:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Amount ${amount} exceeds the remaining balance ${remaining} "
+                f"(fixed fee ${fee} minus ${invoiced} already invoiced)."
+            ),
+        )
+    fee = amount  # bill this portion
 
     issue_date = body.issue_date or date.today()
     due_date = body.due_date or issue_date + timedelta(days=30)

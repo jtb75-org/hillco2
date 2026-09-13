@@ -968,19 +968,41 @@ async function createFixedEngagementFixture(
   return { engagement, fee };
 }
 
-test("fixed-bid engagement bills its fixed fee as a one-line invoice", async ({ page, baseURL }) => {
+test("fixed-bid engagement bills a 50% deposit then the balance (drawdown)", async ({ page, baseURL }) => {
   await login(page, baseURL);
-  const { engagement } = await createFixedEngagementFixture(page);
+  const { engagement } = await createFixedEngagementFixture(page); // fee 3200
+  const url = `/app/engagements/${engagement.id}`;
+  await page.goto(url);
 
-  await page.goto(`/app/engagements/${engagement.id}`);
-
-  const billBtn = page.getByRole("button", { name: /Bill fixed fee/i });
-  await expect(billBtn).toBeVisible();
-  await billBtn.click();
-
+  // Bill the 50% deposit.
+  await page.getByRole("button", { name: "50% deposit" }).click();
+  await expect(page.getByLabel("Amount to bill")).toHaveValue("1600.00");
+  const [dep] = await Promise.all([
+    page.waitForResponse(
+      (r) => r.url().includes("/invoices/fixed-fee") && r.request().method() === "POST",
+    ),
+    page.getByRole("button", { name: /Bill \$1,600/ }).click(),
+  ]);
+  expect(dep.status(), await dep.text()).toBe(201);
   await expect(page).toHaveURL(/\/app\/invoices\/[0-9a-f-]+$/);
   await expect(page.getByText(/Fixed fee —/)).toBeVisible();
-  await expect(page.getByText("$3,200.00").first()).toBeVisible();
+  await expect(page.getByText("$1,600.00").first()).toBeVisible();
+
+  // Back on the engagement, the remaining balance is now 1,600 — bill it.
+  await page.goto(url);
+  await page.getByRole("button", { name: "Remaining balance" }).click();
+  await expect(page.getByLabel("Amount to bill")).toHaveValue("1600.00");
+  const [bal] = await Promise.all([
+    page.waitForResponse(
+      (r) => r.url().includes("/invoices/fixed-fee") && r.request().method() === "POST",
+    ),
+    page.getByRole("button", { name: /Bill \$1,600/ }).click(),
+  ]);
+  expect(bal.status()).toBe(201);
+
+  // Fully invoiced now — no more billing.
+  await page.goto(url);
+  await expect(page.getByText(/fully invoiced/i)).toBeVisible();
 });
 
 test("fixed-bid new agreement pre-fills amount and payment schedule", async ({ page, baseURL }) => {
@@ -1073,8 +1095,8 @@ test("fixed engagement header shows an editable fixed fee + no-contract warning"
   const { engagement } = await createFixedEngagementFixture(page, "3200.00");
   await page.goto(`/app/engagements/${engagement.id}`);
 
-  // Header labels the row "Fixed fee" (not the hourly "Rate"/"$— /hr").
-  await expect(page.getByText("Fixed fee", { exact: true })).toBeVisible();
+  // Header labels the row "Fixed fee" (not the hourly "Rate"/"$— /hr") and the
+  // field is editable (aria-label "Fixed fee" on the spinbutton).
   const feeInput = page.getByLabel("Fixed fee");
   await expect(feeInput).toHaveValue("3200");
 

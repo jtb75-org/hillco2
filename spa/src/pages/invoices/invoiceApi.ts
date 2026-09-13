@@ -112,12 +112,16 @@ export function useCreateInvoice(engagementId: string) {
 export function useCreateFixedFeeInvoice(engagementId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (body: { due_date?: string | null; notes?: string | null }) => {
+    mutationFn: async (body: {
+      due_date?: string | null;
+      notes?: string | null;
+      amount?: string | null;
+    }) => {
       const { data, error } = await api.POST(
         "/api/engagements/{engagement_id}/invoices/fixed-fee",
         {
           params: { path: { engagement_id: engagementId } },
-          body,
+          body: body as never,
         },
       );
       if (error || !data) {

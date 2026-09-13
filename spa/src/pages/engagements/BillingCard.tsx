@@ -122,6 +122,22 @@ export function BillingCard({
   const hasUninvoiced = timeRows.length + expenseRows.length > 0;
   const canCreate = selectedCount > 0 && !createInvoice.isPending;
 
+  // Fixed-fee drawdown: how much of the fixed fee has already been invoiced
+  // (non-void), and what's left to bill.
+  const feeNum = Number(fixedFee ?? 0);
+  const invoicedToDate = (invoices.data?.invoices ?? [])
+    .filter((i) => i.status !== "void")
+    .reduce((acc, i) => acc + Number(i.total || 0), 0);
+  const remaining = Math.max(feeNum - invoicedToDate, 0);
+  // Drawdown depends on the invoice list; until it loads, "remaining" is the
+  // full fee, so gate the billing controls to avoid billing a stale amount.
+  const billingReady = !invoices.isPending;
+  const [billAmount, setBillAmount] = useState("");
+  // Amount to bill: the typed value, or the full remaining balance if blank.
+  const effectiveAmount = billAmount.trim() ? Number(billAmount) : remaining;
+  const amountValid =
+    billingReady && effectiveAmount > 0 && effectiveAmount <= remaining + 0.005;
+
   const toggleTime = (id: string) => {
     setSelectedTimeIds((prev) => toggled(prev, id));
   };
@@ -131,9 +147,14 @@ export function BillingCard({
 
   const handleBillFixedFee = () => {
     createFixedFee.mutate(
-      { due_date: dueDate || null, notes: notes.trim() || null },
+      {
+        due_date: dueDate || null,
+        notes: notes.trim() || null,
+        amount: billAmount.trim() || null,
+      },
       {
         onSuccess: (invoice) => {
+          setBillAmount("");
           snackbar.show(`Draft ${invoice.invoice_number} created`);
           navigate(`/invoices/${invoice.id}`);
         },
@@ -227,7 +248,7 @@ export function BillingCard({
             </Typography>
             <Typography variant="caption" color="text.secondary">
               {isFixed
-                ? "This engagement bills a fixed package fee. Billing creates a one-line draft for the fee; add or adjust lines on the draft as needed."
+                ? "Bill the fixed fee in one or more invoices (e.g. a 50% deposit on signing, the balance on completion). Each creates a one-line draft."
                 : "Select billable uninvoiced time and expenses for this engagement."}
             </Typography>
           </Box>
@@ -244,28 +265,91 @@ export function BillingCard({
 
         {isFixed ? (
           <Stack spacing={1.5}>
-            <TextField
-              label="Notes"
-              size="small"
-              multiline
-              minRows={2}
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-            />
-            <Stack direction="row" justifyContent="flex-end">
-              <Button
-                variant="contained"
-                startIcon={<AddIcon />}
-                disabled={!fixedFee || createFixedFee.isPending}
-                onClick={handleBillFixedFee}
-              >
-                {createFixedFee.isPending
-                  ? "Creating…"
-                  : fixedFee
-                    ? `Bill fixed fee (${formatInvoiceMoney(fixedFee)})`
-                    : "Set a fixed fee first"}
-              </Button>
-            </Stack>
+            {fixedFee ? (
+              <>
+                <Box
+                  sx={{
+                    display: "flex",
+                    gap: 3,
+                    flexWrap: "wrap",
+                    bgcolor: "action.hover",
+                    borderRadius: 1,
+                    px: 1.5,
+                    py: 1,
+                  }}
+                >
+                  <DrawdownStat label="Fixed fee" value={formatInvoiceMoney(feeNum)} />
+                  <DrawdownStat label="Invoiced" value={formatInvoiceMoney(invoicedToDate)} />
+                  <DrawdownStat
+                    label="Remaining"
+                    value={formatInvoiceMoney(remaining)}
+                    emphasize
+                  />
+                </Box>
+                {remaining <= 0.005 ? (
+                  <Alert severity="success" variant="outlined">
+                    The fixed fee is fully invoiced.
+                  </Alert>
+                ) : (
+                  <>
+                    <Box sx={{ display: "flex", gap: 1.5, alignItems: "center", flexWrap: "wrap" }}>
+                      <TextField
+                        label="Amount to bill"
+                        size="small"
+                        type="number"
+                        value={billAmount}
+                        placeholder={remaining.toFixed(2)}
+                        onChange={(e) => setBillAmount(e.target.value)}
+                        error={!amountValid}
+                        helperText={!amountValid ? `Max ${formatInvoiceMoney(remaining)}` : " "}
+                        InputProps={{ startAdornment: <Box sx={{ mr: 0.5 }}>$</Box> }}
+                        sx={{ width: 200 }}
+                      />
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        disabled={!billingReady}
+                        onClick={() => setBillAmount((feeNum * 0.5).toFixed(2))}
+                      >
+                        50% deposit
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        disabled={!billingReady}
+                        onClick={() => setBillAmount(remaining.toFixed(2))}
+                      >
+                        Remaining balance
+                      </Button>
+                    </Box>
+                    <TextField
+                      label="Notes"
+                      size="small"
+                      multiline
+                      minRows={2}
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                    />
+                    <Stack direction="row" justifyContent="flex-end">
+                      <Button
+                        variant="contained"
+                        startIcon={<AddIcon />}
+                        disabled={!amountValid || createFixedFee.isPending}
+                        onClick={handleBillFixedFee}
+                      >
+                        {createFixedFee.isPending
+                          ? "Creating…"
+                          : `Bill ${formatInvoiceMoney(effectiveAmount)}`}
+                      </Button>
+                    </Stack>
+                  </>
+                )}
+              </>
+            ) : (
+              <Alert severity="info" variant="outlined">
+                Set a fixed fee on this engagement before billing.
+              </Alert>
+            )}
           </Stack>
         ) : !uninvoiced.isPending && !hasUninvoiced ? (
           <Typography variant="body2" color="text.disabled">
@@ -474,6 +558,30 @@ function SourceTable({
           </TableBody>
         </Table>
       </DataTableContainer>
+    </Box>
+  );
+}
+
+function DrawdownStat({
+  label,
+  value,
+  emphasize,
+}: {
+  label: string;
+  value: string;
+  emphasize?: boolean;
+}) {
+  return (
+    <Box>
+      <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+        {label}
+      </Typography>
+      <Typography
+        variant="body2"
+        sx={{ fontWeight: emphasize ? 700 : 500, color: emphasize ? "primary.main" : undefined }}
+      >
+        {value}
+      </Typography>
     </Box>
   );
 }

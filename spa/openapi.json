@@ -5768,7 +5768,7 @@
           "invoices"
         ],
         "summary": "Create Fixed Fee Invoice",
-        "description": "Bill a fixed-bid engagement's fee as a single-line draft invoice.\n\nMinimal Phase-1 affordance: one `custom` line at the engagement's\nfixed_fee. No milestone/deposit/drawdown logic yet \u2014 that's Phase 2.\nRejects hourly engagements and fixed ones with no fee set.",
+        "description": "Bill a fixed-bid engagement's fee as a single-line draft invoice.\n\nSupports partial billing with drawdown: `amount` bills a portion (e.g. a\n50% deposit) and defaults to the remaining balance. The sum across an\nengagement's invoices can't exceed the fixed fee. Rejects hourly\nengagements and fixed ones with no fee set.",
         "operationId": "create_fixed_fee_invoice_api_engagements__engagement_id__invoices_fixed_fee_post",
         "parameters": [
           {
@@ -5787,7 +5787,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/InvoiceDraftUpdate"
+                "$ref": "#/components/schemas/FixedFeeInvoiceRequest"
               }
             }
           }
@@ -9931,6 +9931,79 @@
           "enabled"
         ],
         "title": "FeatureFlagUpdate"
+      },
+      "FixedFeeInvoiceRequest": {
+        "properties": {
+          "issue_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issue Date"
+          },
+          "due_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Date"
+          },
+          "tax": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tax"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          }
+        },
+        "type": "object",
+        "title": "FixedFeeInvoiceRequest"
       },
       "FollowupCreate": {
         "properties": {
