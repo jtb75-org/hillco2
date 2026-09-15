@@ -103,10 +103,9 @@ export function App() {
             </AuthGate>
           }
         >
-          {/* All paths here are relative to the BrowserRouter basename
-              "/app" — `/dashboard` in route config = `/app/dashboard` in
-              the browser URL bar. Landing lives at `/` of the host,
-              served by a separate tier; not part of this SPA. */}
+          {/* The app is served at the root of app.hillcoeducation.com, so
+              `/dashboard` in route config = `/dashboard` in the browser. The
+              marketing site lives on its own host (www.hillcoeducation.com). */}
           <Route element={<AppShell />}>
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard />} />

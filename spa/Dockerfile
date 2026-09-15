@@ -8,10 +8,10 @@
 
 FROM nginxinc/nginx-unprivileged:1.27-alpine
 
-# dist is nested under /app so the SPA-prefixed URLs (e.g. /app/assets/foo.js)
-# resolve directly from disk without needing nginx rewrites. Vite's `base`
-# config writes the bundle's internal references with the same prefix.
-COPY spa/dist /usr/share/nginx/html/app
+# The SPA is served at the root of its own host (app.hillcoeducation.com),
+# so the bundle lands at the nginx root. Vite's `base: "/"` writes the
+# bundle's internal asset references with matching root-relative paths.
+COPY spa/dist /usr/share/nginx/html
 COPY spa/nginx.conf /etc/nginx/conf.d/default.conf
 
 ARG BUILD_COMMIT=unknown

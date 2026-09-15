@@ -17,7 +17,7 @@ async function login(page: Page, baseURL: string | undefined) {
 }
 
 async function createIntakeFromNewFamily(page: Page, familyName: string) {
-  await page.goto("/app/intakes");
+  await page.goto("/intakes");
   // IntakesList renders a "New intake" button in the page header AND in
   // each view's empty state. When there are no intakes, both render, so
   // the strict locator resolves to >1. The header button is always first
@@ -39,7 +39,7 @@ async function createIntakeFromNewFamily(page: Page, familyName: string) {
   // Wizard hands back to the roster step; the new family has no members
   // yet, so just continue into the intake.
   await startIntake.getByRole("button", { name: "Continue" }).click();
-  await expect(page).toHaveURL(/\/app\/intakes\/[0-9a-f-]+$/);
+  await expect(page).toHaveURL(/\/intakes\/[0-9a-f-]+$/);
 }
 
 async function addGuardian(page: Page, guardianName: string) {
@@ -71,7 +71,7 @@ async function addStudent(page: Page, studentName: string) {
 // visible label. Idempotent: only clicks the switch when it isn't
 // already in the requested state.
 async function setFeatureFlag(page: Page, flagLabel: string, enabled: boolean) {
-  await page.goto("/app/admin/feature-flags");
+  await page.goto("/admin/feature-flags");
   const toggle = page.getByRole("checkbox", { name: `Toggle ${flagLabel}` });
   await expect(toggle).toBeVisible();
   if ((await toggle.isChecked()) !== enabled) {
@@ -102,7 +102,7 @@ async function convertIntakeToAssessment(page: Page, desiredOutcome: string) {
   await dialog.getByRole("button", { name: "Start engagement" }).click();
 
   // Creating an engagement from an intake now navigates straight to it.
-  await expect(page).toHaveURL(/\/app\/engagements\/[0-9a-f-]+$/);
+  await expect(page).toHaveURL(/\/engagements\/[0-9a-f-]+$/);
 }
 
 async function expandActivityPhase(page: Page, phaseName: string) {
@@ -120,7 +120,7 @@ async function expandActivityPhase(page: Page, phaseName: string) {
 }
 
 async function openEngagement(page: Page, householdName: string) {
-  await page.goto("/app/engagements");
+  await page.goto("/engagements");
   await page.getByPlaceholder("Search by family, student, lead, or type").fill(householdName);
   await page.getByRole("row", { name: new RegExp(householdName) }).click();
   await expect(page.getByText(householdName)).toBeVisible();
@@ -225,12 +225,12 @@ const INVOICE_DUE_DATE_DISPLAY = (() => {
 
 async function createDraftInvoiceViaBilling(page: Page) {
   const { engagement, householdName } = await createInvoiceFixture(page);
-  await page.goto(`/app/engagements/${engagement.id}`);
+  await page.goto(`/engagements/${engagement.id}`);
   await page.getByLabel("Select E2E invoice smoke review").check();
   await page.getByLabel("Due date").fill(INVOICE_DUE_DATE);
   await page.getByLabel("Notes").fill("E2E invoice smoke notes");
   await page.getByRole("button", { name: "Create draft" }).click();
-  await expect(page).toHaveURL(/\/app\/invoices\/[0-9a-f-]+$/);
+  await expect(page).toHaveURL(/\/invoices\/[0-9a-f-]+$/);
   const invoiceId = page.url().match(/\/invoices\/([0-9a-f-]+)$/)?.[1];
   expect(invoiceId).toBeTruthy();
   const invoiceNumber = await page.getByRole("heading", { name: /^HC-/ }).textContent();
@@ -247,7 +247,7 @@ async function createDraftInvoiceViaBilling(page: Page) {
 test("authenticated app shell loads", async ({ page, baseURL }) => {
   await login(page, baseURL);
 
-  await page.goto("/app/");
+  await page.goto("/");
 
   await expect(page.getByRole("heading", { name: /welcome, browser/i })).toBeVisible();
   await expect(page.getByText("HillCo Portal")).toBeVisible();
@@ -313,7 +313,7 @@ test("dashboard calendar card handles reauth state", async ({ page }) => {
     });
   });
 
-  await page.goto("/app/dashboard");
+  await page.goto("/dashboard");
 
   await expect(page.getByRole("heading", { name: /welcome, browser/i })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Upcoming" })).toBeVisible();
@@ -324,7 +324,7 @@ test("invoice list opens detail and previews PDF", async ({ page, baseURL }) => 
   await login(page, baseURL);
   const pickerFixture = await createInvoiceFixture(page);
 
-  await page.goto("/app/invoices");
+  await page.goto("/invoices");
   await page.getByRole("button", { name: "New invoice" }).click();
   const startInvoiceDialog = page.getByRole("dialog", { name: "Start a new invoice" });
   await expect(
@@ -334,22 +334,22 @@ test("invoice list opens detail and previews PDF", async ({ page, baseURL }) => 
     .getByRole("row", { name: new RegExp(pickerFixture.householdName) })
     .getByRole("button", { name: "Open engagement" })
     .click();
-  await expect(page).toHaveURL(new RegExp(`/app/engagements/${pickerFixture.engagement.id}$`));
+  await expect(page).toHaveURL(new RegExp(`/engagements/${pickerFixture.engagement.id}$`));
   await expect(page.getByText("Create draft invoice")).toBeVisible();
 
-  await page.goto("/app/invoices?focus=uninvoiced");
+  await page.goto("/invoices?focus=uninvoiced");
   const uninvoicedRow = page.getByRole("row", {
     name: new RegExp(pickerFixture.householdName),
   });
   await expect(uninvoicedRow).toBeVisible();
   await uninvoicedRow.getByRole("button", { name: "Create invoice" }).click();
-  await expect(page).toHaveURL(/\/app\/invoices\/[0-9a-f-]+$/);
+  await expect(page).toHaveURL(/\/invoices\/[0-9a-f-]+$/);
   await expect(page.getByText("E2E invoice smoke review")).toBeVisible();
 
   const { engagement, householdName, invoiceId, invoiceNumber } =
     await createDraftInvoiceViaBilling(page);
 
-  await page.goto(`/app/invoices/${invoiceId}`);
+  await page.goto(`/invoices/${invoiceId}`);
   await page.getByRole("button", { name: "Send invoice email" }).click();
   const sendDialog = page.getByRole("dialog", { name: "Send invoice email" });
   await expect(sendDialog.getByLabel("To")).toHaveValue(/billing-.*@example\.test/);
@@ -386,14 +386,14 @@ test("invoice list opens detail and previews PDF", async ({ page, baseURL }) => 
   await expect(page.locator(".MuiChip-label", { hasText: /^Paid$/ })).toBeVisible();
   await expect(page.getByText("$87.50").first()).toBeVisible();
 
-  await page.goto(`/app/engagements/${engagement.id}`);
+  await page.goto(`/engagements/${engagement.id}`);
   const lockedChip = page.getByRole("link", {
     name: `On invoice ${invoiceNumber}`,
   });
   await expect(lockedChip).toBeVisible();
-  await expect(lockedChip).toHaveAttribute("href", `/app/invoices/${invoiceId}`);
+  await expect(lockedChip).toHaveAttribute("href", `/invoices/${invoiceId}`);
 
-  await page.goto("/app/invoices?status=all");
+  await page.goto("/invoices?status=all");
   await expect(page.getByRole("heading", { name: "Invoices" })).toBeVisible();
   await page.getByLabel("Household search").fill(householdName);
   await expect
@@ -421,13 +421,13 @@ test("invoice list opens detail and previews PDF", async ({ page, baseURL }) => 
   await expect(page.getByText(/^Paid \(/)).toBeVisible();
   await expect(page.getByText(/^Void \(/)).toBeVisible();
   await page.getByRole("button", { name: new RegExp(invoiceNumber) }).click();
-  await expect(page).toHaveURL(new RegExp(`/app/invoices/${invoiceId}$`));
+  await expect(page).toHaveURL(new RegExp(`/invoices/${invoiceId}$`));
 
   // Reload directly back to /invoices and confirm the kanban choice
   // survived (localStorage persistence). status=all keeps the
   // freshly-created draft invoice visible once we flip back to List
   // view below — without it the default status=open hides drafts.
-  await page.goto("/app/invoices?status=all");
+  await page.goto("/invoices?status=all");
   await expect(page.getByText(/^Draft \(/)).toBeVisible();
   await page.getByRole("button", { name: "List" }).click();
   await expect
@@ -436,7 +436,7 @@ test("invoice list opens detail and previews PDF", async ({ page, baseURL }) => 
   await expect(page.getByRole("tab", { name: /^All / })).toBeVisible();
 
   await page.getByRole("row", { name: new RegExp(invoiceNumber) }).click();
-  await expect(page).toHaveURL(new RegExp(`/app/invoices/${invoiceId}$`));
+  await expect(page).toHaveURL(new RegExp(`/invoices/${invoiceId}$`));
   await expect(page.getByRole("heading", { name: invoiceNumber })).toBeVisible();
 
   const pdfLink = page.getByRole("link", { name: "Preview PDF" });
@@ -459,7 +459,7 @@ test("voiding a draft invoice releases source rows", async ({ page, baseURL }) =
   await expect(voidDialog).toBeHidden();
   await expect(page.locator(".MuiChip-label", { hasText: /^Void$/ })).toBeVisible();
 
-  await page.goto(`/app/engagements/${engagement.id}`);
+  await page.goto(`/engagements/${engagement.id}`);
   await expect(page.getByLabel("Select E2E invoice smoke review")).toBeChecked();
   await expect(page.getByPlaceholder("What did you do?")).toBeEnabled();
 });
@@ -467,7 +467,7 @@ test("voiding a draft invoice releases source rows", async ({ page, baseURL }) =
 test("engagement golden path", async ({ page, baseURL }) => {
   await login(page, baseURL);
 
-  await page.goto("/app/engagements");
+  await page.goto("/engagements");
   await page.getByPlaceholder("Search by family, student, lead, or type").fill(E2E_HOUSEHOLD);
   await page.getByRole("row", { name: new RegExp(E2E_HOUSEHOLD) }).click();
 
@@ -528,7 +528,7 @@ test("school recommendation duplicate stays in dialog with 409 detail", async ({
 }) => {
   await login(page, baseURL);
 
-  await page.goto("/app/engagements");
+  await page.goto("/engagements");
   await page.getByPlaceholder("Search by family, student, lead, or type").fill(E2E_HOUSEHOLD);
   await page.getByRole("row", { name: new RegExp(E2E_HOUSEHOLD) }).click();
 
@@ -627,10 +627,10 @@ test("catalog contract templates can be created, edited, and deleted", async ({
 }) => {
   await login(page, baseURL);
 
-  await page.goto("/app/catalog");
-  await expect(page).toHaveURL(/\/app\/catalog\/activities$/);
+  await page.goto("/catalog");
+  await expect(page).toHaveURL(/\/catalog\/activities$/);
   await page.getByRole("tab", { name: "Contracts" }).click();
-  await expect(page).toHaveURL(/\/app\/catalog\/contracts$/);
+  await expect(page).toHaveURL(/\/catalog\/contracts$/);
 
   const servicesRow = page.getByRole("row", { name: new RegExp(SERVICES_TEMPLATE_NAME) });
   await expect(servicesRow).toContainText("client_name");
@@ -676,7 +676,7 @@ test("new family stepper builds a family with guardian (primary+billing) and chi
   baseURL,
 }) => {
   await login(page, baseURL);
-  await page.goto("/app/families");
+  await page.goto("/families");
 
   await page.getByRole("button", { name: "Add family" }).first().click();
   const wiz = page.getByRole("dialog", { name: "New family" });
@@ -715,7 +715,7 @@ test("new family stepper builds a family with guardian (primary+billing) and chi
 
   // Lands on the new family's detail page with both members present, and
   // the billing designation carried through from the stepper.
-  await expect(page).toHaveURL(/\/app\/families\/[0-9a-f-]+$/);
+  await expect(page).toHaveURL(/\/families\/[0-9a-f-]+$/);
   await expect(page.getByText("Jordan Blake")).toBeVisible();
   await expect(page.getByText("Riley Blake")).toBeVisible();
   await expect(page.getByText(/billing/i).first()).toBeVisible();
@@ -729,7 +729,7 @@ test("intake launcher roster step lists an existing family's members", async ({
   const household = "E2E Roster Household";
 
   // Seed a family with a guardian + child via the intake create-new path.
-  await page.goto("/app/intakes");
+  await page.goto("/intakes");
   await page.getByRole("button", { name: "New intake" }).first().click();
   const start1 = page.getByRole("dialog", { name: "Start intake" });
   await start1.getByPlaceholder(/Filter by household/).fill(household);
@@ -748,11 +748,11 @@ test("intake launcher roster step lists an existing family's members", async ({
   // Wizard hands back to the roster step (Casey + Sam pre-checked) —
   // continue to create this first intake.
   await start1.getByRole("button", { name: "Continue" }).click();
-  await expect(page).toHaveURL(/\/app\/intakes\/[0-9a-f-]+$/);
+  await expect(page).toHaveURL(/\/intakes\/[0-9a-f-]+$/);
 
   // Start a second intake and pick that now-existing family — the roster
   // step must list its guardian + child (pre-checked).
-  await page.goto("/app/intakes");
+  await page.goto("/intakes");
   await page.getByRole("button", { name: "New intake" }).first().click();
   const start2 = page.getByRole("dialog", { name: "Start intake" });
   await start2.getByPlaceholder(/Filter by household/).fill(household);
@@ -763,7 +763,7 @@ test("intake launcher roster step lists an existing family's members", async ({
   // Deselect the child, then start — the intake is created for the family.
   await start2.getByText("Sam Child").click();
   await start2.getByRole("button", { name: "Continue" }).click();
-  await expect(page).toHaveURL(/\/app\/intakes\/[0-9a-f-]+$/);
+  await expect(page).toHaveURL(/\/intakes\/[0-9a-f-]+$/);
 });
 
 test.describe.serial("intake conversion lifecycle", () => {
@@ -816,16 +816,16 @@ test.describe.serial("intake conversion lifecycle", () => {
   }) => {
     await login(page, baseURL);
 
-    await page.goto("/app/engagements");
+    await page.goto("/engagements");
     await page.getByPlaceholder("Search by family, student, lead, or type").fill(familyName);
     await page.getByRole("row", { name: new RegExp(familyName) }).click();
 
     await page.getByLabel("Engagement actions").click();
     await page.getByRole("menuitem", { name: "Delete engagement" }).click();
     await page.getByRole("dialog", { name: "Delete engagement?" }).getByRole("button", { name: "Delete" }).click();
-    await expect(page).toHaveURL(/\/app\/engagements$/);
+    await expect(page).toHaveURL(/\/engagements$/);
 
-    await page.goto("/app/intakes");
+    await page.goto("/intakes");
     await page.getByRole("button", { name: "List" }).click();
     const row = page.getByRole("row", { name: new RegExp(familyName) });
     // Engagement deleted → converted_at cleared → intake reads "New" again.
@@ -968,7 +968,7 @@ async function createFixedEngagementFixture(
 test("fixed-bid engagement bills a 50% deposit then the balance (drawdown)", async ({ page, baseURL }) => {
   await login(page, baseURL);
   const { engagement } = await createFixedEngagementFixture(page); // fee 3200
-  const url = `/app/engagements/${engagement.id}`;
+  const url = `/engagements/${engagement.id}`;
   await page.goto(url);
 
   // Bill the 50% deposit.
@@ -981,7 +981,7 @@ test("fixed-bid engagement bills a 50% deposit then the balance (drawdown)", asy
     page.getByRole("button", { name: /Bill \$1,600/ }).click(),
   ]);
   expect(dep.status(), await dep.text()).toBe(201);
-  await expect(page).toHaveURL(/\/app\/invoices\/[0-9a-f-]+$/);
+  await expect(page).toHaveURL(/\/invoices\/[0-9a-f-]+$/);
   await expect(page.getByText(/Fixed fee —/)).toBeVisible();
   await expect(page.getByText("$1,600.00").first()).toBeVisible();
 
@@ -1005,7 +1005,7 @@ test("fixed-bid engagement bills a 50% deposit then the balance (drawdown)", asy
 test("fixed-bid new agreement pre-fills amount and payment schedule", async ({ page, baseURL }) => {
   await login(page, baseURL);
   const { engagement } = await createFixedEngagementFixture(page);
-  await page.goto(`/app/engagements/${engagement.id}`);
+  await page.goto(`/engagements/${engagement.id}`);
 
   await page.getByRole("button", { name: "New agreement" }).click();
   const dialog = page.getByRole("dialog", { name: "New agreement" });
@@ -1037,7 +1037,7 @@ test("fixed-bid new agreement creates a draft with the pre-filled amount", async
   const { engagement } = await createFixedEngagementFixture(page, "3200.00", {
     withBillingAddress: true,
   });
-  await page.goto(`/app/engagements/${engagement.id}`);
+  await page.goto(`/engagements/${engagement.id}`);
 
   await page.getByRole("button", { name: "New agreement" }).click();
   const dialog = page.getByRole("dialog", { name: "New agreement" });
@@ -1058,7 +1058,7 @@ test("a draft agreement can be sent for e-signature", async ({ page, baseURL }) 
   const { engagement } = await createFixedEngagementFixture(page, "3200.00", {
     withBillingAddress: true,
   });
-  await page.goto(`/app/engagements/${engagement.id}`);
+  await page.goto(`/engagements/${engagement.id}`);
   await page.getByRole("button", { name: "New agreement" }).click();
   const dialog = page.getByRole("dialog", { name: "New agreement" });
   await expect(dialog.getByText(/ready to create the draft/i)).toBeVisible();
@@ -1079,7 +1079,7 @@ test("public signing page is reachable without login", async ({ page }) => {
   // No login() — the /sign route lives outside the auth gate. An invalid token
   // still renders the public page (with a friendly error), proving the route
   // is public and not behind the app shell.
-  await page.goto("/app/sign/not-a-valid-token");
+  await page.goto("/sign/not-a-valid-token");
   await expect(
     page.getByText(/invalid or has expired|could not be opened/i),
   ).toBeVisible();
@@ -1090,7 +1090,7 @@ test("public signing page is reachable without login", async ({ page }) => {
 test("fixed engagement header shows an editable fixed fee + no-contract warning", async ({ page, baseURL }) => {
   await login(page, baseURL);
   const { engagement } = await createFixedEngagementFixture(page, "3200.00");
-  await page.goto(`/app/engagements/${engagement.id}`);
+  await page.goto(`/engagements/${engagement.id}`);
 
   // Header labels the row "Fixed fee" (not the hourly "Rate"/"$— /hr") and the
   // field is editable (aria-label "Fixed fee" on the spinbutton).
@@ -1120,7 +1120,7 @@ test("fixed engagement header shows an editable fixed fee + no-contract warning"
 test("catalog picklist adds activities to an engagement", async ({ page, baseURL }) => {
   await login(page, baseURL);
   const { engagement } = await createInvoiceFixture(page); // hourly engagement, no activities
-  await page.goto(`/app/engagements/${engagement.id}`);
+  await page.goto(`/engagements/${engagement.id}`);
 
   await page.getByRole("button", { name: "Add activity" }).click();
   await page.getByRole("menuitem", { name: /Add from catalog/ }).click();
@@ -1149,7 +1149,7 @@ test("editing a fixed engagement type opens the dialog without crashing", async 
   });
   expect(resp.ok()).toBeTruthy();
 
-  await page.goto("/app/catalog/activities");
+  await page.goto("/catalog/activities");
   await page.getByRole("button", { name: new RegExp(`${label} · Fixed`) }).click();
 
   // Regression: this used to throw (fixedFee.trim on a number) and blank the page.

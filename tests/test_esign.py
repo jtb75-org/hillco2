@@ -104,10 +104,10 @@ async def test_send_for_signature_sets_nonce_and_emails(authed_client, db_pool, 
     assert r.json()["sent_to"] == s["guardian_email"]
     assert await _nonce(db_pool, s["agreement_id"]) is not None
     msg = _no_side_effects[0]
-    assert "/app/sign/" in msg["body_text"]
+    assert "/sign/" in msg["body_text"]
     # Branded HTML letterhead with the signing link.
     assert msg["body_html"] and "HILL" in msg["body_html"]
-    assert "/app/sign/" in msg["body_html"]
+    assert "/sign/" in msg["body_html"]
 
 
 async def test_send_for_signature_requires_client_email(authed_client):

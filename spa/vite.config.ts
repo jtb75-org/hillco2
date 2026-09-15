@@ -5,12 +5,12 @@ import path from "node:path";
 // Dev mode proxies /api and /auth to the deployed backend so the SPA at
 // localhost:5173 can hit a live API without standing up a local Postgres.
 // Cookies pass through unchanged so a session established via the real
-// /auth/login flow on hillco.ng20.org is usable in dev (assuming you've
-// already logged in there in the browser session).
+// /auth/login flow on app.hillcoeducation.com is usable in dev (assuming
+// you've already logged in there in the browser session).
 //
 // Override with VITE_API_BASE if you're running the FastAPI backend
 // locally on a different host/port.
-const API_BASE = process.env.VITE_API_BASE ?? "https://hillco.ng20.org";
+const API_BASE = process.env.VITE_API_BASE ?? "https://app.hillcoeducation.com";
 
 // Local-only convenience: when VITE_E2E_HEADER is set, inject the E2E
 // auth-bypass header into the proxied /api and /auth calls so a browser
@@ -28,11 +28,10 @@ const PROXY_HEADERS: Record<string, string> = {
 
 export default defineConfig(({ mode }) => ({
   plugins: [react()],
-  // SPA serves at /app/ — ingress routes /app/* to this container, with
-  // /api/* and /auth/* going to the backend tier and `/` going to the
-  // separate landing tier. Vite's `base` makes the built bundle reference
-  // its assets under /app/, and the BrowserRouter basename mirrors it.
-  base: "/app/",
+  // SPA serves at the root of its own host (app.hillcoeducation.com); the
+  // ingress routes /api/* and /auth/* to the backend tier. Vite's `base` and
+  // the BrowserRouter basename are both root.
+  base: "/",
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "src"),

@@ -57,9 +57,8 @@ export default defineConfig({
     {
       command: `npm run dev -- --host 127.0.0.1 --port ${SPA_PORT}`,
       cwd: __dirname,
-      // Vite's `base: "/app/"` means the dev server serves index.html
-      // at /app/, not at `/`. The readiness check must match the base.
-      url: `${BASE_URL}/app/`,
+      // Vite's `base: "/"` serves index.html at the root.
+      url: `${BASE_URL}/`,
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
       env: {

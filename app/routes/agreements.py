@@ -468,7 +468,7 @@ async def send_agreement_for_signature(
         agreement_id,
     )
     token = make_signing_token(agreement_id, updated["signing_nonce"])
-    link = f"{_public_base_url(request)}/app/sign/{token}"
+    link = f"{_public_base_url(request)}/sign/{token}"
     contract_no = updated.get("contract_number") or "your agreement"
 
     try:
