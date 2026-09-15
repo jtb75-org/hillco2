@@ -27,6 +27,13 @@ const PALE_BLUE = "#cfe2fb";
 const PANEL = "#d8d8d8";
 const SERIF = 'Georgia, "Times New Roman", serif';
 
+// The landing site lives on www.hillcoeducation.com; the consultant app and
+// its /auth routes live on app.hillcoeducation.com. The login link must be
+// absolute to the app host — a relative /auth/login would resolve against
+// www and just reload the landing page. Override with VITE_APP_BASE in dev.
+const APP_BASE =
+  import.meta.env.VITE_APP_BASE ?? "https://app.hillcoeducation.com";
+
 const CONSULTANT_NAME = "Mary Hilliard Cognata";
 const CONSULTANT_PHONE = "314.606.5537";
 const CONSULTANT_EMAIL = "hillcoeducationalconsultant@gmail.com";
@@ -360,7 +367,7 @@ function Masthead() {
           </Button>
         ))}
         <Button
-          href="/auth/login"
+          href={`${APP_BASE}/auth/login`}
           size="small"
           aria-label="Consultant login"
           sx={{
