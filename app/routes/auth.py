@@ -14,12 +14,15 @@ log = logging.getLogger(__name__)
 router = APIRouter()
 
 # After successful login the browser ends up at the SPA dashboard; the
-# SPA picks up the session cookie and renders. The SPA lives under /app
-# (Vite base + react-router basename); the public landing owns `/`.
-POST_LOGIN_SUCCESS_REDIRECT = "/app/dashboard"
-# OAuth failures land back on the public landing — that's where the
-# user clicked "Consultant login" from, and the landing renders a
-# small banner reading the `?login_error=` querystring.
+# SPA picks up the session cookie and renders. The SPA is served at the
+# root of the app host (app.hillcoeducation.com) — Vite base and the
+# react-router basename are both `/`.
+POST_LOGIN_SUCCESS_REDIRECT = "/dashboard"
+# OAuth failures land back at the SPA root on the app host, whose AuthGate
+# reads the `?login_error=` querystring and renders a small banner. (This
+# is relative to the callback's host — the callback runs on the app host,
+# so `/` resolves to app.hillcoeducation.com, i.e. the SPA, not the
+# marketing landing on www.)
 POST_LOGIN_ERROR_REDIRECT = "/"
 
 
