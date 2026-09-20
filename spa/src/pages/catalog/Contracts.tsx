@@ -28,6 +28,7 @@ import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { ContractBodyEditor } from "../../components/ContractBodyEditor";
 import { DataTableContainer } from "../../components/DataTableContainer";
 import { useSnackbar } from "../../components/Snackbar";
 import { StatusChip } from "../../components/StatusChip";
@@ -92,6 +93,12 @@ export function CatalogContracts() {
   });
 
   const rows = templates.data ?? [];
+  // Every variable any template uses, for the editor's "Insert variable"
+  // picker — so a new template can reuse the established names.
+  const allVariables = useMemo(
+    () => [...new Set(rows.flatMap((t) => t.variables))].sort(),
+    [rows],
+  );
 
   return (
     <Box>
@@ -109,11 +116,13 @@ export function CatalogContracts() {
       </Stack>
 
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Markdown bodies cloned into agreements at create time. Variables use{" "}
+        Template bodies are cloned into agreements at create time. Fill-in
+        fields are inserted from the editor's <b>Insert variable</b> menu (or
+        written as{" "}
         <Box component="code" sx={{ fontFamily: "monospace" }}>
           {`{{snake_case}}`}
         </Box>{" "}
-        syntax; the system extracts them automatically.
+        in markdown source); the system extracts them automatically.
       </Typography>
 
       <DataTableContainer
@@ -202,6 +211,7 @@ export function CatalogContracts() {
 
       <TemplateDialog
         editing={editing}
+        knownVariables={allVariables}
         onClose={() => setEditing(null)}
         onSaved={() => {
           setEditing(null);
@@ -251,10 +261,12 @@ function extractVariables(body: string): string[] {
 
 function TemplateDialog({
   editing,
+  knownVariables,
   onClose,
   onSaved,
 }: {
   editing: ContractTemplate | "new" | null;
+  knownVariables: string[];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -269,6 +281,9 @@ function TemplateDialog({
   const [kind, setKind] = useState<AgreementType>("services_contract");
   const [body, setBody] = useState("");
   const [isActive, setIsActive] = useState(true);
+  // Rich editor by default; the raw markdown textarea stays available as an
+  // escape hatch for anyone who prefers it (and for the e2e suite).
+  const [sourceMode, setSourceMode] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -276,9 +291,16 @@ function TemplateDialog({
     setKind(initial?.kind ?? "services_contract");
     setBody(initial?.body_markdown ?? "");
     setIsActive(initial?.is_active ?? true);
+    setSourceMode(false);
   }, [open, initial]);
 
   const liveVariables = useMemo(() => extractVariables(body), [body]);
+  // Picker offers everything in use across templates plus whatever this
+  // body already references, so a just-typed new name is reusable at once.
+  const pickerVariables = useMemo(
+    () => [...new Set([...knownVariables, ...liveVariables])].sort(),
+    [knownVariables, liveVariables],
+  );
 
   const save = useMutation({
     mutationFn: async () => {
@@ -346,21 +368,46 @@ function TemplateDialog({
             />
           </Stack>
           <Box>
-            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.5 }}>
-              Body (markdown, use {`{{snake_case}}`} for variables)
-            </Typography>
-            <TextField
-              fullWidth
-              multiline
-              inputProps={{ "data-testid": "contract-template-body-editor" } as Record<string, string>}
-              minRows={20}
-              maxRows={40}
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              InputProps={{
-                sx: { fontFamily: "monospace", fontSize: 13 },
-              }}
-            />
+            <Stack direction="row" alignItems="center" sx={{ mb: 0.5 }}>
+              <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>
+                {sourceMode
+                  ? `Body (markdown source — use {{snake_case}} for variables)`
+                  : "Body"}
+              </Typography>
+              <FormControlLabel
+                sx={{ mr: 0 }}
+                control={
+                  <Switch
+                    size="small"
+                    checked={sourceMode}
+                    onChange={(e) => setSourceMode(e.target.checked)}
+                    inputProps={{ "data-testid": "contract-template-source-toggle" } as Record<string, string>}
+                  />
+                }
+                label={<Typography variant="caption">Markdown source</Typography>}
+              />
+            </Stack>
+            {sourceMode ? (
+              <TextField
+                fullWidth
+                multiline
+                inputProps={{ "data-testid": "contract-template-body-editor" } as Record<string, string>}
+                minRows={20}
+                maxRows={40}
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                InputProps={{
+                  sx: { fontFamily: "monospace", fontSize: 13 },
+                }}
+              />
+            ) : (
+              <ContractBodyEditor
+                testId="contract-template-rich-editor"
+                value={body}
+                onChange={setBody}
+                knownVariables={pickerVariables}
+              />
+            )}
           </Box>
           <Box>
             <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.5 }}>

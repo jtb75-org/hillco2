@@ -137,6 +137,17 @@ function Toolbar({ editor }: { editor: Editor | null }) {
         py: 0.25,
       }}
     >
+      <BasicFormattingButtons editor={editor} />
+    </Stack>
+  );
+}
+
+/** Bold / italic / bulleted / numbered — the shared core of every editor
+ *  toolbar in the app. Exported so specialised editors (e.g. the contract
+ *  body editor) can extend it with their own buttons. */
+export function BasicFormattingButtons({ editor }: { editor: Editor }) {
+  return (
+    <>
       <ToolbarButton
         title="Bold (⌘B)"
         onClick={() => editor.chain().focus().toggleBold().run()}
@@ -165,11 +176,11 @@ function Toolbar({ editor }: { editor: Editor | null }) {
       >
         <FormatListNumberedIcon fontSize="small" />
       </ToolbarButton>
-    </Stack>
+    </>
   );
 }
 
-function ToolbarButton({
+export function ToolbarButton({
   title,
   active,
   onClick,

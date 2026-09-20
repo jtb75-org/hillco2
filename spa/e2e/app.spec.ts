@@ -643,6 +643,9 @@ test("catalog contract templates can be created, edited, and deleted", async ({
   await dialog.getByLabel("Name").fill("E2E test contract");
   await dialog.getByTestId("contract-template-kind-select").getByRole("combobox").click();
   await page.getByRole("option", { name: "Services contract" }).click();
+  // The dialog opens in the rich editor; this test drives the raw markdown
+  // textarea behind the "Markdown source" toggle.
+  await dialog.getByTestId("contract-template-source-toggle").check();
   await dialog.getByTestId("contract-template-body-editor").fill("Hello {{world}} and {{universe}}");
   await expect(dialog.getByText("Detected variables (2)")).toBeVisible();
   await expect(dialog.getByTestId("contract-template-variable-chip").filter({ hasText: "world" })).toBeVisible();
@@ -656,6 +659,9 @@ test("catalog contract templates can be created, edited, and deleted", async ({
 
   await page.getByLabel("Edit E2E test contract").click();
   dialog = page.getByRole("dialog", { name: "Edit template" });
+  // Rich mode renders the two placeholders as chips before we switch.
+  await expect(dialog.getByTestId("contract-template-rich-editor").locator('[data-variable="world"]')).toBeVisible();
+  await dialog.getByTestId("contract-template-source-toggle").check();
   const bodyEditor = dialog.getByTestId("contract-template-body-editor");
   await expect(bodyEditor).toHaveValue("Hello {{world}} and {{universe}}");
   await bodyEditor.fill("Hello {{world}} and {{universe}} and {{galaxy}}");
@@ -669,6 +675,63 @@ test("catalog contract templates can be created, edited, and deleted", async ({
   await confirm.getByRole("button", { name: "Delete" }).click();
   await expect(confirm).toBeHidden();
   await expect(page.getByRole("row", { name: /E2E test contract/ })).toHaveCount(0);
+});
+
+test("contract rich editor round-trips a real template without corrupting variables", async ({
+  page,
+  baseURL,
+}) => {
+  await login(page, baseURL);
+  await page.goto("/catalog/contracts");
+
+  // The seeded services agreement: many headings, bold placeholders, lists.
+  const row = page.getByRole("row", { name: new RegExp(SERVICES_TEMPLATE_NAME) });
+  // allTextContents() doesn't auto-wait; make sure the row's chips rendered.
+  await expect(row).toContainText("client_name");
+  // Third cell is "Variables" — the Kind and Active cells are chips too.
+  const expectedVariables = (await row.getByRole("cell").nth(2).locator(".MuiChip-label").allTextContents())
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .sort();
+  expect(expectedVariables.length).toBeGreaterThan(5);
+
+  await page.getByLabel(`Edit ${SERVICES_TEMPLATE_NAME}`).click();
+  const dialog = page.getByRole("dialog", { name: "Edit template" });
+  const rich = dialog.getByTestId("contract-template-rich-editor");
+
+  // Placeholders parsed into chips, not left as literal braces.
+  await expect(rich.locator('[data-variable="client_name"]').first()).toBeVisible();
+  await expect(rich.locator(".contract-body-editor")).not.toContainText("{{");
+
+  // Force a serialize: an edit at the very end that we immediately undo, so
+  // the body is the editor's markdown output, not the untouched original.
+  await rich.locator(".contract-body-editor").click();
+  await page.keyboard.press("Control+End");
+  await page.keyboard.type(" x");
+  await page.keyboard.press("Backspace");
+  await page.keyboard.press("Backspace");
+
+  await dialog.getByTestId("contract-template-source-toggle").check();
+  const md = await dialog.getByTestId("contract-template-body-editor").inputValue();
+
+  // Every variable survives verbatim — none lost, no backslash-escaping
+  // inside the braces (the signature lines' `____` runs legitimately come
+  // back as `\_\_\_`, which renders identically, so only braces are checked).
+  const found = [...md.matchAll(/\{\{\s*([a-z][a-z0-9_]+)\s*\}\}/g)].map((m) => m[1]);
+  expect([...new Set(found)].sort()).toEqual(expectedVariables);
+  expect(md).not.toMatch(/\{\{[^}]*\\/);
+  // Bold around a placeholder survives (the parse/serialize hazard this
+  // editor's variable mark exists to avoid).
+  expect(md).toContain("**{{effective_date}}**");
+  // The e-sign cut marker is what the backend splits on to drop the wet-ink
+  // signature block from e-signed PDFs — it must come back byte-for-byte.
+  expect(md).toContain("<!-- esign-cut -->");
+  // Structure survives too: the section headings and dividers are intact.
+  expect(md.split("\n").filter((l) => /^#{1,2} /.test(l)).length).toBeGreaterThan(10);
+  expect(md.split("\n").filter((l) => /^---+$/.test(l.trim())).length).toBeGreaterThan(5);
+
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toBeHidden();
 });
 
 test("new family stepper builds a family with guardian (primary+billing) and child", async ({
