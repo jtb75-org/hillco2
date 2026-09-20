@@ -53,7 +53,14 @@ export function StatCard({
   const alert = emphasis === "alert";
 
   const cardSx: SxProps<Theme> = {
-    height: "100%",
+    // Equal heights come from the parent: as a CSS-grid item the card
+    // stretches to its row by default, and inside a flex wrapper `flex: 1`
+    // fills it. NOT `height: "100%"` — Safari resolves a percentage height
+    // on a grid item against the grid *container* (a full-height flex
+    // column on list pages), which stretched every stat card to the
+    // bottom of the viewport behind the rest of the page.
+    flex: 1,
+    minWidth: 0,
     cursor: clickable ? "pointer" : undefined,
     ...(alert && {
       bgcolor: (theme: Theme) => alpha(theme.palette.error.main, 0.05),

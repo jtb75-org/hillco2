@@ -281,7 +281,10 @@ export function IntakesList() {
                   title={PHASE_META[card.key].description}
                   arrow
                 >
-                  <Box sx={{ height: "100%" }}>
+                  {/* Tooltip needs a DOM child; the wrapper is the grid item
+                      (stretches by default) and flex lets the card fill it —
+                      no percentage height, which Safari mis-resolves in grids. */}
+                  <Box sx={{ display: "flex" }}>
                     <StatCard
                       label={PHASE_META[card.key].label}
                       value={counts[card.key].toLocaleString()}

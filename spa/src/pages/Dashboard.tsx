@@ -150,7 +150,7 @@ export function Dashboard() {
           ))
         ) : (
           <>
-            <Grid item xs={12} sm={6} md={4} lg={2}>
+            <Grid item xs={12} sm={6} md={4} lg={2} sx={{ display: "flex" }}>
               <StatCard
                 label="My Followups"
                 value={String(stats.my_open_followups)}
@@ -159,7 +159,7 @@ export function Dashboard() {
                 onClick={() => navigate("/followups")}
               />
             </Grid>
-            <Grid item xs={12} sm={6} md={4} lg={2}>
+            <Grid item xs={12} sm={6} md={4} lg={2} sx={{ display: "flex" }}>
               <StatCard
                 label="Overdue Followups"
                 value={String(stats.my_overdue_followups)}
@@ -169,7 +169,7 @@ export function Dashboard() {
                 onClick={() => navigate("/followups?due=overdue")}
               />
             </Grid>
-            <Grid item xs={12} sm={6} md={4} lg={2}>
+            <Grid item xs={12} sm={6} md={4} lg={2} sx={{ display: "flex" }}>
               <StatCard
                 label="Active Engagements"
                 value={String(stats.active_engagements)}
@@ -180,7 +180,7 @@ export function Dashboard() {
                 onClick={() => navigate("/engagements")}
               />
             </Grid>
-            <Grid item xs={12} sm={6} md={4} lg={2}>
+            <Grid item xs={12} sm={6} md={4} lg={2} sx={{ display: "flex" }}>
               <StatCard
                 label="Outstanding"
                 value={usd.format(Number(stats.outstanding_total))}
@@ -189,7 +189,7 @@ export function Dashboard() {
                 onClick={() => navigate("/invoices?status=open")}
               />
             </Grid>
-            <Grid item xs={12} sm={6} md={4} lg={2}>
+            <Grid item xs={12} sm={6} md={4} lg={2} sx={{ display: "flex" }}>
               <StatCard
                 label="Overdue Invoices"
                 value={String(stats.overdue_invoice_count)}
@@ -199,7 +199,7 @@ export function Dashboard() {
                 onClick={() => navigate("/invoices?status=open&due=overdue")}
               />
             </Grid>
-            <Grid item xs={12} sm={6} md={4} lg={2}>
+            <Grid item xs={12} sm={6} md={4} lg={2} sx={{ display: "flex" }}>
               <StatCard
                 label="Uninvoiced"
                 value={usd.format(Number(stats.uninvoiced_total))}
