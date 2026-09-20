@@ -784,6 +784,9 @@ async def _build_default_context(conn, agreement: dict) -> dict[str, str]:
         fixed_fee = eng["fixed_fee"]
     if fixed_fee is not None:
         ctx["fixed_fee"] = str(fixed_fee)
+        # The fixed-fee contract's §4.2 bills two 50% installments; computed
+        # here so the template stays correct for any fee, not just one quote.
+        ctx["fixed_fee_half"] = str((Decimal(fixed_fee) / 2).quantize(Decimal("0.01")))
     ctx["effective_date"] = (
         agreement.get("signed_at") or agreement.get("effective_date") or today
     )

@@ -44,6 +44,7 @@ VARIABLE_HINTS: dict[str, str] = {
     # Engagement
     "hourly_rate":     "engagement",
     "fixed_fee":       "engagement",
+    "fixed_fee_half":  "engagement",  # 50% installment, derived from fixed_fee
     "scope_of_services": "engagement",
     "effective_date":  "engagement",
     # Fixed-bid, operator-typed

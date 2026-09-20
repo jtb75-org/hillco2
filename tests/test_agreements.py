@@ -464,3 +464,47 @@ async def test_medical_release_autofills_guardian_and_firm(db_pool, test_user):
     assert ctx["parent_guardian_name"] == "Gwen Guardian"
     assert ctx["parent_guardian_relationship"] == "mom"
     assert ctx["consultant_company"] == "Test Firm"
+
+
+async def test_fixed_fee_half_derives_from_fixed_fee(db_pool, test_user):
+    """{{fixed_fee_half}} — the fixed-fee contract's 50% installment — is half
+    the fee rounded to cents, and absent when there is no fee."""
+    from app.routes.agreements import build_render_context  # noqa: PLC0415
+
+    async with db_pool.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute(
+                "SELECT set_config('app.user_id', $1, true)", str(test_user["id"])
+            )
+            family_id = await conn.fetchval(
+                "INSERT INTO families (household_name) VALUES ($1) RETURNING id",
+                f"Half-{uuid4()}",
+            )
+            student_id = await conn.fetchval(
+                "INSERT INTO people (kind, first_name, last_name) "
+                "VALUES ('student', 'Sam', 'Split') RETURNING id"
+            )
+            await conn.execute(
+                "INSERT INTO family_students (family_id, person_id) VALUES ($1,$2)",
+                family_id, student_id,
+            )
+            eng_id = await conn.fetchval(
+                """
+                INSERT INTO engagements
+                    (family_id, student_id, engagement_type, status,
+                     lead_consultant_id, billing_mode, fixed_fee)
+                VALUES ($1,$2,'assessment','in_progress',$3,'fixed',1501.00)
+                RETURNING id
+                """,
+                family_id, student_id, test_user["id"],
+            )
+        ctx = await build_render_context(conn, eng_id)
+        assert ctx["fixed_fee"] == "1501.00"
+        assert ctx["fixed_fee_half"] == "750.50"
+
+        async with conn.transaction():
+            await conn.execute(
+                "UPDATE engagements SET fixed_fee = NULL WHERE id = $1", eng_id
+            )
+        ctx = await build_render_context(conn, eng_id)
+        assert "fixed_fee_half" not in ctx

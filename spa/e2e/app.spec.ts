@@ -1065,7 +1065,7 @@ test("fixed-bid engagement bills a 50% deposit then the balance (drawdown)", asy
   await expect(page.getByText(/fully invoiced/i)).toBeVisible();
 });
 
-test("fixed-bid new agreement pre-fills amount and payment schedule", async ({ page, baseURL }) => {
+test("fixed-bid new agreement pre-fills amount; the schedule is fixed in the contract", async ({ page, baseURL }) => {
   await login(page, baseURL);
   const { engagement } = await createFixedEngagementFixture(page);
   await page.goto(`/engagements/${engagement.id}`);
@@ -1076,22 +1076,17 @@ test("fixed-bid new agreement pre-fills amount and payment schedule", async ({ p
   await expect(dialog.getByTestId("agreement-template-name")).toContainText("Fixed-fee");
   // Amount pre-fills from the engagement's snapshotted fixed fee.
   await expect(dialog.getByLabel("Amount")).toHaveValue("3200");
-  // Payment Schedule is operator-typed but seeded with a sensible default.
-  const paySched = dialog.getByLabel("Payment Schedule");
-  await expect(paySched).toHaveValue("50% on signing, 50% on completion");
+  // Since migration 0037 the fixed-fee contract's §4.2 spells out the
+  // two-installment schedule itself (via {{fixed_fee_half}}), so there is
+  // no operator-typed Payment Schedule field any more.
+  await expect(dialog.getByLabel("Payment Schedule")).toHaveCount(0);
 
-  // The warning names the actual gap (a source-backed field here), not just a
-  // count — and doesn't list Payment Schedule, since it's pre-filled.
+  // The warning names the actual gap (a source-backed field), not just a
+  // count. Client Address is the only one — fixed_fee_half auto-derives.
   const warn = dialog.getByRole("alert");
   await expect(warn).toContainText(/1 variable needs a value/i);
   await expect(warn).toContainText("Client Address");
-  await expect(warn).not.toContainText("Payment Schedule");
-
-  // Clearing the pre-filled field adds it to the named gap.
-  await paySched.fill("");
-  await expect(warn).toContainText(/2 variables need a value/i);
-  await expect(warn).toContainText("Payment Schedule");
-  await expect(warn).toContainText("Client Address");
+  await expect(warn).not.toContainText(/Fixed Fee Half/i);
 });
 
 test("fixed-bid new agreement creates a draft with the pre-filled amount", async ({ page, baseURL }) => {
@@ -1104,7 +1099,9 @@ test("fixed-bid new agreement creates a draft with the pre-filled amount", async
 
   await page.getByRole("button", { name: "New agreement" }).click();
   const dialog = page.getByRole("dialog", { name: "New agreement" });
-  await expect(dialog.getByText(/ready to create the draft/i)).toBeVisible();
+  // With no operator-typed variables left on the fixed template, the dialog
+  // reports "auto-fill … no fillins needed" rather than "ready to create".
+  await expect(dialog.getByText(/no fillins needed|ready to create the draft/i)).toBeVisible();
   await expect(dialog.getByLabel("Amount")).toHaveValue("3200");
 
   // Regression: the pre-filled Amount arrived as a number, so amount.trim()
@@ -1124,7 +1121,7 @@ test("a draft agreement can be sent for e-signature", async ({ page, baseURL }) 
   await page.goto(`/engagements/${engagement.id}`);
   await page.getByRole("button", { name: "New agreement" }).click();
   const dialog = page.getByRole("dialog", { name: "New agreement" });
-  await expect(dialog.getByText(/ready to create the draft/i)).toBeVisible();
+  await expect(dialog.getByText(/no fillins needed|ready to create the draft/i)).toBeVisible();
   await dialog.getByRole("button", { name: "Create draft" }).click();
   await expect(dialog).toBeHidden();
 
