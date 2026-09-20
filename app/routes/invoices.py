@@ -623,7 +623,7 @@ async def _render_invoice_pdf(conn, invoice) -> bytes:
         org=dict(org) if org else {},
         is_overdue=_is_overdue(invoice["status"], invoice["due_date"]),
     )
-    return HTML(string=html, url_fetcher=safe_url_fetcher).write_pdf()
+    return HTML(string=html, url_fetcher=safe_url_fetcher()).write_pdf()
 
 
 @router.get("/invoices/{invoice_id}/pdf")

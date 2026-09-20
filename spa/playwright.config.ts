@@ -14,6 +14,9 @@ const E2E_AUTH_TOKEN = process.env.E2E_AUTH_BYPASS_TOKEN ?? "playwright-token";
 const BASE_URL =
   process.env.PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${SPA_PORT}`;
 const PYTHON = process.env.E2E_PYTHON ?? "python3";
+// Where the SMTP sink writes the mail the app sends, so tests can read it
+// (e.g. the tokenized e-signature link). e2e/mail.ts resolves the same path.
+const MAIL_DIR = process.env.E2E_MAIL_DIR ?? path.resolve(__dirname, ".e2e-mail");
 
 export default defineConfig({
   testDir: "./e2e",
@@ -29,7 +32,7 @@ export default defineConfig({
   webServer: [
     {
       command:
-        `${PYTHON} scripts/smtp_sink.py --host 127.0.0.1 --port ${SMTP_PORT} & ` +
+        `${PYTHON} scripts/smtp_sink.py --host 127.0.0.1 --port ${SMTP_PORT} --out "${MAIL_DIR}" & ` +
         `${PYTHON} scripts/reset_e2e_db.py && ${PYTHON} -m uvicorn app.main:app --host 127.0.0.1 --port ` +
         API_PORT,
       cwd: path.resolve(__dirname, ".."),

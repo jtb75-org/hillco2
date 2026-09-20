@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { signingTokenFrom, waitForMail } from "./mail";
 import { PDFParse } from "pdf-parse";
 
 const E2E_AUTH_TOKEN = process.env.E2E_AUTH_BYPASS_TOKEN ?? "playwright-token";
@@ -1025,7 +1026,10 @@ async function createFixedEngagementFixture(
       data: { student_id: student.id, engagement_type: type.code },
     })
   ).json();
-  return { engagement, fee };
+  // The billing guardian's address — where "send for signature" mails go, so
+  // a test can find its own message in the SMTP sink's output.
+  const billingEmail = `billing-${suffix}@example.test`;
+  return { engagement, fee, billingEmail };
 }
 
 test("fixed-bid engagement bills a 50% deposit then the balance (drawdown)", async ({ page, baseURL }) => {
@@ -1217,4 +1221,58 @@ test("editing a fixed engagement type opens the dialog without crashing", async 
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole("spinbutton")).toHaveValue("1250");
+});
+
+test("client can sign by drawing — the drawn signature renders into the signed PDF", async ({
+  page,
+  baseURL,
+}) => {
+  // Regression for the WeasyPrint 70 outage: a drawn signature embeds a
+  // data: PNG in the PDF, the only path that exercises the url_fetcher —
+  // typed signatures never touch it and kept working while drawn ones 500'd.
+  // This drives the real render (the unit suite stubs agreement_pdf_bytes).
+  await login(page, baseURL);
+  const { engagement, billingEmail } = await createFixedEngagementFixture(page, "3200.00", {
+    withBillingAddress: true,
+  });
+  await page.goto(`/engagements/${engagement.id}`);
+  await page.getByRole("button", { name: "New agreement" }).click();
+  const dialog = page.getByRole("dialog", { name: "New agreement" });
+  await expect(dialog.getByText(/no fillins needed|ready to create the draft/i)).toBeVisible();
+  await dialog.getByRole("button", { name: "Create draft" }).click();
+  await expect(dialog).toBeHidden();
+
+  const row = page.locator('[data-agreement-type="services_contract"]').first();
+  const sentAt = Date.now();
+  const [sendResp] = await Promise.all([
+    page.waitForResponse((r) => r.url().includes("/send-for-signature")),
+    row.getByRole("button", { name: "Send for signature" }).click(),
+  ]);
+  expect(sendResp.status(), await sendResp.text()).toBe(200);
+
+  // The tokenized link only exists in the email; read it from the sink.
+  const token = signingTokenFrom(await waitForMail(billingEmail, sentAt));
+
+  // Sign as the client: draw a stroke on the canvas, consent, submit.
+  await page.goto(`/sign/${token}`);
+  await page.getByLabel("Full legal name").fill("Drawn Signer");
+  await page.getByRole("tab", { name: "Draw" }).click();
+  const canvas = page.locator("canvas");
+  const box = await canvas.boundingBox();
+  if (!box) throw new Error("signature canvas not laid out");
+  await page.mouse.move(box.x + 20, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.4, box.y + box.height * 0.3, { steps: 12 });
+  await page.mouse.move(box.x + box.width * 0.8, box.y + box.height * 0.7, { steps: 12 });
+  await page.mouse.up();
+  await page.getByRole("checkbox").check();
+
+  const [signResp] = await Promise.all([
+    page.waitForResponse(
+      (r) => r.url().includes("/api/sign/") && r.request().method() === "POST",
+    ),
+    page.getByRole("button", { name: "Sign agreement" }).click(),
+  ]);
+  expect(signResp.status(), await signResp.text()).toBe(200);
+  await expect(page.getByText(/your agreement is signed/i)).toBeVisible();
 });

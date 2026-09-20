@@ -1061,7 +1061,7 @@ def agreement_pdf_bytes(
     html = _markdown_to_html(
         rendered_md, extra_html=extra_html, contract_number=contract_number
     )
-    return HTML(string=html, url_fetcher=safe_url_fetcher).write_pdf()
+    return HTML(string=html, url_fetcher=safe_url_fetcher()).write_pdf()
 
 
 def _esc(value: Any) -> str:

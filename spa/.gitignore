@@ -14,3 +14,6 @@ src/api/schema.ts
 # Playwright output
 test-results/
 playwright-report/
+
+# mail captured by the e2e SMTP sink (scripts/smtp_sink.py --out)
+.e2e-mail/

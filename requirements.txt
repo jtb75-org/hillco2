@@ -4,7 +4,12 @@ httpx>=0.27
 authlib>=1.3
 itsdangerous>=2.2
 pydantic-settings>=2.6
-weasyprint>=60
+# Pinned: 70.0 changed the url_fetcher API (must be a urls.URLFetcher
+# instance) and an unpinned image build silently picked it up while the
+# local/test env stayed on 69, breaking drawn e-signatures in prod only.
+# Bump deliberately, with tests/test_pdf_fetcher.py and the drawn-signature
+# e2e green against the new version.
+weasyprint==70.0
 markdown>=3.5
 boto3>=1.35
 
