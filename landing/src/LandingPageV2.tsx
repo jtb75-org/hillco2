@@ -248,6 +248,15 @@ const TESTIMONIALS = [
     signature: "Laurie & Kevin Dixon",
     location: "Chesterfield, MO",
   },
+  {
+    body: [
+      "Mary was instrumental in helping my son successfully transition from grade school to Catholic high school, which was the right fit for him. She took the time to understand his individual needs, researched and recommended several schools, personally met with teachers, arranged meetings, attended and set up shadow days, and sat in on meetings with us throughout the transition.",
+      "Her knowledge, compassion and dedication gave our family confidence that we were making the right decision for our son. Today my son is 20 years old and has graduated from college with a degree in CNC machining and precision technology. I am incredibly grateful for the role Mary played in helping him find an educational environment where he could grow, gain confidence and ultimately succeed.",
+      "She truly looks at the whole child and is genuinely invested in helping students reach their potential. I highly recommend her services to any family navigating an educational transition.",
+    ],
+    signature: "Paula Hoolihan",
+    location: "Belleville, IL",
+  },
 ] as const;
 
 export function LandingPageV2() {
