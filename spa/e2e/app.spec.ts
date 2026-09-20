@@ -608,6 +608,12 @@ test.describe.serial("contract template agreements", () => {
     await agreementRow.getByRole("button", { name: "View / Edit" }).click();
 
     const dialog = page.getByRole("dialog", { name: "Contract body" });
+    // Opens in the rich editor (placeholders as chips); this test edits the
+    // raw markdown behind the "Markdown source" toggle.
+    await expect(
+      dialog.getByTestId("agreement-body-rich-editor").locator('[data-variable="governing_state"]'),
+    ).toBeVisible();
+    await dialog.getByTestId("agreement-body-source-toggle").check();
     const editor = dialog.getByTestId("agreement-body-editor");
     const originalBody = await editor.inputValue();
     expect(originalBody).toContain("{{governing_state}}");
@@ -1275,4 +1281,12 @@ test("client can sign by drawing — the drawn signature renders into the signed
   ]);
   expect(signResp.status(), await signResp.text()).toBe(200);
   await expect(page.getByText(/your agreement is signed/i)).toBeVisible();
+
+  // Back on the engagement, a signed agreement is immutable: only the signed
+  // file is offered — no body editor, no live-render preview.
+  await page.goto(`/engagements/${engagement.id}`);
+  const signedRow = page.locator('[data-agreement-type="services_contract"]').first();
+  await expect(signedRow.getByRole("link", { name: "View signed" })).toBeVisible();
+  await expect(signedRow.getByRole("button", { name: "View / Edit" })).toHaveCount(0);
+  await expect(signedRow.getByRole("link", { name: "Preview PDF" })).toHaveCount(0);
 });

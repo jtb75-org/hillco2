@@ -15,6 +15,8 @@ import {
   Select,
   Stack,
   TextField,
+  FormControlLabel,
+  Switch,
   Typography,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
@@ -28,6 +30,7 @@ import dayjs from "dayjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link as RouterLink } from "react-router-dom";
 
+import { ContractBodyEditor } from "../../components/ContractBodyEditor";
 import { SectionPanel } from "../../components/SectionPanel";
 import { useSnackbar } from "../../components/Snackbar";
 
@@ -419,17 +422,24 @@ function AgreementRow({
           </Typography>
         )}
         <Box sx={{ ml: "auto" }} />
-        {agreement.body_markdown !== null && (
-          <>
-            <Button
-              size="small"
-              data-testid={`agreement-edit-${agreement.id}`}
-              startIcon={<DescriptionOutlinedIcon fontSize="small" />}
-              onClick={onEditBody}
-              sx={{ color: "text.secondary" }}
-            >
-              View / Edit
-            </Button>
+        {/* A signed agreement is immutable: the signed file is the record,
+            so the draft-body editor and the live-render preview go away
+            (the preview would re-render today's data, not what was signed).
+            Only if no signed file exists does the preview stay as the one
+            way to see the document. */}
+        {agreement.body_markdown !== null && state !== "signed" && (
+          <Button
+            size="small"
+            data-testid={`agreement-edit-${agreement.id}`}
+            startIcon={<DescriptionOutlinedIcon fontSize="small" />}
+            onClick={onEditBody}
+            sx={{ color: "text.secondary" }}
+          >
+            View / Edit
+          </Button>
+        )}
+        {agreement.body_markdown !== null &&
+          (state !== "signed" || !agreement.document_id) && (
             <Button
               size="small"
               data-testid={`agreement-pdf-${agreement.id}`}
@@ -440,8 +450,7 @@ function AgreementRow({
             >
               Preview PDF
             </Button>
-          </>
-        )}
+          )}
         {state === "drafted" && (
           <>
             {agreement.body_markdown !== null && (
@@ -1035,12 +1044,16 @@ function ContractBodyDialog({
 }) {
   const snackbar = useSnackbar();
   const [body, setBody] = useState("");
+  // Rich editor by default (same one as Catalog → Contracts); the raw
+  // markdown textarea stays behind a toggle for anyone who wants it.
+  const [sourceMode, setSourceMode] = useState(false);
 
   // Re-seed local state when the dialog opens onto a different agreement.
   // Tracked via the agreement id so consecutive opens don't carry stale text.
   const [lastSeed, setLastSeed] = useState<string>("");
   if (agreement && lastSeed !== agreement.id) {
     setBody(agreement.body_markdown ?? "");
+    setSourceMode(false);
     setLastSeed(agreement.id);
   }
 
@@ -1084,22 +1097,44 @@ function ContractBodyDialog({
       </DialogTitle>
       <DialogContent>
         <Stack spacing={1.5} sx={{ mt: 1 }}>
-          <Typography variant="caption" color="text.secondary">
-            Markdown. {`{{snake_case}}`} placeholders will be filled in
-            from engagement / family / consultant data when the PDF is
-            rendered (Tail-3). Edits are per-agreement and don't touch
-            the source template.
-          </Typography>
-          <TextField
-            fullWidth
-            multiline
-            inputProps={{ "data-testid": "agreement-body-editor" } as Record<string, string>}
-            minRows={20}
-            maxRows={40}
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            InputProps={{ sx: { fontFamily: "monospace", fontSize: 13 } }}
-          />
+          <Stack direction="row" alignItems="center">
+            <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>
+              Placeholders are filled from engagement / family / consultant
+              data when the PDF is rendered. Edits are per-agreement and
+              don't touch the source template.
+            </Typography>
+            <FormControlLabel
+              sx={{ mr: 0 }}
+              control={
+                <Switch
+                  size="small"
+                  checked={sourceMode}
+                  onChange={(e) => setSourceMode(e.target.checked)}
+                  inputProps={{ "data-testid": "agreement-body-source-toggle" } as Record<string, string>}
+                />
+              }
+              label={<Typography variant="caption">Markdown source</Typography>}
+            />
+          </Stack>
+          {sourceMode ? (
+            <TextField
+              fullWidth
+              multiline
+              inputProps={{ "data-testid": "agreement-body-editor" } as Record<string, string>}
+              minRows={20}
+              maxRows={40}
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              InputProps={{ sx: { fontFamily: "monospace", fontSize: 13 } }}
+            />
+          ) : (
+            <ContractBodyEditor
+              testId="agreement-body-rich-editor"
+              value={body}
+              onChange={setBody}
+              knownVariables={uniqueVariables}
+            />
+          )}
           {uniqueVariables.length > 0 && (
             <Box>
               <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.5 }}>
