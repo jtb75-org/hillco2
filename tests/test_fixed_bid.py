@@ -332,6 +332,55 @@ async def test_fixed_fee_voided_invoice_frees_the_balance(authed_client, family_
     assert again.status_code == 201, again.text
 
 
+async def test_fixed_fee_deleted_invoice_frees_the_balance(authed_client, family_with_student):
+    """Deleting a draft (soft delete) is the other way to back out a partial
+    bill; like void, it must return that amount to the billable balance."""
+    eng = await _engagement_of_type(authed_client, family_with_student, "fixed", "1000")
+    inv = (await authed_client.post(
+        f"/api/engagements/{eng['id']}/invoices/fixed-fee", json={"amount": "1000"},
+    )).json()
+    r = await authed_client.delete(f"/api/invoices/{inv['id']}")
+    assert r.status_code == 204, r.text
+    again = await authed_client.post(
+        f"/api/engagements/{eng['id']}/invoices/fixed-fee", json={"amount": "1000"},
+    )
+    assert again.status_code == 201, again.text
+
+
+async def test_fixed_fee_deleted_partial_does_not_consume_the_fee(
+    authed_client, family_with_student
+):
+    """Regression for a prod incident: on a $1500 fee, a $500 partial was
+    created then deleted, a $1000 invoice was billed, and the final $500
+    was refused as 'fully invoiced' because the soft-deleted $500 draft
+    still counted toward the fee."""
+    eng = await _engagement_of_type(authed_client, family_with_student, "fixed", "1500")
+
+    partial = (await authed_client.post(
+        f"/api/engagements/{eng['id']}/invoices/fixed-fee", json={"amount": "500"},
+    )).json()
+    assert (await authed_client.delete(f"/api/invoices/{partial['id']}")).status_code == 204
+
+    thousand = await authed_client.post(
+        f"/api/engagements/{eng['id']}/invoices/fixed-fee", json={"amount": "1000"},
+    )
+    assert thousand.status_code == 201, thousand.text
+
+    # Only $1000 is really invoiced → $500 remains and must be billable.
+    last = await authed_client.post(
+        f"/api/engagements/{eng['id']}/invoices/fixed-fee", json={"amount": "500"},
+    )
+    assert last.status_code == 201, last.text
+    assert float(last.json()["total"]) == 500.0
+
+    # And now it genuinely is fully invoiced.
+    r = await authed_client.post(
+        f"/api/engagements/{eng['id']}/invoices/fixed-fee", json={},
+    )
+    assert r.status_code == 400
+    assert "fully invoiced" in r.json()["detail"].lower()
+
+
 # ---- picklist: add arbitrary catalog activities (type-agnostic) -----------
 
 async def test_from_catalog_items_adds_regardless_of_type(

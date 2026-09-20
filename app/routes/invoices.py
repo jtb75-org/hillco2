@@ -436,12 +436,20 @@ async def create_invoice(
 
 async def _fixed_fee_invoiced_to_date(conn, engagement_id: UUID) -> Decimal:
     """Total already invoiced against a fixed-fee engagement (all non-void
-    invoices — drafts included, so two open drafts can't exceed the fee)."""
+    invoices — drafts included, so two open drafts can't exceed the fee).
+
+    Soft-deleted invoices must NOT count: deleting a draft is the other way
+    (besides void) to back out a partial bill, and the deleted row still
+    carries its `total`. Without this filter a deleted $500 deposit kept
+    consuming the fee, so the engagement looked fully invoiced and refused
+    any further billing."""
     return await conn.fetchval(
         """
         SELECT COALESCE(SUM(total), 0)::numeric
         FROM invoices
-        WHERE engagement_id = $1 AND status <> 'void'
+        WHERE engagement_id = $1
+          AND status <> 'void'
+          AND deleted_at IS NULL
         """,
         engagement_id,
     )
