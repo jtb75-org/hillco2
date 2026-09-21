@@ -6972,6 +6972,149 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/SendForSignatureBody"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/engagements/{engagement_id}/records-request/send": {
+      "post": {
+        "tags": [
+          "agreements"
+        ],
+        "summary": "Send Engagement Records Request",
+        "description": "Send (or re-send) the engagement's Records Request, creating it from\nthe active template on first use. The Contracts card's one-click\n\"Send records request\" / \"Resend\".",
+        "operationId": "send_engagement_records_request_api_engagements__engagement_id__records_request_send_post",
+        "parameters": [
+          {
+            "name": "engagement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Engagement Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agreements/{agreement_id}/send": {
+      "post": {
+        "tags": [
+          "agreements"
+        ],
+        "summary": "Send Agreement",
+        "description": "Email a Records Request that already exists (e.g. one drafted and\nedited via New agreement) \u2014 send or re-send.",
+        "operationId": "send_agreement_api_agreements__agreement_id__send_post",
+        "parameters": [
+          {
+            "name": "agreement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Agreement Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agreements/{agreement_id}/emails": {
+      "get": {
+        "tags": [
+          "agreements"
+        ],
+        "summary": "List Agreement Emails",
+        "description": "Every email sent for this agreement, newest first \u2014 the Records\nRequest's send history.",
+        "operationId": "list_agreement_emails_api_agreements__agreement_id__emails_get",
+        "parameters": [
+          {
+            "name": "agreement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Agreement Id"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -7234,6 +7377,7 @@
                 {
                   "enum": [
                     "services_contract",
+                    "records_request",
                     "medical_release"
                   ],
                   "type": "string"
@@ -8012,6 +8156,7 @@
             "type": "string",
             "enum": [
               "services_contract",
+              "records_request",
               "medical_release"
             ],
             "title": "Type"
@@ -13370,6 +13515,17 @@
         "type": "object",
         "title": "SchoolUpdate"
       },
+      "SendForSignatureBody": {
+        "properties": {
+          "auto_send_records_request": {
+            "type": "boolean",
+            "title": "Auto Send Records Request",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "SendForSignatureBody"
+      },
       "SignSubmission": {
         "properties": {
           "signer_name": {
@@ -14261,6 +14417,7 @@
             "type": "string",
             "enum": [
               "services_contract",
+              "records_request",
               "medical_release"
             ],
             "title": "Kind"

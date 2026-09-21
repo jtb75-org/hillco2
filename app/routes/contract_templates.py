@@ -103,7 +103,9 @@ def variable_label(name: str) -> str:
     return name.replace("_", " ").title()
 
 
-AgreementType = Literal["services_contract", "medical_release"]
+# medical_release is retired (template deactivated in 0041) but stays valid so
+# the releases signed before that keep rendering.
+AgreementType = Literal["services_contract", "records_request", "medical_release"]
 BillingMode = Literal["hourly", "fixed"]
 
 

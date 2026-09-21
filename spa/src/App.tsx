@@ -124,7 +124,9 @@ export function App() {
             <Route path="/catalog" element={<CatalogLayout />}>
               <Route index element={<Navigate to="activities" replace />} />
               <Route path="activities" element={<CatalogPage />} />
-              <Route path="contracts" element={<CatalogContracts />} />
+              <Route path="templates" element={<CatalogContracts />} />
+              {/* Old bookmarks: the tab was "Contracts" until 2026-09. */}
+              <Route path="contracts" element={<Navigate to="/catalog/templates" replace />} />
               <Route path="firm-settings" element={<CatalogFirmSettings />} />
             </Route>
             <Route

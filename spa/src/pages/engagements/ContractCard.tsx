@@ -34,7 +34,8 @@ import { ContractBodyEditor } from "../../components/ContractBodyEditor";
 import { SectionPanel } from "../../components/SectionPanel";
 import { useSnackbar } from "../../components/Snackbar";
 
-type AgreementType = "services_contract" | "medical_release";
+// medical_release is retired: shown only where an engagement already has one.
+type AgreementType = "services_contract" | "records_request" | "medical_release";
 type AgreementStatus =
   | "draft"
   | "active"
@@ -59,9 +60,25 @@ interface Agreement {
   template_id: string | null;
   body_markdown: string | null;
   variables: Record<string, unknown>;
+  // Services contract: operator opted in to auto-emailing the Records
+  // Request once the client signs.
+  auto_send_records_request?: boolean;
+  // Records request: how many times it has been emailed, and when last.
+  send_count?: number;
+  last_sent_at?: string | null;
   created_at: string;
   updated_at: string;
   created_by_name?: string | null;
+}
+
+interface AgreementEmail {
+  id: string;
+  purpose: string;
+  to_address: string;
+  cc_addresses: string[];
+  subject: string;
+  sent_at: string;
+  sent_by_name: string | null;
 }
 
 interface ContractTemplate {
@@ -139,6 +156,7 @@ type LifecycleState =
 
 const TYPE_LABEL: Record<AgreementType, string> = {
   services_contract: "Services contract",
+  records_request: "Records request",
   medical_release: "Medical records release",
 };
 
@@ -166,6 +184,17 @@ function lifecycleOf(a: Agreement): LifecycleState {
   return a.status as LifecycleState;
 }
 
+// A Records Request is emailed, never signed, so its states read
+// differently from a contract's.
+function lifecycleLabel(a: Agreement): string {
+  const state = lifecycleOf(a);
+  if (a.type === "records_request") {
+    if (state === "drafted") return "Not sent";
+    if (state === "sent") return "Sent";
+  }
+  return LIFECYCLE_LABEL[state];
+}
+
 export function ContractCard({
   engagementId,
   billingMode,
@@ -180,6 +209,9 @@ export function ContractCard({
   const [addOpen, setAddOpen] = useState(false);
   const [historyFor, setHistoryFor] = useState<AgreementType | null>(null);
   const [editBodyFor, setEditBodyFor] = useState<Agreement | null>(null);
+  // "Send for signature" first asks whether to auto-send the Records Request.
+  const [confirmSendFor, setConfirmSendFor] = useState<Agreement | null>(null);
+  const [sendHistoryFor, setSendHistoryFor] = useState<Agreement | null>(null);
 
   const agreements = useQuery<Agreement[], Error>({
     queryKey: ["engagements", engagementId, "agreements"],
@@ -212,10 +244,18 @@ export function ContractCard({
   });
 
   const sendForSignature = useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async ({
+      id,
+      autoSendRecordsRequest,
+    }: {
+      id: string;
+      autoSendRecordsRequest: boolean;
+    }) => {
       const res = await fetch(`/api/agreements/${id}/send-for-signature`, {
         method: "POST",
         credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ auto_send_records_request: autoSendRecordsRequest }),
       });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
@@ -224,8 +264,49 @@ export function ContractCard({
       return res.json() as Promise<{ sent_to: string }>;
     },
     onSuccess: (data) => {
+      setConfirmSendFor(null);
       invalidate();
       snackbar.show(`Signing link sent to ${data.sent_to}`, "success");
+    },
+    onError: (e: Error) => snackbar.show(e.message, "error"),
+  });
+
+  // Records request: one endpoint creates it from the template on first use
+  // and (re)sends it; the other (re)sends an existing draft.
+  const sendRecordsRequest = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/engagements/${engagementId}/records-request/send`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error((j as { detail?: string }).detail ?? "Could not send the records request.");
+      }
+      return res.json() as Promise<{ sent_to: string }>;
+    },
+    onSuccess: (data) => {
+      invalidate();
+      snackbar.show(`Records request sent to ${data.sent_to}`, "success");
+    },
+    onError: (e: Error) => snackbar.show(e.message, "error"),
+  });
+
+  const sendAgreement = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/agreements/${id}/send`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error((j as { detail?: string }).detail ?? "Could not send.");
+      }
+      return res.json() as Promise<{ sent_to: string }>;
+    },
+    onSuccess: (data) => {
+      invalidate();
+      snackbar.show(`Records request sent to ${data.sent_to}`, "success");
     },
     onError: (e: Error) => snackbar.show(e.message, "error"),
   });
@@ -279,6 +360,16 @@ export function ContractCard({
       ?? list[0] ?? null;
   };
 
+  // The Records Request only makes sense once there is a signed services
+  // contract (it follows the signature). The retired medical release is
+  // shown only where an engagement already has one.
+  const servicesSigned = byType("services_contract").some((a) => a.status === "active");
+  const sectionTypes: AgreementType[] = [
+    "services_contract",
+    "records_request",
+    ...(byType("medical_release").length > 0 ? (["medical_release"] as AgreementType[]) : []),
+  ];
+
   return (
     <SectionPanel
       title="Contracts"
@@ -290,10 +381,11 @@ export function ContractCard({
       }
     >
       <Box sx={{ p: 2.5 }}>
-        {(["services_contract", "medical_release"] as AgreementType[]).map((t) => {
+        {sectionTypes.map((t) => {
           const list = byType(t);
           const current = currentOf(t);
           const history = list.filter((a) => a.id !== current?.id);
+          const isRecords = t === "records_request";
           return (
             <Box key={t} sx={{ mb: 2, "&:last-of-type": { mb: 0 } }}>
               <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.5 }}>
@@ -315,17 +407,42 @@ export function ContractCard({
                 <AgreementRow
                   agreement={current}
                   onMarkSent={() => markSent.mutate(current.id)}
-                  onSendForSignature={() => sendForSignature.mutate(current.id)}
+                  onSendForSignature={() => setConfirmSendFor(current)}
                   onUploadSigned={(file) => uploadSigned.mutate({ id: current.id, file })}
                   onRemove={() => remove.mutate(current.id)}
                   onEditBody={() => setEditBodyFor(current)}
+                  onSend={() => sendAgreement.mutate(current.id)}
+                  onShowSendHistory={() => setSendHistoryFor(current)}
                   busy={
                     markSent.isPending ||
                     sendForSignature.isPending ||
                     uploadSigned.isPending ||
-                    remove.isPending
+                    remove.isPending ||
+                    sendAgreement.isPending
                   }
                 />
+              ) : isRecords ? (
+                servicesSigned ? (
+                  <Stack direction="row" alignItems="center" spacing={1.5} sx={{ ml: 0.5, flexWrap: "wrap" }}>
+                    <Button
+                      size="small"
+                      variant="contained"
+                      data-testid="records-request-send"
+                      startIcon={<SendOutlinedIcon fontSize="small" />}
+                      onClick={() => sendRecordsRequest.mutate()}
+                      disabled={sendRecordsRequest.isPending}
+                    >
+                      {sendRecordsRequest.isPending ? "Sending…" : "Send records request"}
+                    </Button>
+                    <Typography variant="caption" color="text.secondary">
+                      Emails the family's billing contact the records checklist as a PDF.
+                    </Typography>
+                  </Stack>
+                ) : (
+                  <Typography variant="body2" color="text.disabled" sx={{ ml: 0.5 }}>
+                    Available once the services contract is signed.
+                  </Typography>
+                )
               ) : (
                 <Typography variant="body2" color="text.disabled" sx={{ ml: 0.5 }}>
                   No {TYPE_LABEL[t].toLowerCase()} yet.
@@ -366,6 +483,18 @@ export function ContractCard({
           invalidate();
         }}
       />
+
+      <SendForSignatureDialog
+        agreement={confirmSendFor}
+        pending={sendForSignature.isPending}
+        onClose={() => setConfirmSendFor(null)}
+        onSend={(auto) =>
+          confirmSendFor &&
+          sendForSignature.mutate({ id: confirmSendFor.id, autoSendRecordsRequest: auto })
+        }
+      />
+
+      <SendHistoryDialog agreement={sendHistoryFor} onClose={() => setSendHistoryFor(null)} />
     </SectionPanel>
   );
 }
@@ -381,6 +510,8 @@ function AgreementRow({
   onUploadSigned,
   onRemove,
   onEditBody,
+  onSend,
+  onShowSendHistory,
   busy,
 }: {
   agreement: Agreement;
@@ -389,9 +520,15 @@ function AgreementRow({
   onUploadSigned: (file: File) => void;
   onRemove: () => void;
   onEditBody: () => void;
+  /** Records request: email it (send or resend). */
+  onSend: () => void;
+  onShowSendHistory: () => void;
   busy: boolean;
 }) {
   const state = lifecycleOf(agreement);
+  // A records request is emailed, never signed: different actions entirely.
+  const isRecords = agreement.type === "records_request";
+  const sendCount = agreement.send_count ?? (agreement.sent_at ? 1 : 0);
   const fileRef = useRef<HTMLInputElement | null>(null);
   return (
     <Box
@@ -408,7 +545,7 @@ function AgreementRow({
         <Chip
           size="small"
           color={LIFECYCLE_TONE[state] as "default" | "warning" | "info" | "success" | "error"}
-          label={LIFECYCLE_LABEL[state]}
+          label={lifecycleLabel(agreement)}
           variant={state === "drafted" ? "outlined" : "filled"}
         />
         {agreement.contract_number && (
@@ -451,7 +588,57 @@ function AgreementRow({
               Preview PDF
             </Button>
           )}
-        {state === "drafted" && (
+        {isRecords && state === "drafted" && (
+          <>
+            <Button
+              size="small"
+              variant="contained"
+              data-testid={`agreement-send-${agreement.id}`}
+              startIcon={<SendOutlinedIcon fontSize="small" />}
+              onClick={onSend}
+              disabled={busy}
+            >
+              Send to client
+            </Button>
+            <IconButton
+              size="small"
+              aria-label="Delete draft"
+              onClick={onRemove}
+              disabled={busy}
+              sx={{ color: "text.disabled", "&:hover": { color: "error.main" } }}
+            >
+              <DeleteOutlineIcon fontSize="small" />
+            </IconButton>
+          </>
+        )}
+        {isRecords && state === "sent" && (
+          <>
+            <Typography variant="caption" color="text.secondary">
+              Sent {sendCount} {sendCount === 1 ? "time" : "times"}
+              {agreement.last_sent_at
+                ? ` · last ${dayjs(agreement.last_sent_at).format("MMM D, YYYY")}`
+                : ""}
+            </Typography>
+            <Button
+              size="small"
+              startIcon={<HistoryIcon fontSize="small" />}
+              onClick={onShowSendHistory}
+              sx={{ color: "text.secondary" }}
+            >
+              Send history
+            </Button>
+            <Button
+              size="small"
+              variant="contained"
+              startIcon={<SendOutlinedIcon fontSize="small" />}
+              onClick={onSend}
+              disabled={busy}
+            >
+              Resend
+            </Button>
+          </>
+        )}
+        {!isRecords && state === "drafted" && (
           <>
             {agreement.body_markdown !== null && (
               <Button
@@ -484,7 +671,7 @@ function AgreementRow({
             </IconButton>
           </>
         )}
-        {state === "sent" && (
+        {!isRecords && state === "sent" && (
           <>
             <Button
               size="small"
@@ -763,7 +950,7 @@ function AddAgreementDialog({
             }}
           >
             <MenuItem value="services_contract">Services contract</MenuItem>
-            <MenuItem value="medical_release">Medical records release</MenuItem>
+            <MenuItem value="records_request">Records request</MenuItem>
           </Select>
           <Box>
             <Typography
@@ -1004,7 +1191,7 @@ function HistoryDialog({
               <Stack direction="row" spacing={1} alignItems="center">
                 <Chip
                   size="small"
-                  label={LIFECYCLE_LABEL[lifecycleOf(r)]}
+                  label={lifecycleLabel(r)}
                   color={LIFECYCLE_TONE[lifecycleOf(r)] as "default" | "warning" | "info" | "success" | "error"}
                   variant="outlined"
                 />
@@ -1023,6 +1210,125 @@ function HistoryDialog({
             </Box>
           ))}
         </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Close</Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+// ---- send-for-signature confirmation --------------------------------------
+
+function SendForSignatureDialog({
+  agreement,
+  pending,
+  onClose,
+  onSend,
+}: {
+  agreement: Agreement | null;
+  pending: boolean;
+  onClose: () => void;
+  /** `auto` = also email the Records Request automatically once signed. */
+  onSend: (auto: boolean) => void;
+}) {
+  return (
+    <Dialog
+      open={agreement !== null}
+      onClose={() => !pending && onClose()}
+      maxWidth="sm"
+      fullWidth
+    >
+      <DialogTitle>Send for signature</DialogTitle>
+      <DialogContent>
+        <Stack spacing={1.5} sx={{ mt: 0.5 }}>
+          <Typography variant="body2">
+            This emails the family's billing contact a secure link to review and
+            e-sign{agreement?.contract_number ? ` ${agreement.contract_number}` : " the agreement"}.
+          </Typography>
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+            Once they sign, should the Records Request be emailed to them automatically?
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            The Records Request is the letter and checklist of records to gather
+            (Catalog → Templates). Either way you can send or resend it from this
+            card at any time.
+          </Typography>
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose} disabled={pending}>
+          Cancel
+        </Button>
+        <Button data-testid="send-esign-no-auto" onClick={() => onSend(false)} disabled={pending}>
+          No, just send
+        </Button>
+        <Button
+          data-testid="send-esign-auto"
+          variant="contained"
+          onClick={() => onSend(true)}
+          disabled={pending}
+        >
+          {pending ? "Sending…" : "Yes — auto-send after signing"}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+// ---- records request send history -----------------------------------------
+
+function SendHistoryDialog({
+  agreement,
+  onClose,
+}: {
+  agreement: Agreement | null;
+  onClose: () => void;
+}) {
+  const emails = useQuery<AgreementEmail[], Error>({
+    queryKey: ["agreements", agreement?.id, "emails"],
+    enabled: agreement !== null,
+    queryFn: async () => {
+      const res = await fetch(`/api/agreements/${agreement!.id}/emails`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to load send history.");
+      return res.json();
+    },
+  });
+  const rows = emails.data ?? [];
+  return (
+    <Dialog open={agreement !== null} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>Send history</DialogTitle>
+      <DialogContent>
+        {rows.length === 0 ? (
+          <Typography variant="body2" color="text.secondary">
+            {emails.isPending ? "Loading…" : "Not sent yet."}
+          </Typography>
+        ) : (
+          <Stack divider={<Divider />} spacing={1}>
+            {rows.map((e) => (
+              <Box key={e.id} sx={{ py: 1 }}>
+                <Stack direction="row" spacing={1} alignItems="baseline" flexWrap="wrap">
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    {dayjs(e.sent_at).format("MMM D, YYYY h:mm A")}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    to {e.to_address}
+                  </Typography>
+                  {e.sent_by_name && (
+                    <Typography variant="caption" color="text.secondary" sx={{ ml: "auto" }}>
+                      by {e.sent_by_name}
+                    </Typography>
+                  )}
+                </Stack>
+                <Typography variant="caption" color="text.secondary">
+                  {e.subject}
+                </Typography>
+              </Box>
+            ))}
+          </Stack>
+        )}
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>Close</Button>

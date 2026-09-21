@@ -636,8 +636,8 @@ test("catalog contract templates can be created, edited, and deleted", async ({
 
   await page.goto("/catalog");
   await expect(page).toHaveURL(/\/catalog\/activities$/);
-  await page.getByRole("tab", { name: "Contracts" }).click();
-  await expect(page).toHaveURL(/\/catalog\/contracts$/);
+  await page.getByRole("tab", { name: "Templates" }).click();
+  await expect(page).toHaveURL(/\/catalog\/templates$/);
 
   const servicesRow = page.getByRole("row", { name: new RegExp(SERVICES_TEMPLATE_NAME) });
   await expect(servicesRow).toContainText("client_name");
@@ -689,7 +689,7 @@ test("contract rich editor round-trips a real template without corrupting variab
   baseURL,
 }) => {
   await login(page, baseURL);
-  await page.goto("/catalog/contracts");
+  await page.goto("/catalog/templates");
 
   // The seeded services agreement: many headings, bold placeholders, lists.
   const row = page.getByRole("row", { name: new RegExp(SERVICES_TEMPLATE_NAME) });
@@ -1136,9 +1136,13 @@ test("a draft agreement can be sent for e-signature", async ({ page, baseURL }) 
   await expect(dialog).toBeHidden();
 
   const row = page.locator('[data-agreement-type="services_contract"]').first();
+  // "Send for signature" now asks whether to auto-send the Records Request
+  // once signed; this test declines.
+  await row.getByRole("button", { name: "Send for signature" }).click();
+  const confirm = page.getByRole("dialog", { name: "Send for signature" });
   const [resp] = await Promise.all([
     page.waitForResponse((r) => r.url().includes("/send-for-signature")),
-    row.getByRole("button", { name: "Send for signature" }).click(),
+    confirm.getByRole("button", { name: "No, just send" }).click(),
   ]);
   expect(resp.status(), await resp.text()).toBe(200);
   // Email goes to the e2e SMTP sink; the row flips to awaiting-signature.
@@ -1250,9 +1254,12 @@ test("client can sign by drawing — the drawn signature renders into the signed
 
   const row = page.locator('[data-agreement-type="services_contract"]').first();
   const sentAt = Date.now();
+  // Opt in to auto-sending the Records Request once the client signs.
+  await row.getByRole("button", { name: "Send for signature" }).click();
+  const confirm = page.getByRole("dialog", { name: "Send for signature" });
   const [sendResp] = await Promise.all([
     page.waitForResponse((r) => r.url().includes("/send-for-signature")),
-    row.getByRole("button", { name: "Send for signature" }).click(),
+    confirm.getByRole("button", { name: /Yes.*auto-send/ }).click(),
   ]);
   expect(sendResp.status(), await sendResp.text()).toBe(200);
 
@@ -1282,6 +1289,11 @@ test("client can sign by drawing — the drawn signature renders into the signed
   expect(signResp.status(), await signResp.text()).toBe(200);
   await expect(page.getByText(/your agreement is signed/i)).toBeVisible();
 
+  // Signing triggered the opted-in Records Request: a second email (PDF
+  // attached) to the same family contact.
+  const rrMail = await waitForMail(billingEmail, sentAt, { subject: /records request/i });
+  expect(rrMail).toContain("records that will help me get started");
+
   // Back on the engagement, a signed agreement is immutable: only the signed
   // file is offered — no body editor, no live-render preview.
   await page.goto(`/engagements/${engagement.id}`);
@@ -1289,4 +1301,23 @@ test("client can sign by drawing — the drawn signature renders into the signed
   await expect(signedRow.getByRole("link", { name: "View signed" })).toBeVisible();
   await expect(signedRow.getByRole("button", { name: "View / Edit" })).toHaveCount(0);
   await expect(signedRow.getByRole("link", { name: "Preview PDF" })).toHaveCount(0);
+
+  // ...and the Records request row shows the auto-send with Resend + history.
+  const rrRow = page.locator('[data-agreement-type="records_request"]').first();
+  await expect(rrRow).toContainText("Sent");
+  await expect(rrRow.getByRole("button", { name: "Resend" })).toBeVisible();
+  await rrRow.getByRole("button", { name: /Send history/ }).click();
+  const history = page.getByRole("dialog", { name: /Send history/ });
+  await expect(history.getByText(billingEmail)).toBeVisible();
+  await history.getByRole("button", { name: "Close" }).click();
+
+  // Resend logs a second send.
+  const resendAt = Date.now();
+  const [resendResp] = await Promise.all([
+    page.waitForResponse((r) => r.url().includes("/records-request/send") || /\/agreements\/[^/]+\/send$/.test(r.url())),
+    rrRow.getByRole("button", { name: "Resend" }).click(),
+  ]);
+  expect(resendResp.status(), await resendResp.text()).toBe(200);
+  await waitForMail(billingEmail, resendAt, { subject: /records request/i });
+  await expect(rrRow).toContainText(/Sent 2 times/);
 });

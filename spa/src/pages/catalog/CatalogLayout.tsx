@@ -8,7 +8,7 @@ import { PageHeader } from "../../components/PageHeader";
 // `activities`).
 const TABS = [
   { value: "activities", label: "Activities", to: "/catalog/activities" },
-  { value: "contracts", label: "Contracts", to: "/catalog/contracts" },
+  { value: "templates", label: "Templates", to: "/catalog/templates" },
   { value: "firm-settings", label: "Firm settings", to: "/catalog/firm-settings" },
 ] as const;
 
@@ -24,7 +24,7 @@ export function CatalogLayout() {
     <Box>
       <PageHeader
         title="Catalog"
-        subtitle="The user-editable building blocks of an engagement: activities, phases, engagement types, and contract templates."
+        subtitle="The user-editable building blocks of an engagement: activities, phases, engagement types, and templates."
       />
       <Tabs value={current} sx={{ borderBottom: 1, borderColor: "divider", mb: 3 }}>
         {TABS.map((t) => (

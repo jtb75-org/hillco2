@@ -9,6 +9,7 @@ it to the agreement, flip the agreement to active, and email the completed
 document to both parties.
 """
 import json
+import logging
 from datetime import UTC, datetime
 
 import asyncpg
@@ -22,8 +23,10 @@ from .agreements import (
     _build_default_context,
     _stored_signatures_for_cert,
     agreement_pdf_bytes,
+    ensure_records_request,
     markdown_to_fragment,
     render_agreement_markdown,
+    send_records_request,
     signature_certificate_html,
     strip_wet_signatures,
 )
@@ -310,5 +313,22 @@ async def submit_signature(token: str, body: SignSubmission, request: Request):
             )
         except EmailSendError:
             pass
+
+    # The operator opted in when sending for signature: create the Records
+    # Request from its template and email it now. Best-effort — the
+    # signature is already recorded, and the card offers Send/Resend.
+    if row.get("type") == "services_contract" and row.get("auto_send_records_request"):
+        try:
+            # The request connection was released with the block above;
+            # the auto-send gets its own.
+            async with request_conn() as rr_conn:
+                rr = await ensure_records_request(
+                    rr_conn, row["engagement_id"], created_by=lead_consultant_id
+                )
+                await send_records_request(rr_conn, rr, sent_by=lead_consultant_id)
+        except Exception:  # noqa: BLE001 - never fail a completed signing
+            logging.getLogger(__name__).exception(
+                "auto-send of the records request failed for agreement %s", row["id"]
+            )
 
     return {"status": "signed"}

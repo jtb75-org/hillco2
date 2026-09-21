@@ -28,7 +28,9 @@ from .documents import store_uploaded_document
 router = APIRouter(prefix="/api", tags=["agreements"])
 
 
-AgreementType = Literal["services_contract", "medical_release"]
+# medical_release is retired (template deactivated in 0041) but stays valid
+# for the releases signed before that.
+AgreementType = Literal["services_contract", "records_request", "medical_release"]
 AgreementStatus = Literal["draft", "active", "superseded", "expired", "terminated"]
 
 
@@ -145,8 +147,11 @@ async def list_for_engagement(
                a.amount, a.sent_at, a.signed_at, a.effective_date, a.expires_at,
                a.supersedes_id, a.document_id, a.notes,
                a.template_id, a.body_markdown, a.variables,
+               a.auto_send_records_request,
                a.created_by, a.created_at, a.updated_at,
-               TRIM(BOTH ' ' FROM COALESCE(u.first_name,'') || CASE WHEN u.last_name IS NOT NULL AND u.last_name <> '' THEN ' ' || u.last_name ELSE '' END) AS created_by_name
+               TRIM(BOTH ' ' FROM COALESCE(u.first_name,'') || CASE WHEN u.last_name IS NOT NULL AND u.last_name <> '' THEN ' ' || u.last_name ELSE '' END) AS created_by_name,
+               (SELECT count(*) FROM agreement_emails e WHERE e.agreement_id = a.id) AS send_count,
+               (SELECT max(e.sent_at) FROM agreement_emails e WHERE e.agreement_id = a.id) AS last_sent_at
         FROM agreements a
         LEFT JOIN people u ON u.id = a.created_by
         WHERE a.engagement_id = $1
@@ -416,10 +421,17 @@ def _public_base_url(request) -> str:
     return base.rstrip("/")
 
 
+class SendForSignatureBody(BaseModel):
+    # Operator's answer to "email the Records Request automatically once the
+    # client signs?" — acted on by the signing route.
+    auto_send_records_request: bool = False
+
+
 @router.post("/agreements/{agreement_id}/send-for-signature")
 async def send_agreement_for_signature(
     agreement_id: UUID,
     request: Request,
+    body: SendForSignatureBody | None = None,
     _user=Depends(require_user),
     conn=Depends(get_conn),
 ):
@@ -461,11 +473,13 @@ async def send_agreement_for_signature(
         UPDATE agreements
         SET signing_nonce = gen_random_uuid(),
             signing_sent_at = NOW(),
-            sent_at = NOW()
+            sent_at = NOW(),
+            auto_send_records_request = $2
         WHERE id = $1
         RETURNING *
         """,
         agreement_id,
+        bool(body.auto_send_records_request) if body else False,
     )
     token = make_signing_token(agreement_id, updated["signing_nonce"])
     link = f"{_public_base_url(request)}/sign/{token}"
@@ -506,6 +520,175 @@ async def send_agreement_for_signature(
         ) from exc
 
     return {"sent_to": recipient, "signing_sent_at": updated["signing_sent_at"]}
+
+
+# ---- Records request ---------------------------------------------------------
+#
+# Sent to the family once the services contract is signed: a letter +
+# checklist PDF of the records to gather. Never signed; can be re-sent, and
+# every send is logged in agreement_emails.
+
+async def ensure_records_request(conn, engagement_id: UUID, *, created_by) -> dict:
+    """The engagement's current Records Request agreement, creating a draft
+    from the active template if there isn't one yet."""
+    existing = await conn.fetchrow(
+        """
+        SELECT * FROM agreements
+        WHERE engagement_id = $1 AND type = 'records_request'
+          AND status IN ('draft', 'active')
+        ORDER BY created_at DESC LIMIT 1
+        """,
+        engagement_id,
+    )
+    if existing:
+        return dict(existing)
+    tpl = await conn.fetchrow(
+        """
+        SELECT id, body_markdown FROM contract_templates
+        WHERE kind = 'records_request' AND is_active AND deleted_at IS NULL
+        ORDER BY sort_order, created_at LIMIT 1
+        """
+    )
+    if tpl is None:
+        raise HTTPException(
+            status_code=400,
+            detail="No active Records Request template. Add one under Catalog → Templates.",
+        )
+    row = await conn.fetchrow(
+        """
+        INSERT INTO agreements (engagement_id, type, status, created_by,
+                                template_id, body_markdown, variables)
+        VALUES ($1, 'records_request', 'draft', $2, $3, $4, '{}'::jsonb)
+        RETURNING *
+        """,
+        engagement_id, created_by, tpl["id"], tpl["body_markdown"],
+    )
+    return dict(row)
+
+
+async def send_records_request(conn, agreement: dict, *, sent_by) -> dict:
+    """Render the Records Request to PDF, email it to the family's billing
+    contact, log the send, and stamp sent_at (first send only)."""
+    from ..email import (  # noqa: PLC0415
+        EmailSendError,
+        render_letterhead_email,
+        send_email,
+    )
+
+    if agreement["type"] != "records_request":
+        raise HTTPException(status_code=400, detail="Only a Records Request can be sent this way.")
+    if not agreement.get("body_markdown"):
+        raise HTTPException(status_code=400, detail="The Records Request has no body. Pick a template first.")
+    recipient = await _billing_recipient(conn, agreement["engagement_id"])
+    if not recipient:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "No client email on file. Add an email to the family's billing "
+                "or primary contact, then send again."
+            ),
+        )
+
+    rendered_md = await render_agreement_markdown(conn, dict(agreement))
+    pdf = agreement_pdf_bytes(rendered_md)
+    subject = "Records request from HillCo Educational Consulting"
+    body_text = (
+        "Hello,\n\n"
+        "Now that your services agreement is in place, the attached letter lists "
+        "the records that will help me get started. Please gather whichever you "
+        "have and reply to this email with them attached — copies, photos, or "
+        "scans are all fine.\n\n"
+        "— HillCo Educational Consulting"
+    )
+    body_html = render_letterhead_email(
+        heading="Records to gather for our work together",
+        paragraphs=[
+            "Now that your services agreement is in place, the attached letter "
+            "lists the records that will help me get started.",
+            "Please gather whichever you have and reply to this email with them "
+            "attached — copies, photos, or scans are all fine.",
+        ],
+        footer_note="The records request is attached as a PDF.",
+    )
+    try:
+        message_id = send_email(
+            to=recipient,
+            subject=subject,
+            body_text=body_text,
+            body_html=body_html,
+            attachments=[("records-request.pdf", "pdf", pdf)],
+        )
+    except EmailSendError as exc:
+        raise HTTPException(
+            status_code=502, detail="Could not send the records request email; try again."
+        ) from exc
+
+    await conn.execute(
+        """
+        INSERT INTO agreement_emails
+            (agreement_id, purpose, to_address, subject, body, sent_by, smtp_message_id)
+        VALUES ($1, 'records_request', $2, $3, $4, $5, $6)
+        """,
+        agreement["id"], recipient, subject, body_text, sent_by, message_id or None,
+    )
+    await conn.execute(
+        "UPDATE agreements SET sent_at = COALESCE(sent_at, NOW()) WHERE id = $1",
+        agreement["id"],
+    )
+    return {"agreement_id": str(agreement["id"]), "sent_to": recipient}
+
+
+@router.post("/engagements/{engagement_id}/records-request/send")
+async def send_engagement_records_request(
+    engagement_id: UUID,
+    user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    """Send (or re-send) the engagement's Records Request, creating it from
+    the active template on first use. The Contracts card's one-click
+    "Send records request" / "Resend"."""
+    await _engagement_or_404(conn, engagement_id)
+    rr = await ensure_records_request(conn, engagement_id, created_by=user["id"])
+    return await send_records_request(conn, rr, sent_by=user["id"])
+
+
+@router.post("/agreements/{agreement_id}/send")
+async def send_agreement(
+    agreement_id: UUID,
+    user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    """Email a Records Request that already exists (e.g. one drafted and
+    edited via New agreement) — send or re-send."""
+    row = await _agreement_or_404(conn, agreement_id)
+    return await send_records_request(conn, dict(row), sent_by=user["id"])
+
+
+@router.get("/agreements/{agreement_id}/emails")
+async def list_agreement_emails(
+    agreement_id: UUID,
+    _user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    """Every email sent for this agreement, newest first — the Records
+    Request's send history."""
+    await _agreement_or_404(conn, agreement_id)
+    rows = await conn.fetch(
+        """
+        SELECT e.id, e.purpose, e.to_address, e.cc_addresses, e.subject,
+               e.sent_at, e.smtp_message_id,
+               TRIM(BOTH ' ' FROM COALESCE(p.first_name, '') ||
+                 CASE WHEN p.last_name IS NOT NULL AND p.last_name <> ''
+                      THEN ' ' || p.last_name ELSE '' END
+               ) AS sent_by_name
+        FROM agreement_emails e
+        LEFT JOIN people p ON p.id = e.sent_by
+        WHERE e.agreement_id = $1
+        ORDER BY e.sent_at DESC
+        """,
+        agreement_id,
+    )
+    return [dict(r) for r in rows]
 
 
 @router.post("/agreements/{agreement_id}/upload-signed", status_code=201)

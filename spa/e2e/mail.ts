@@ -17,8 +17,9 @@ export const MAIL_DIR =
 export async function waitForMail(
   to: string,
   sinceMs: number,
-  timeoutMs = 15_000,
+  opts: { subject?: RegExp; timeoutMs?: number } = {},
 ): Promise<string> {
+  const timeoutMs = opts.timeoutMs ?? 15_000;
   const deadline = Date.now() + timeoutMs;
   const sinceNs = BigInt(sinceMs) * 1_000_000n;
   while (Date.now() < deadline) {
@@ -29,7 +30,10 @@ export async function waitForMail(
         .sort();
       for (const f of files) {
         const text = fs.readFileSync(path.join(MAIL_DIR, f), "utf8");
-        if (text.split("\n")[0].toLowerCase().includes(to.toLowerCase())) return text;
+        const [toLine, subjectLine] = text.split("\n");
+        if (!toLine.toLowerCase().includes(to.toLowerCase())) continue;
+        if (opts.subject && !opts.subject.test(subjectLine)) continue;
+        return text;
       }
     }
     await new Promise((r) => setTimeout(r, 250));

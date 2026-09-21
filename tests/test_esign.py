@@ -252,7 +252,7 @@ async def test_rotated_nonce_invalidates_old_link(authed_client, client, db_pool
 
 async def _medrel_agreement(authed_client, engagement_id):
     templates = (await authed_client.get(
-        "/api/contract-templates?kind=medical_release"
+        "/api/contract-templates?kind=medical_release&include_inactive=true"
     )).json()
     return (await authed_client.post(
         f"/api/engagements/{engagement_id}/agreements",

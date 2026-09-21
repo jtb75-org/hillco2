@@ -33,10 +33,13 @@ import { DataTableContainer } from "../../components/DataTableContainer";
 import { useSnackbar } from "../../components/Snackbar";
 import { StatusChip } from "../../components/StatusChip";
 
-type AgreementType = "services_contract" | "medical_release";
+type AgreementType = "services_contract" | "records_request" | "medical_release";
 
 const TYPE_LABEL: Record<AgreementType, string> = {
   services_contract: "Services contract",
+  records_request: "Records request",
+  // Retired: the form isn't practical (every records holder needs its own
+  // release). Kept so the retired template row still labels correctly.
   medical_release: "Medical records release",
 };
 
@@ -104,7 +107,7 @@ export function CatalogContracts() {
     <Box>
       <Stack direction="row" alignItems="baseline" spacing={1} sx={{ mb: 2 }}>
         <Typography variant="h6" sx={{ flex: 1 }}>
-          Contract templates
+          Templates
         </Typography>
         <Button
           variant="contained"
@@ -130,7 +133,7 @@ export function CatalogContracts() {
         loadingColumns={5}
         empty={rows.length === 0}
         emptyTitle="No templates yet"
-        emptyDescription="Contract templates you create will appear here."
+        emptyDescription="Templates you create will appear here."
       >
         <Table size="small">
           <TableHead>
@@ -355,7 +358,10 @@ function TemplateDialog({
               sx={{ flex: 1 }}
             >
               <MenuItem value="services_contract">Services contract</MenuItem>
-              <MenuItem value="medical_release">Medical records release</MenuItem>
+              <MenuItem value="records_request">Records request</MenuItem>
+              {kind === "medical_release" && (
+                <MenuItem value="medical_release">Medical records release (retired)</MenuItem>
+              )}
             </Select>
             <FormControlLabel
               control={
