@@ -1118,32 +1118,36 @@ def _markdown_to_html(
 <meta charset="utf-8">
 <title>Agreement</title>
 <style>
+  /* Contract typography: one serif family at document scale, justified,
+     compact numbered headings, no rules between sections. The templates'
+     `---` separators are hidden — the numbered headings carry the structure,
+     and each rule used to cost ~50pt of white space with its margins. */
   @page {{
     size: Letter;
-    margin: 1.15in 0.85in 0.95in 0.85in;
+    margin: 1in 0.9in 0.9in 0.9in;
     @top-center {{ content: element(docHeader); vertical-align: bottom; }}
     @bottom-left {{
       content: "{footer_left}";
       font-family: "Helvetica Neue", "Arial", sans-serif;
-      font-size: 8pt; color: #9aa3b2;
+      font-size: 7.5pt; color: #9aa3b2;
     }}
     @bottom-right {{
       content: "Page " counter(page) " of " counter(pages);
       font-family: "Helvetica Neue", "Arial", sans-serif;
-      font-size: 8pt; color: #9aa3b2;
+      font-size: 7.5pt; color: #9aa3b2;
     }}
   }}
   /* Running letterhead — repeats on every page via @top-center. */
   .doc-header {{
     position: running(docHeader);
-    width: 6.8in;  /* Letter (8.5in) minus 0.85in side margins → full content width */
+    width: 6.7in;  /* Letter (8.5in) minus 0.9in side margins → full content width */
     border-bottom: 1.5px solid #08428d;
-    padding-bottom: 5pt;
+    padding-bottom: 4pt;
   }}
   .doc-header table {{ width: 100%; border-collapse: collapse; }}
   .doc-header td {{ vertical-align: bottom; }}
   .doc-header .wm {{ font-family: "Helvetica Neue", "Arial", sans-serif; }}
-  .doc-header .wm-name {{ font-size: 15pt; font-weight: 800; letter-spacing: .5px; }}
+  .doc-header .wm-name {{ font-size: 14pt; font-weight: 800; letter-spacing: .5px; }}
   .doc-header .wm-name .hill {{ color: #08428d; }}
   .doc-header .wm-name .co {{ color: #5fa0ee; }}
   .doc-header .wm-sub {{
@@ -1156,25 +1160,40 @@ def _markdown_to_html(
   }}
   body {{
     font-family: "Georgia", "Times New Roman", serif;
-    font-size: 11pt;
-    line-height: 1.5;
-    color: #1f2937;
+    font-size: 10.5pt;
+    line-height: 1.38;
+    color: #111827;
+    text-align: justify;
+    hyphens: none;  /* legal text doesn't break names ("Mis-souri") */
   }}
-  h1, h2, h3 {{ font-family: "Helvetica Neue", "Arial", sans-serif; color: #08428d; }}
-  h1 {{ font-size: 16pt; margin: 0 0 0.2em; letter-spacing: .2px; }}
-  h2 {{
-    font-size: 12pt; margin-top: 1.4em; padding-bottom: 3pt;
-    border-bottom: 1px solid #dbe4f3;
+  p {{ margin: 0 0 6pt; orphans: 3; widows: 3; }}
+  h1, h2, h3 {{
+    font-family: "Georgia", "Times New Roman", serif;
+    color: #08428d;
+    text-align: left;
+    break-after: avoid; page-break-after: avoid;
   }}
-  h3 {{ font-size: 10.5pt; margin-top: 1em; color: #073a7b; }}
-  hr {{ border: none; border-top: 1px solid #e5e9f0; margin: 1.4em 0; }}
-  ul, ol {{ padding-left: 1.4em; }}
-  li {{ margin-bottom: 0.15em; }}
+  /* The document title is the first heading; every later h1 is a numbered
+     section ("3. TERM AND TERMINATION") and sits at body scale. */
+  body > h1:first-of-type {{
+    font-size: 13.5pt; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .8px; text-align: center; margin: 0 0 14pt;
+  }}
+  h1 {{
+    font-size: 10.5pt; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .4px; margin: 13pt 0 4pt;
+  }}
+  h2 {{ font-size: 10.5pt; font-weight: 700; margin: 9pt 0 3pt; color: #073a7b; }}
+  h3 {{ font-size: 10.5pt; font-weight: 700; font-style: italic; margin: 8pt 0 2pt; color: #1f2937; }}
+  hr {{ display: none; }}
+  ul, ol {{ margin: 2pt 0 6pt; padding-left: 1.5em; }}
+  li {{ margin-bottom: 2pt; }}
+  li p {{ margin: 0; }}
   strong {{ font-weight: 700; }}
   code {{ font-family: monospace; }}
-  .sig-cert {{ page-break-before: always; }}
-  .sig-cert h2 {{ font-size: 13pt; border-bottom: 1.5px solid #08428d; padding-bottom: 4pt; }}
-  .sig-block {{ margin: 1.2em 0; padding: 0.8em 1em; border: 1px solid #dbe4f3; border-radius: 3pt; }}
+  .sig-cert {{ page-break-before: always; text-align: left; }}
+  .sig-cert h2 {{ font-size: 12pt; border-bottom: 1.5px solid #08428d; padding-bottom: 4pt; margin: 0 0 8pt; }}
+  .sig-block {{ margin: 10pt 0; padding: 8pt 12pt; border: 1px solid #dbe4f3; border-radius: 3pt; }}
   .sig-block .sig-name {{ font-size: 20pt; font-family: "Segoe Script", "Snell Roundhand", cursive; color: #08428d; }}
   .sig-block img.sig-img {{ max-height: 80px; }}
   .sig-meta {{ font-family: "Helvetica Neue", "Arial", sans-serif; font-size: 8.5pt; color: #444; border-collapse: collapse; margin-top: 6pt; }}
