@@ -63,10 +63,10 @@ export function redirectToLogin() {
 
 export async function signOut() {
   // Backend clears the server-side session via POST /api/logout, then a
-  // hard redirect drops the in-memory React state too. Doing it as a
-  // full reload (vs. just invalidating the auth query) avoids any
-  // route that already loaded data under the previous identity from
-  // continuing to render it.
+  // hard redirect to the public site drops the in-memory React state too.
+  // Doing it as a full navigation (vs. just invalidating the auth query)
+  // avoids any route that already loaded data under the previous identity
+  // from continuing to render it.
   await api.POST("/api/logout");
-  window.location.href = "/";
+  window.location.href = "https://www.hillcoeducation.com/";
 }
