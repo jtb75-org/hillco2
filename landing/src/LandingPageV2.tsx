@@ -245,7 +245,6 @@ const TESTIMONIALS = [
       "Mary is deeply committed to understanding the whole child, recognizing that the best educational placement considers not only academic needs but also each child's social, emotional, and developmental strengths.",
       "We feel very fortunate to have worked with Mary and are confident our daughter is now on the path to thrive in school.",
     ],
-    signature: "Laurie & Kevin Dixon",
     location: "Chesterfield, MO",
   },
   {
@@ -254,7 +253,6 @@ const TESTIMONIALS = [
       "Her knowledge, compassion and dedication gave our family confidence that we were making the right decision for our son. Today my son is 20 years old and has graduated from college with a degree in CNC machining and precision technology. I am incredibly grateful for the role Mary played in helping him find an educational environment where he could grow, gain confidence and ultimately succeed.",
       "She truly looks at the whole child and is genuinely invested in helping students reach their potential. I highly recommend her services to any family navigating an educational transition.",
     ],
-    signature: "Paula Hoolihan",
     location: "Belleville, IL",
   },
 ] as const;
@@ -456,7 +454,7 @@ function TestimonialsDialog({ open, onClose }: { open: boolean; onClose: () => v
         <Stack spacing={3}>
           {TESTIMONIALS.map((testimonial) => (
             <Box
-              key={testimonial.signature}
+              key={testimonial.location}
               sx={{
                 borderLeft: 4,
                 borderColor: ROYAL,
@@ -471,9 +469,6 @@ function TestimonialsDialog({ open, onClose }: { open: boolean; onClose: () => v
                   {paragraph}
                 </Typography>
               ))}
-              <Typography sx={{ color: NAVY, fontWeight: 900 }}>
-                {testimonial.signature}
-              </Typography>
               <Typography sx={{ color: "#255ba3", fontWeight: 700 }}>
                 {testimonial.location}
               </Typography>

@@ -768,7 +768,9 @@ function AddAgreementDialog({
   onCreated: () => void;
 }) {
   const snackbar = useSnackbar();
-  const [type, setType] = useState<AgreementType>("services_contract");
+  // Records Requests are created by the post-signature workflow, so this
+  // dialog only creates the services contract that starts that workflow.
+  const type: AgreementType = "services_contract";
   const [amount, setAmount] = useState("");
   const [notes, setNotes] = useState("");
   const [templateId, setTemplateId] = useState<string>("");
@@ -886,7 +888,6 @@ function AddAgreementDialog({
   );
 
   const reset = () => {
-    setType("services_contract");
     setAmount("");
     setNotes("");
     setTemplateId("");
@@ -902,7 +903,10 @@ function AddAgreementDialog({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           type,
-          amount: String(amount).trim() || null,
+          amount:
+            type === "services_contract" && billingMode === "fixed"
+              ? String(amount).trim() || null
+              : null,
           notes: notes.trim() || null,
           template_id: templateId || null,
           variables: Object.fromEntries(
@@ -939,19 +943,6 @@ function AddAgreementDialog({
       <DialogTitle>New agreement</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 1 }}>
-          <Select
-            data-testid="agreement-type-select"
-            size="small"
-            value={type}
-            onChange={(e) => {
-              setType(e.target.value as AgreementType);
-              setTemplateId("");
-              setShowTemplatePicker(false);
-            }}
-          >
-            <MenuItem value="services_contract">Services contract</MenuItem>
-            <MenuItem value="records_request">Records request</MenuItem>
-          </Select>
           <Box>
             <Typography
               variant="caption"
@@ -1020,7 +1011,7 @@ function AddAgreementDialog({
               is superseded.
             </Alert>
           )}
-          {type === "services_contract" && (
+          {type === "services_contract" && billingMode === "fixed" && (
             <TextField
               label="Amount"
               placeholder="2500.00"
