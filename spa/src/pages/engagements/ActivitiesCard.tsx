@@ -58,7 +58,8 @@ type ActivityKind =
   | "best_environment"
   | "feedback_meeting"
   | "school_visit"
-  | "school_recommendation";
+  | "school_recommendation"
+  | "intake_summary";
 
 export interface ActivityRow {
   id: string;
@@ -107,6 +108,7 @@ const KIND_LABEL: Record<ActivityKind, string> = {
   feedback_meeting: "Feedback meeting",
   school_visit: "Campus visit",
   school_recommendation: "Recommendation",
+  intake_summary: "Intake summary",
 };
 
 export function ActivitiesCard({
@@ -531,6 +533,7 @@ export function ActivitiesCard({
           qc.invalidateQueries({
             queryKey: ["engagements", engagementId, "time-entries"],
           });
+          qc.invalidateQueries({ queryKey: ["dashboard"] });
         }}
       />
     </SectionPanel>

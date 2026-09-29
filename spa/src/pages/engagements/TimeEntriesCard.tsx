@@ -62,8 +62,12 @@ export function TimeEntriesCard({
     },
   });
 
-  const invalidate = () =>
+  const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["engagements", engagementId, "time-entries"] });
+    // Dashboard "uninvoiced" total is computed from time_entries.billable
+    // sum — keep it in sync when any entry on this engagement changes.
+    qc.invalidateQueries({ queryKey: ["dashboard"] });
+  };
 
   const patch = useMutation({
     mutationFn: async ({ id, body }: { id: string; body: Partial<TimeEntry> }) => {
