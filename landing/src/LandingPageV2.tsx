@@ -255,6 +255,14 @@ const TESTIMONIALS = [
     ],
     location: "Belleville, IL",
   },
+  {
+    body: [
+      "For more than five years, Mary has been a trusted partner, confidant, and an invaluable resource to our family as we navigate our daughter's academic journey. She is unapologetically guided by one thing -- what is best for our daughter.",
+      "Unique learners are Mary's passion and life's work. Over the course of her career, she has cultivated relationships with school administrators, teachers, and resource providers across our community. Mary's knowledge of the various resources and supports available to students with specialized academic and social-emotional needs has played a major role in the decisions we have made for our daughter. The expertise she brings in her role as our advocate in educational planning and resource meetings is also incredibly invaluable to us.",
+      "The experience, guidance and support Mary provides in this realm are unmatched, and we're so grateful to have her by our side on this journey.",
+    ],
+    location: "Wildwood, MO",
+  },
 ] as const;
 
 export function LandingPageV2() {
