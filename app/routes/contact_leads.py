@@ -6,7 +6,7 @@ from ..validators import EMAIL_PATTERN
 
 router = APIRouter(prefix="/api", tags=["contact-leads"])
 
-LEAD_RECIPIENT = "joe@ng20.org"
+LEAD_RECIPIENT = "hillcoeducationalconsultant@gmail.com"
 
 
 class ContactLeadCreate(BaseModel):
