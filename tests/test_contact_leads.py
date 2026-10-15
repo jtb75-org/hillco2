@@ -24,7 +24,7 @@ async def test_contact_lead_sends_email(monkeypatch):
     )
 
     assert result == {"status": "accepted", "message_id": "test-message-id"}
-    assert sent["to"] == "joe@ng20.org"
+    assert sent["to"] == "hillcoeducationalconsultant@gmail.com"
     assert sent["reply_to"] == "parent@example.com"
     assert sent["subject"] == "New HillCo inquiry from Preview Parent"
     assert "Name: Preview Parent" in sent["body_text"]
