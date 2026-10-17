@@ -38,7 +38,40 @@ ActivityKind = Literal[
     "feedback_meeting",
     "school_visit",
     "school_recommendation",
+    "intake_summary",
 ]
+
+IntakeSummarySection = Literal[
+    "contacts",
+    "current_school",
+    "diagnoses",
+    "goals",
+]
+
+
+def _validate_kind_section(
+    kind: str | None, section: str | None, *, missing_section_ok: bool = False
+) -> None:
+    """The DB CHECK enforces (kind=intake_summary) ⇔ (section IS NOT NULL).
+    We pre-validate in the API so callers get a 400 instead of a 500
+    from the CHECK violation.
+
+    missing_section_ok=True relaxes the rule for PATCHes where the
+    caller may only be updating one side — the merged state is checked
+    by the caller after combining the patch with the existing row.
+    """
+    if kind == "intake_summary":
+        if section is None and not missing_section_ok:
+            raise HTTPException(
+                status_code=400,
+                detail="intake_summary_section is required when default_activity_kind='intake_summary'",
+            )
+    else:
+        if section is not None:
+            raise HTTPException(
+                status_code=400,
+                detail="intake_summary_section can only be set when default_activity_kind='intake_summary'",
+            )
 
 
 class ItemCreate(BaseModel):
@@ -51,6 +84,7 @@ class ItemCreate(BaseModel):
     default_deliverable: str | None = None
     default_owner_role: OwnerRole | None = None
     default_activity_kind: ActivityKind = "task"
+    intake_summary_section: IntakeSummarySection | None = None
     # If omitted, the item gets no engagement-type membership and won't
     # be seeded onto any engagement. SPA picker controls this.
     engagement_type_ids: list[UUID] | None = None
@@ -66,6 +100,7 @@ class ItemUpdate(BaseModel):
     default_deliverable: str | None = None
     default_owner_role: OwnerRole | None = None
     default_activity_kind: ActivityKind | None = None
+    intake_summary_section: IntakeSummarySection | None = None
     # Replaces the item's full engagement-type membership when present.
     # Pass an empty list to clear it. Omit to leave existing memberships
     # alone (so partial PATCHes don't accidentally wipe the M2M).
@@ -208,7 +243,9 @@ async def get_phase(
         """
         SELECT si.id, si.phase_id, si.sort_order, si.title, si.description,
                si.default_est_hours, si.default_billable, si.default_deliverable,
-               si.default_owner_role, si.created_at, si.updated_at,
+               si.default_owner_role, si.default_activity_kind,
+               si.intake_summary_section,
+               si.created_at, si.updated_at,
                COALESCE((
                  SELECT array_agg(siet.engagement_type_id)
                  FROM service_item_engagement_types siet
@@ -291,6 +328,7 @@ async def list_items(
                si.default_est_hours, si.default_billable,
                si.default_deliverable, si.default_owner_role,
                si.default_activity_kind,
+               si.intake_summary_section,
                si.created_at, si.updated_at,
                cp.title AS phase_title,
                cp.sort_order AS phase_sort_order,
@@ -318,6 +356,7 @@ async def create_item(
     await _phase_or_404(conn, body.phase_id)
     if body.engagement_type_ids:
         await _validate_engagement_type_ids(conn, body.engagement_type_ids)
+    _validate_kind_section(body.default_activity_kind, body.intake_summary_section)
     title = body.title.strip()
     description = (body.description or "").strip() or None
     deliverable = (body.default_deliverable or "").strip() or None
@@ -327,13 +366,14 @@ async def create_item(
           phase_id, title, description, sort_order,
           default_est_hours, default_billable,
           default_deliverable, default_owner_role,
-          default_activity_kind
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::owner_role, $9::activity_kind)
+          default_activity_kind, intake_summary_section
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::owner_role, $9::activity_kind, $10)
         RETURNING *
         """,
         body.phase_id, title, description, body.sort_order,
         body.default_est_hours, body.default_billable,
         deliverable, body.default_owner_role, body.default_activity_kind,
+        body.intake_summary_section,
     )
     out = dict(row)
     if body.engagement_type_ids:
@@ -349,7 +389,7 @@ async def update_item(
     _user=Depends(require_user),
     conn=Depends(get_conn),
 ):
-    await _item_or_404(conn, item_id)
+    existing = await _item_or_404(conn, item_id)
     fields = _normalize_item(body.model_dump(exclude_unset=True))
     # Pull engagement_type_ids out of the column-update path; it's
     # stored in the M2M, not on service_items.
@@ -364,6 +404,22 @@ async def update_item(
             fields["phase_id"],
         ):
             raise HTTPException(status_code=400, detail="phase_id does not match an active phase")
+
+    # Cross-field check: section is required iff kind = intake_summary.
+    # Merge the patch with the existing row so the user can update one
+    # side without re-sending the other.
+    merged_kind = fields.get("default_activity_kind", existing["default_activity_kind"])
+    merged_section = fields.get(
+        "intake_summary_section", existing["intake_summary_section"]
+    )
+    # When the caller switches kind AWAY from intake_summary without
+    # also clearing the section, the DB CHECK would reject; clear it
+    # implicitly so the API stays ergonomic.
+    if merged_kind != "intake_summary" and merged_section is not None:
+        if "intake_summary_section" not in fields:
+            fields["intake_summary_section"] = None
+            merged_section = None
+    _validate_kind_section(merged_kind, merged_section)
 
     if fields:
         set_sql_parts = []

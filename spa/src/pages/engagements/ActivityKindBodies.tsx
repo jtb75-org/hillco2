@@ -31,6 +31,7 @@ export const KIND_HAS_BODY: Record<ActivityRow["activity_kind"], boolean> = {
   feedback_meeting: true,
   school_visit: true,
   school_recommendation: true,
+  intake_summary: true,
 };
 
 export function ActivityKindBody({
@@ -69,6 +70,16 @@ export function ActivityKindBody({
       return <SchoolVisitBody taskId={row.id} engagementId={engagementId} />;
     case "school_recommendation":
       return <SchoolRecommendationBody taskId={row.id} engagementId={engagementId} />;
+    case "intake_summary":
+      return (
+        <IntakeSummaryBody
+          section={
+            (row.structured_content as { section?: IntakeSummarySection })
+              ?.section ?? null
+          }
+          engagementId={engagementId}
+        />
+      );
     default:
       return null;
   }
@@ -670,6 +681,401 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
     >
       {children}
     </Typography>
+  );
+}
+
+// ---- intake_summary --------------------------------------------------------
+
+export type IntakeSummarySection =
+  | "contacts"
+  | "current_school"
+  | "diagnoses"
+  | "goals";
+
+interface IntakeSummaryContact {
+  person_id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  role: string | null;
+  is_primary_contact: boolean;
+  is_billing_contact: boolean;
+  mailing_address: string | null;
+}
+
+interface IntakeSummaryCurrentSchool {
+  student_id: string;
+  student_name: string;
+  current_grade: string | null;
+  current_school_id: string | null;
+  current_school_name: string | null;
+  current_school_city: string | null;
+  current_school_state: string | null;
+}
+
+interface IntakeSummaryDiagnoses {
+  student_id: string;
+  student_name: string;
+  has_504: boolean;
+  has_iep: boolean;
+  has_learning_disability: boolean;
+  has_adhd: boolean;
+  has_intellectual_disability: boolean;
+  has_health_impairment: boolean;
+  has_emotional_disturbance: boolean;
+  autism_level: number | null;
+  learning_disability_notes: string | null;
+  intellectual_disability_notes: string | null;
+  health_impairment_notes: string | null;
+  emotional_disturbance_notes: string | null;
+}
+
+interface IntakeSummaryStudentDiscovery {
+  working: string | null;
+  not_working: string | null;
+  history: string | null;
+  school_fit: string | null;
+  supports_tried: string | null;
+}
+
+interface IntakeSummaryGoals {
+  desired_outcome: string | null;
+  family_context_notes: string | null;
+  constraints: string[];
+  student_discovery: IntakeSummaryStudentDiscovery | null;
+}
+
+interface IntakeSummary {
+  engagement_id: string;
+  family_id: string | null;
+  student_id: string | null;
+  intake_id: string | null;
+  contacts: IntakeSummaryContact[];
+  current_school: IntakeSummaryCurrentSchool | null;
+  diagnoses: IntakeSummaryDiagnoses | null;
+  goals: IntakeSummaryGoals | null;
+}
+
+function IntakeSummaryBody({
+  section,
+  engagementId,
+}: {
+  section: IntakeSummarySection | null;
+  engagementId: string;
+}) {
+  // One query per page; React Query dedupes the four rows onto a
+  // single network round-trip via the shared queryKey.
+  const summary = useQuery<IntakeSummary, Error>({
+    queryKey: ["engagements", engagementId, "intake-summary"],
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/engagements/${engagementId}/intake-summary`,
+        { credentials: "include" },
+      );
+      if (!res.ok) throw new Error("Failed to load intake summary.");
+      return res.json();
+    },
+  });
+
+  if (!section) {
+    return (
+      <Typography variant="body2" color="text.disabled">
+        Section not configured on this activity. (Catalog admin can pick a
+        section under Intake summary.)
+      </Typography>
+    );
+  }
+  if (summary.isPending) {
+    return (
+      <Typography variant="body2" color="text.disabled">
+        Loading…
+      </Typography>
+    );
+  }
+  if (summary.isError) {
+    return (
+      <Typography variant="body2" color="error">
+        {summary.error.message}
+      </Typography>
+    );
+  }
+  const data = summary.data;
+  if (!data) return null;
+
+  switch (section) {
+    case "contacts":
+      return <ContactsSection contacts={data.contacts} />;
+    case "current_school":
+      return <CurrentSchoolSection data={data.current_school} />;
+    case "diagnoses":
+      return <DiagnosesSection data={data.diagnoses} />;
+    case "goals":
+      return <GoalsSection data={data.goals} />;
+  }
+}
+
+function ContactsSection({ contacts }: { contacts: IntakeSummaryContact[] }) {
+  if (contacts.length === 0) {
+    return (
+      <Typography variant="body2" color="text.disabled">
+        No guardians on file. Add them from the Guardians card above.
+      </Typography>
+    );
+  }
+  return (
+    <Stack spacing={1.25}>
+      {contacts.map((c) => (
+        <Box key={c.person_id} sx={{ display: "flex", flexDirection: "column", gap: 0.25 }}>
+          <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap">
+            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+              {c.name}
+            </Typography>
+            {c.role ? (
+              <Typography variant="caption" color="text.secondary">
+                · {c.role}
+              </Typography>
+            ) : null}
+            {c.is_primary_contact ? (
+              <Chip size="small" color="primary" label="Primary" sx={{ height: 18 }} />
+            ) : null}
+            {c.is_billing_contact ? (
+              <Chip size="small" color="secondary" label="Billing" sx={{ height: 18 }} />
+            ) : null}
+          </Stack>
+          <Stack direction="row" spacing={1.5} sx={{ flexWrap: "wrap" }}>
+            {c.email ? (
+              <Typography variant="caption" color="text.secondary">
+                {c.email}
+              </Typography>
+            ) : null}
+            {c.phone ? (
+              <Typography variant="caption" color="text.secondary">
+                {c.phone}
+              </Typography>
+            ) : null}
+          </Stack>
+          {c.mailing_address ? (
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ whiteSpace: "pre-line" }}
+            >
+              {c.mailing_address}
+            </Typography>
+          ) : null}
+        </Box>
+      ))}
+    </Stack>
+  );
+}
+
+function CurrentSchoolSection({
+  data,
+}: {
+  data: IntakeSummaryCurrentSchool | null;
+}) {
+  if (!data) {
+    return (
+      <Typography variant="body2" color="text.disabled">
+        No student on this engagement.
+      </Typography>
+    );
+  }
+  if (!data.current_school_id) {
+    return (
+      <Stack spacing={0.5}>
+        <Typography variant="body2">
+          <strong>{data.student_name}</strong>
+          {data.current_grade ? ` · grade ${data.current_grade}` : null}
+        </Typography>
+        <Typography variant="caption" color="text.disabled">
+          No current school linked yet. Set it from the student page.
+        </Typography>
+      </Stack>
+    );
+  }
+  return (
+    <Stack spacing={0.5}>
+      <Typography variant="body2">
+        <strong>{data.student_name}</strong>
+        {data.current_grade ? ` · grade ${data.current_grade}` : null}
+      </Typography>
+      <Typography variant="body2" color="text.secondary">
+        {data.current_school_name}
+        {(data.current_school_city || data.current_school_state) ? (
+          <>
+            {" · "}
+            {[data.current_school_city, data.current_school_state]
+              .filter(Boolean)
+              .join(", ")}
+          </>
+        ) : null}
+      </Typography>
+    </Stack>
+  );
+}
+
+const DIAGNOSIS_LABELS: Array<{
+  key: keyof Pick<
+    IntakeSummaryDiagnoses,
+    | "has_504"
+    | "has_iep"
+    | "has_learning_disability"
+    | "has_adhd"
+    | "has_intellectual_disability"
+    | "has_health_impairment"
+    | "has_emotional_disturbance"
+  >;
+  label: string;
+}> = [
+  { key: "has_504",                    label: "504" },
+  { key: "has_iep",                    label: "IEP" },
+  { key: "has_learning_disability",    label: "Learning disability" },
+  { key: "has_adhd",                   label: "ADHD" },
+  { key: "has_intellectual_disability", label: "Intellectual disability" },
+  { key: "has_health_impairment",      label: "Health impairment" },
+  { key: "has_emotional_disturbance",  label: "Emotional disturbance" },
+];
+
+function DiagnosesSection({ data }: { data: IntakeSummaryDiagnoses | null }) {
+  if (!data) {
+    return (
+      <Typography variant="body2" color="text.disabled">
+        No student on this engagement.
+      </Typography>
+    );
+  }
+  const active = DIAGNOSIS_LABELS.filter((f) => data[f.key]);
+  const autism =
+    data.autism_level !== null ? `Autism (level ${data.autism_level})` : null;
+  if (active.length === 0 && !autism) {
+    return (
+      <Typography variant="body2" color="text.disabled">
+        No diagnostic flags recorded yet. Capture them from the student page.
+      </Typography>
+    );
+  }
+  const notes: Array<{ label: string; text: string }> = [];
+  if (data.learning_disability_notes)
+    notes.push({ label: "Learning disability", text: data.learning_disability_notes });
+  if (data.intellectual_disability_notes)
+    notes.push({ label: "Intellectual disability", text: data.intellectual_disability_notes });
+  if (data.health_impairment_notes)
+    notes.push({ label: "Health impairment", text: data.health_impairment_notes });
+  if (data.emotional_disturbance_notes)
+    notes.push({ label: "Emotional disturbance", text: data.emotional_disturbance_notes });
+
+  return (
+    <Stack spacing={1}>
+      <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+        {active.map((f) => (
+          <Chip key={f.key} size="small" label={f.label} variant="outlined" />
+        ))}
+        {autism ? (
+          <Chip size="small" label={autism} color="primary" variant="outlined" />
+        ) : null}
+      </Stack>
+      {notes.length > 0 ? (
+        <Stack spacing={0.5}>
+          {notes.map((n) => (
+            <Typography key={n.label} variant="caption" color="text.secondary">
+              <strong>{n.label}:</strong> {n.text}
+            </Typography>
+          ))}
+        </Stack>
+      ) : null}
+    </Stack>
+  );
+}
+
+function GoalsSection({ data }: { data: IntakeSummaryGoals | null }) {
+  if (!data) {
+    return (
+      <Typography variant="body2" color="text.disabled">
+        No intake linked to this engagement.
+      </Typography>
+    );
+  }
+  const disc = data.student_discovery;
+  return (
+    <Stack spacing={1.25}>
+      <Box>
+        <FieldLabel>Desired outcome</FieldLabel>
+        <Typography
+          variant="body2"
+          color={data.desired_outcome ? "text.primary" : "text.disabled"}
+          sx={{ whiteSpace: "pre-line" }}
+        >
+          {data.desired_outcome ?? "Not captured."}
+        </Typography>
+      </Box>
+      {data.constraints.length > 0 ? (
+        <Box>
+          <FieldLabel>Constraints</FieldLabel>
+          <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+            {data.constraints.map((c, idx) => (
+              <Chip key={idx} size="small" label={c} variant="outlined" />
+            ))}
+          </Stack>
+        </Box>
+      ) : null}
+      {data.family_context_notes ? (
+        <Box>
+          <FieldLabel>Family context</FieldLabel>
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            sx={{ whiteSpace: "pre-line" }}
+          >
+            {data.family_context_notes}
+          </Typography>
+        </Box>
+      ) : null}
+      {disc ? (
+        <Stack spacing={0.75}>
+          {disc.working ? (
+            <Box>
+              <FieldLabel>Working</FieldLabel>
+              <Typography variant="body2" sx={{ whiteSpace: "pre-line" }}>
+                {disc.working}
+              </Typography>
+            </Box>
+          ) : null}
+          {disc.not_working ? (
+            <Box>
+              <FieldLabel>Not working</FieldLabel>
+              <Typography variant="body2" sx={{ whiteSpace: "pre-line" }}>
+                {disc.not_working}
+              </Typography>
+            </Box>
+          ) : null}
+          {disc.history ? (
+            <Box>
+              <FieldLabel>History</FieldLabel>
+              <Typography variant="body2" sx={{ whiteSpace: "pre-line" }}>
+                {disc.history}
+              </Typography>
+            </Box>
+          ) : null}
+          {disc.school_fit ? (
+            <Box>
+              <FieldLabel>School fit</FieldLabel>
+              <Typography variant="body2" sx={{ whiteSpace: "pre-line" }}>
+                {disc.school_fit}
+              </Typography>
+            </Box>
+          ) : null}
+          {disc.supports_tried ? (
+            <Box>
+              <FieldLabel>Supports tried</FieldLabel>
+              <Typography variant="body2" sx={{ whiteSpace: "pre-line" }}>
+                {disc.supports_tried}
+              </Typography>
+            </Box>
+          ) : null}
+        </Stack>
+      ) : null}
+    </Stack>
   );
 }
 
